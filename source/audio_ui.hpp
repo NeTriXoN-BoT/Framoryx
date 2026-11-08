@@ -157,6 +157,10 @@ void paintAudio(Graphics& g) {
     label(g, audioFooter(), 214, 777, 938, 38, 12, muted, false, true);
 }
 bool audioCommand(int id, int notification) {
+    bool selection = id == MicDevice || id == MicNoisePreset || id == MicEQPreset ||
+                     (id >= MicLow && id <= MicHigh);
+    if (selection && notification != CBN_SELCHANGE)
+        return true;
     if (id == MicRefresh || id == MicDevice || id == MicNoise || id == MicEQ ||
         id == MicNoisePreset || id == MicEQPreset || id == MicLow || id == MicMid ||
         id == MicHigh || id == MicChoosePlugin || id == MicDownload)

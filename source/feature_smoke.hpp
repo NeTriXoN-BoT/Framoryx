@@ -272,6 +272,10 @@ void runFeatureStep() {
         featureCommand(MicNoise);
         featureCombo(MicEQPreset, 4);
         app.pendingMicrophoneApply = L"diagnostic-mic";
+        SendMessageW(app.window, WM_COMMAND, MAKEWPARAM(MicHigh, CBN_DROPDOWN), 0);
+        SendMessageW(app.window, WM_COMMAND, MAKEWPARAM(MicHigh, CBN_CLOSEUP), 0);
+        featureCheck(!app.pendingMicrophoneApply.empty(),
+                     "browsing microphone choices preserves pending Apply");
         featureCombo(MicHigh, 4);
         featureCheck(app.pendingMicrophoneApply.empty(),
                      "editing microphone cancels stale download-time Apply");

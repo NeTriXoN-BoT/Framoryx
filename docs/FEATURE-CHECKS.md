@@ -34,7 +34,7 @@ Reviewed on 8 November 2026. Native app/game windows were exercised only on isol
 - Audio workers could discard an accepted final change when the app closed. They now finish accepted work before exit.
 - Rapid mic/bass actions could fill the queue and reject a later Disable. Pending actions coalesce independently by effect category.
 - Separate updater result/busy reads could lose the completion needed for a deferred microphone Apply. One synchronized snapshot supplies both.
-- Editing microphone settings while downloading could apply stale settings afterward. Editing cancels that deferred Apply.
+- Editing microphone settings while downloading could apply stale settings afterward. A selection change cancels that deferred Apply; opening/closing a dropdown preserves it.
 - Interrupted mouse capture could skip the final slider commit. It now commits on capture loss.
 - Gain disable could leave the displayed percentage stale. Completion resynchronizes it.
 - Failed capture/attach attempts could display a success state. Failed actions now return before enabling it.
