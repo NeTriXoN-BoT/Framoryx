@@ -35,6 +35,23 @@ jobs:
       - name: Build a clean portable package
         shell: pwsh
         run: ./scripts/package.ps1
+      - name: Check all seven page layouts on the isolated runner
+        shell: pwsh
+        run: |
+          $root=Join-Path $env:RUNNER_TEMP 'framoryx-layout-checks'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          foreach($page in 0..6) {
+            $settings=Join-Path $root ("page-$page.ini")
+            $report=Join-Path $root ("page-$page.json")
+            [IO.File]::WriteAllText($settings,"motion=0`ndesktop_scale=100`nauto_noise_updates=0`n")
+            $arguments=@('--smoke-seconds','14','--smoke-layout','--smoke-page',$page,'--audio-mic','--settings-file',('"'+$settings+'"'),'--report',('"'+$report+'"'))
+            $process=Start-Process -FilePath './dist/Framoryx/Framoryx.exe' -ArgumentList $arguments -WindowStyle Hidden -PassThru
+            if(!$process.WaitForExit(30000)){Stop-Process -Id $process.Id -Force;throw "Layout diagnostic timed out on page $page"}
+            if($process.ExitCode -ne 0 -or !(Test-Path -LiteralPath $report)){throw "Layout diagnostic failed on page $page"}
+            $result=Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+            if($result.layoutChecks -ne 5){throw "Incomplete layout checks on page $page"}
+            Write-Output "Page $page passed all five maximize/percentage/restore checks."
+          }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Framoryx-Windows-x64
