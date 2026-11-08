@@ -11,13 +11,17 @@ Framoryx provides a non-injecting monitoring path and a separate experimental in
 | DX12 limiter | Explicit DXGI hook | Can remain available while the HUD uses desktop fallback |
 | Vulkan / OpenGL / DX9 | Desktop monitoring | No injected renderer or limiter for these APIs in this release |
 | Borderless | Saved Win32 styles, placement and identity | Games may reject/reset changes; true exclusive fullscreen is not universally convertible |
-| Audio gain | Device-specific Equalizer APO configuration | Requires an existing APO installation; some exclusive/raw audio paths bypass effects |
+| Audio effects | Endpoint-specific Equalizer APO configuration; optional external RNNoise VST2 | Requires capture/playback APO setup; raw/exclusive paths can bypass effects. No virtual microphone driver is bundled. |
 
 ## Choosing a display method
 
 Start with **Auto**. It uses a recently drawing attached HUD and otherwise uses the desktop HUD. **Desktop** forces the non-injecting counter. **In-game** requires explicit hook opt-in. Choosing it does not automatically inject anything.
 
 If the desktop HUD is covered, try the game's own borderless option. For a Vulkan game, keep the desktop path; selecting an in-game layout does not add a Vulkan renderer.
+
+## Unsigned distribution
+
+The Windows app and optional hook modules are unsigned: no Authenticode publisher certificate is included. Windows may display an unknown-publisher or SmartScreen warning. Release ZIPs have a SHA-256 sidecar and a file manifest. These verify integrity against the published values; they do not certify safety or game approval. Framoryx never changes security settings or adds exclusions.
 
 ## Security-tool behavior
 

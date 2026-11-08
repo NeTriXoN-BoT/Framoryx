@@ -3,7 +3,9 @@
 The local Windows validation completed:
 
 - **32 core checks** covering parsing, rules, rolling statistics, memory budgets, scale bounds and motion timing.
-- **18 isolated audio-configuration checks**, with no system audio changes.
+- **20 isolated gain-configuration checks**, with no system audio changes.
+- **38 microphone/bass configuration checks**, including channel/rate restrictions, EQ headroom, per-endpoint scope, backups and safe disable.
+- Official RNNoise v1.10 mono and stereo VST2 binaries accepted all three configured voice thresholds and processed 480,000 finite offline samples each. This is a DSP/state check, not a listening-quality certification.
 - **67 graphics/lifecycle checks** against bundled x64 DX11, x64 DX12 and x86 DX11 scenes.
 - **Four UI/profile/scale checks**, including saved-layout round-trip through the actual controls, smaller/larger desktop percentages and Auto restoration.
 - A **120-second non-injecting ETW/borderless soak**: 391 steady observations, no missing telemetry, seven window transitions, 36,864 bytes of post-warm-up collector growth and zero handle growth.

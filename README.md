@@ -1,11 +1,12 @@
 <div align="center">
   <img src="docs/images/hero.png" alt="Framoryx — Every frame. Under control." width="100%">
   <p>A native Windows toolkit for performance overlays, frame pacing, borderless play, and audio control.</p>
-  <a href="https://github.com/NeTriXoN-BoT/Framoryx/releases/latest/download/Framoryx-Windows-x64.zip"><img src="docs/badges/download-windows.svg" alt="Download Framoryx for Windows x64" height="54"></a>
+  <a href="https://github.com/NeTriXoN-BoT/Framoryx/releases/latest/download/Framoryx-Windows-x64.zip"><img src="docs/badges/download-windows.svg" alt="Download Framoryx for Windows x64" height="94"></a>
   &nbsp;
-  <a href="https://github.com/NeTriXoN-BoT/Framoryx/releases"><img src="docs/badges/releases.svg" alt="Releases and checksums" height="54"></a>
+  <a href="https://github.com/NeTriXoN-BoT/Framoryx/releases"><img src="docs/badges/releases.svg" alt="Releases and checksums" height="94"></a>
   &nbsp;
-  <a href="docs/LINUX.md"><img src="docs/badges/linux.svg" alt="Linux roadmap — no Linux application release yet" height="54"></a>
+  <a href="docs/LINUX.md"><img src="docs/badges/linux.svg" alt="Linux roadmap — no Linux application release yet" height="94"></a>
+  <p><sub><strong>UNSIGNED WINDOWS BUILD</strong> · No Authenticode publisher certificate.<br>Windows may display an unknown-publisher or SmartScreen warning. Check the release SHA-256 before use.</sub></p>
 </div>
 
 ## Your game. Your overlay.
@@ -16,7 +17,7 @@ Keep an eye on real frame data, make the HUD your own, and get back to playing. 
 | --- | --- | --- |
 | Live FPS, average FPS, 1% lows and frame times | Glass, Compact and Telemetry Bar layouts | Optional DX11/DX12 frame limiter |
 | Rolling frame graph and CSV export | Ten independently selectable readouts | Borderless play with window restoration |
-| System CPU and memory readouts | Per-game style, accent, opacity and corner | Windows output volume and optional APO gain |
+| System CPU and memory readouts | Per-game style, accent, opacity and corner | Output volume, compensated bass, mic EQ and optional RNNoise |
 | Automatic desktop HUD fallback | Automatic sizing and percentage overrides | Tray controls, hotkeys and desktop shortcuts |
 
 <img src="docs/images/studio-glass.png" alt="Overlay Studio with the Glass layout and clearly labelled sample preview values" width="100%">
@@ -51,7 +52,7 @@ Keep the application folder together. No account, installer or background servic
 - The optional in-game HUD/limiter requires a specific process, allow-list approval and an explicit confirmation. Block rules take priority.
 - DX12 drawing uses an observed direct queue. Ambiguous queue configurations keep the limiter available and fall back to the desktop HUD in Auto mode.
 - Vulkan, OpenGL and DX9 use the desktop monitoring path. Exclusive fullscreen can cover desktop overlays; the game's own borderless mode often provides the best starting point.
-- Extra audio gain requires a separately installed and configured **Equalizer APO**. Normal output-volume control works without it.
+- Bass, microphone EQ and extra gain require a separately configured **Equalizer APO**. RNNoise downloads the official compatible x64 VST2 plugin automatically and needs a 48 kHz microphone. Normal output-volume control works immediately. See [audio setup](docs/AUDIO.md).
 
 **In-game hooks remain experimental.** They can conflict with games, overlays or security tools, and no ban-free guarantee is possible. Microsoft Defender quarantined the optional injection stress-test helper during development. That interrupted run is not counted as a pass, and Framoryx does not bypass security protections. See [compatibility and security notes](docs/COMPATIBILITY.md) before enabling hooks.
 
@@ -80,7 +81,7 @@ See [building and testing](docs/BUILDING.md) for details. The Linux CI job check
 
 ## Project status
 
-Version **0.2.0** adds Overlay Studio, three HUD layouts, per-game presentation profiles, sharp font resizing, desktop scale controls, a refresh-aware animation clock, DX12 HUD support, compatibility inspection and tray access.
+Version **0.2.0** adds microphone noise suppression/EQ controls, compensated bass, refreshed process rules and limiter controls, Overlay Studio, three HUD layouts, per-game presentation profiles, sharp font resizing, desktop scale controls, a refresh-aware animation clock, DX12 HUD support, compatibility inspection and tray access.
 
 Local test scenes establish behavior on the development configuration; they are not a commercial-game compatibility certification. [Validation](docs/VALIDATION.md) and [release notes](docs/releases/v0.2.0.md) describe completed checks and current limits. A native Linux application is [planned separately](docs/LINUX.md).
 

@@ -1,5 +1,8 @@
 #include "capture.hpp"
 #include "audio.hpp"
+#include "microphone.hpp"
+#include "audio_gain.hpp"
+#include "noise_updates.hpp"
 #include "compatibility.hpp"
 #include "animation.hpp"
 #include <shlobj.h>
@@ -56,6 +59,9 @@ enum Id {
     HudToggle,
     CreateShortcut,
     HudStyle,
+    CapDown,
+    CapUp,
+    LimiterStudio,
     HudFirstField = 270
 };
 enum AudioId {
@@ -73,6 +79,31 @@ enum AudioId {
     AudioRefresh,
     AudioFolder,
     SoundSettings
+};
+enum AudioEffectsId {
+    AudioOutputView = 300,
+    AudioMicView,
+    MicDevice,
+    MicRefresh,
+    MicNoise,
+    MicNoisePreset,
+    MicEQ,
+    MicEQPreset,
+    MicLow,
+    MicMid,
+    MicHigh,
+    MicChoosePlugin,
+    MicDownload,
+    MicApply,
+    MicDisable,
+    MicSetup,
+    BassAmount,
+    BassApply,
+    BassDisable,
+    MicAutoUpdates,
+    AudioSetupBack,
+    AudioGetAPO,
+    AudioConfigurator
 };
 struct TargetWindow {
     HWND hwnd;
@@ -160,6 +191,16 @@ struct App {
     int page = 0;
     fg::AudioState audio;
     fg::AudioBoost boost;
+    int audioTab = 0, outputPercent = 100;
+    bool audioSetup = false;
+    bool outputBoostActive = false, autoNoiseUpdates = true, manualNoisePlugin = false;
+    std::wstring pendingMicrophoneApply, noiseUpdateStatus;
+    fg::NoiseUpdater noiseUpdater;
+    fg::NoiseRelease noiseRelease;
+    fg::GainWorker gainWorker;
+    std::vector<fg::Microphone> microphones;
+    fg::MicrophoneOptions microphoneOptions, pendingMicrophoneOptions;
+    std::wstring microphoneId, noisePlugin;
     std::unique_ptr<Bitmap> headerCache, logoCache;
     int headerPage = -1;
     bool headerLive = false;
@@ -167,9 +208,11 @@ struct App {
     std::map<std::pair<float, bool>, std::unique_ptr<Font>> fonts;
     std::map<std::string, int> gameLimits;
     std::wstring diagnosticPath;
-    std::wstring snapshotPath;
-    bool snapshotSaved = false;
+    std::wstring snapshotPath, rulesSnapshotPath;
+    bool snapshotSaved = false, diagnosticMic = false;
     std::wstring settingsOverride;
+    bool smokeAudio = false;
+    int audioControlChecks = 0, rulesControlChecks = 0, audioCheckStep = 0;
     bool smokeCustomize = false, customizationRoundTrip = false;
     int customizationStep = 0, customizationChecks = 0;
     double smokeSeconds = 0, diagnosticStart = 0, paintMilliseconds = 0, updateMilliseconds = 0,
@@ -262,6 +305,13 @@ bool saveSettings() {
     for (auto& p : app.gameLimits)
         out << "limit=" << p.first << '|' << p.second << '\n';
     out << "apo_config_dir=" << fg::utf8(app.boost.directory()) << '\n';
+    out << "auto_noise_updates=" << app.autoNoiseUpdates << '\n';
+    out << "manual_noise_plugin=" << app.manualNoisePlugin << '\n';
+    out << "mic_id=" << fg::utf8(app.microphoneId) << '\n';
+    out << "rnnoise_plugin=" << fg::utf8(app.noisePlugin) << '\n';
+    out << "mic_options=" << app.microphoneOptions.noise << ' ' << app.microphoneOptions.equalizer
+        << ' ' << app.microphoneOptions.preset << ' ' << app.microphoneOptions.low << ' '
+        << app.microphoneOptions.mid << ' ' << app.microphoneOptions.high << '\n';
     auto path = configPath(), temporary = path + L".tmp";
     std::ofstream file{fs::path(temporary), std::ios::binary};
     file << out.str();
@@ -290,6 +340,26 @@ void loadSettings() {
         if (pos == std::string::npos)
             continue;
         auto key = line.substr(0, pos), val = line.substr(pos + 1);
+        if (key == "auto_noise_updates")
+            app.autoNoiseUpdates = val != "0";
+        if (key == "manual_noise_plugin")
+            app.manualNoisePlugin = val == "1";
+        if (key == "mic_id")
+            app.microphoneId = fg::wide(val);
+        if (key == "rnnoise_plugin")
+            app.noisePlugin = fg::wide(val);
+        if (key == "mic_options") {
+            std::istringstream values(val);
+            fg::MicrophoneOptions options;
+            if (values >> options.noise >> options.equalizer >> options.preset >> options.low >>
+                options.mid >> options.high) {
+                options.preset = std::clamp(options.preset, 0, 2);
+                options.low = std::clamp(options.low / 3, -4, 4) * 3;
+                options.mid = std::clamp(options.mid / 3, -4, 4) * 3;
+                options.high = std::clamp(options.high / 3, -4, 4) * 3;
+                app.microphoneOptions = options;
+            }
+        }
         if (key == "allow" && fg::validRule(val))
             app.rules.allow.push_back(val);
         if (key == "deny" && fg::validRule(val))
@@ -665,223 +735,7 @@ std::wstring editText(HWND edit) {
     s.resize(n);
     return s;
 }
-struct RulesDialogData {
-    float scale = 1;
-    UINT dpi = 96;
-    HFONT font = nullptr;
-};
-void scaleRuleControls(HWND window, RulesDialogData* data, float ratio) {
-    HFONT previous = data->font;
-    data->font = CreateFontW(-std::max(11, int(14 * data->scale)), 0, 0, 0, FW_NORMAL, FALSE, FALSE,
-                             FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-    struct Layout {
-        float ratio;
-        HFONT font;
-    };
-    Layout layout{ratio, data->font ? data->font : HFONT(GetStockObject(DEFAULT_GUI_FONT))};
-    EnumChildWindows(
-        window,
-        [](HWND child, LPARAM value) -> BOOL {
-            auto layout = reinterpret_cast<Layout*>(value);
-            RECT r{};
-            GetWindowRect(child, &r);
-            MapWindowPoints(nullptr, GetParent(child), reinterpret_cast<POINT*>(&r), 2);
-            SetWindowPos(child, nullptr, int(r.left * layout->ratio), int(r.top * layout->ratio),
-                         int((r.right - r.left) * layout->ratio),
-                         int((r.bottom - r.top) * layout->ratio), SWP_NOZORDER | SWP_NOACTIVATE);
-            SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(layout->font), TRUE);
-            SetWindowTheme(child, L"DarkMode_Explorer", nullptr);
-            return TRUE;
-        },
-        reinterpret_cast<LPARAM>(&layout));
-    if (previous)
-        DeleteObject(previous);
-}
-LRESULT CALLBACK rulesProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
-    switch (msg) {
-    case WM_CREATE: {
-        auto data = new RulesDialogData;
-        data->scale = app.scale;
-        data->dpi = GetDpiForWindow(window);
-        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(data));
-        auto staticText = [&](const wchar_t* text, int x, int y, int w, int h) {
-            return CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE, x, y, w, h, window,
-                                 nullptr, app.instance, nullptr);
-        };
-        staticText(L"Hook allow list", 22, 18, 270, 26);
-        staticText(L"Block list — takes priority", 322, 18, 280, 26);
-        CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", rulesText(app.rules.allow).c_str(),
-                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | ES_MULTILINE |
-                            ES_AUTOVSCROLL | ES_WANTRETURN,
-                        22, 50, 278, 220, window, reinterpret_cast<HMENU>(1), app.instance,
-                        nullptr);
-        CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", rulesText(app.rules.deny).c_str(),
-                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | ES_MULTILINE |
-                            ES_AUTOVSCROLL | ES_WANTRETURN,
-                        322, 50, 278, 220, window, reinterpret_cast<HMENU>(2), app.instance,
-                        nullptr);
-        staticText(
-            L"One executable name per line, e.g. game.exe or game*.exe.\nAllow list: permits "
-            L"manual hook mode and optional auto borderless.\nBlock list: hides matching targets "
-            L"and prevents modifications.\nSystem processes and known anti-cheat names are always "
-            L"blocked.\nAn allow-list entry is your preference, not proof of anti-cheat approval.",
-            22, 290, 580, 115);
-        CreateWindowW(L"BUTTON", L"Save rules", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-                      360, 416, 116, 34, window, reinterpret_cast<HMENU>(3), app.instance, nullptr);
-        CreateWindowW(L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 488,
-                      416, 112, 34, window, reinterpret_cast<HMENU>(4), app.instance, nullptr);
-        scaleRuleControls(window, data, data->scale);
-        for (int id = 1; id <= 2; ++id)
-            SendMessageW(GetDlgItem(window, id), EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN,
-                         MAKELPARAM(8, 8));
-        return 0;
-    }
-    case WM_ERASEBKGND: {
-        RECT r{};
-        GetClientRect(window, &r);
-        FillRect(reinterpret_cast<HDC>(wp), &r, app.brush);
-        return 1;
-    }
-    case WM_CTLCOLORSTATIC:
-    case WM_CTLCOLOREDIT:
-    case WM_CTLCOLORBTN:
-    case WM_CTLCOLORLISTBOX:
-        SetTextColor(reinterpret_cast<HDC>(wp), RGB(233, 242, 246));
-        SetBkColor(reinterpret_cast<HDC>(wp), RGB(20, 28, 36));
-        return reinterpret_cast<LRESULT>(app.brush);
-    case WM_DRAWITEM: {
-        auto d = reinterpret_cast<DRAWITEMSTRUCT*>(lp);
-        if (d->CtlType != ODT_BUTTON)
-            break;
-        Graphics g(d->hDC);
-        g.Clear(card);
-        g.SetSmoothingMode(SmoothingModeAntiAlias);
-        float w = float(d->rcItem.right), h = float(d->rcItem.bottom);
-        rounded(g, RectF(0, 0, w - 1, h - 1), d->CtlID == 3 ? mint : Color(255, 30, 43, 53), 7,
-                true);
-        wchar_t title[80]{};
-        GetWindowTextW(d->hwndItem, title, 80);
-        SolidBrush b(d->CtlID == 3 ? bg : text);
-        StringFormat format;
-        format.SetAlignment(StringAlignmentCenter);
-        format.SetLineAlignment(StringAlignmentCenter);
-        auto data = reinterpret_cast<RulesDialogData*>(GetWindowLongPtrW(window, GWLP_USERDATA));
-        g.DrawString(title, -1, uiFont(std::max(11.0f, 13 * (data ? data->scale : 1)), true),
-                     RectF(0, 0, w, h), &format, &b);
-        return TRUE;
-    }
-    case WM_COMMAND:
-        if (LOWORD(wp) == IDCANCEL && HIWORD(wp) == 0 && lp == 0) {
-            DestroyWindow(window);
-            return 0;
-        }
-        if (LOWORD(wp) == 3) {
-            fg::Rules rules;
-            rules.allow.clear();
-            rules.deny.clear();
-            for (int id = 1; id <= 2; ++id) {
-                std::wistringstream lines(editText(GetDlgItem(window, id)));
-                std::wstring line;
-                while (std::getline(lines, line)) {
-                    size_t start = line.find_first_not_of(L" \t\r"),
-                           end = line.find_last_not_of(L" \t\r");
-                    if (start == std::wstring::npos)
-                        continue;
-                    auto rule = fg::utf8(line.substr(start, end - start + 1));
-                    if (!fg::validRule(rule)) {
-                        MessageBoxW(window,
-                                    L"Use executable basenames ending in .exe, one per line. "
-                                    L"Wildcards * and ? are supported. Do not enter paths.",
-                                    L"Check process rule", MB_OK | MB_ICONINFORMATION);
-                        return 0;
-                    }
-                    (id == 1 ? rules.allow : rules.deny).push_back(rule);
-                }
-            }
-            app.rules = rules;
-            app.capture.setRules(rules);
-            app.borderless.restoreBlocked(rules);
-            app.cachedForegroundPid = 0;
-            app.cachedForegroundWindow = nullptr;
-            auto currentProcesses = fg::processes();
-            if (app.autoPid && (!currentProcesses.count(app.autoPid) ||
-                                rules.blocked(currentProcesses[app.autoPid]))) {
-                app.autoPid = 0;
-                app.autoWindow = nullptr;
-            }
-            if (app.hook.targetAlive() && (app.hook.active() || app.hook.status() == 0)) {
-                auto procs = fg::processes();
-                if (!procs.count(app.hook.pid()) || !rules.hookAllowed(procs[app.hook.pid()]))
-                    app.hook.disable();
-            }
-            bool persisted = saveSettings();
-            refreshTargets();
-            setNotice(
-                persisted
-                    ? L"Game rules saved. No hook is enabled automatically."
-                    : L"Game rules updated for this session. Preferences could not be saved.");
-            DestroyWindow(window);
-            return 0;
-        }
-        if (LOWORD(wp) == 4) {
-            DestroyWindow(window);
-            return 0;
-        }
-        break;
-    case WM_DPICHANGED: {
-        auto data = reinterpret_cast<RulesDialogData*>(GetWindowLongPtrW(window, GWLP_USERDATA));
-        auto rect = reinterpret_cast<RECT*>(lp);
-        if (data) {
-            float ratio = float(HIWORD(wp)) / std::max(1u, data->dpi);
-            data->dpi = HIWORD(wp);
-            data->scale *= ratio;
-            SetWindowPos(window, nullptr, rect->left, rect->top, rect->right - rect->left,
-                         rect->bottom - rect->top, SWP_NOZORDER | SWP_NOACTIVATE);
-            scaleRuleControls(window, data, ratio);
-        }
-        return 0;
-    }
-    case WM_NCDESTROY: {
-        auto data = reinterpret_cast<RulesDialogData*>(GetWindowLongPtrW(window, GWLP_USERDATA));
-        if (data) {
-            if (data->font)
-                DeleteObject(data->font);
-            delete data;
-            SetWindowLongPtrW(window, GWLP_USERDATA, 0);
-        }
-        break;
-    }
-    case WM_CLOSE:
-        DestroyWindow(window);
-        return 0;
-    case WM_DESTROY:
-        EnableWindow(app.window, TRUE);
-        SetForegroundWindow(app.window);
-        return 0;
-    }
-    return DefWindowProcW(window, msg, wp, lp);
-}
-void showRules() {
-    RECT r{};
-    GetWindowRect(app.window, &r);
-    DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
-    RECT bounds{0, 0, int(622 * app.scale), int(468 * app.scale)};
-    AdjustWindowRectExForDpi(&bounds, style, FALSE, WS_EX_DLGMODALFRAME,
-                             GetDpiForWindow(app.window));
-    HWND w = CreateWindowExW(WS_EX_DLGMODALFRAME, L"Framoryx.Rules", L"Framoryx — Game rules",
-                             style, r.left + int(70 * app.scale), r.top + int(70 * app.scale),
-                             bounds.right - bounds.left, bounds.bottom - bounds.top, app.window,
-                             nullptr, app.instance, nullptr);
-    if (w) {
-        BOOL dark = TRUE;
-        DwmSetWindowAttribute(w, 20, &dark, sizeof(dark));
-        EnableWindow(app.window, FALSE);
-        ShowWindow(w, SW_SHOW);
-        SetForegroundWindow(w);
-        SetFocus(GetDlgItem(w, 1));
-    }
-}
+#include "rules_ui.hpp"
 
 void layout() {
     RECT r{};
@@ -915,8 +769,11 @@ void layout() {
     place(Export, 594, 706, 180, 42);
     place(CaptureDetails, 788, 706, 364, 42);
     place(Test, 520, 705, 260, 38);
-    place(CapValue, 244, 450, 110, 46);
-    place(Preset, 370, 457, 140, 260);
+    place(CapDown, 249, 454, 28, 38);
+    place(CapValue, 278, 461, 60, 25);
+    place(CapUp, 339, 454, 28, 38);
+    place(Preset, 386, 450, 124, 260);
+    place(LimiterStudio, 854, 523, 250, 40);
     place(Attach, 532, 448, 256, 50);
     place(Disable, 804, 448, 300, 50);
     place(HookHud, 244, 527, 760, 30);
@@ -924,14 +781,44 @@ void layout() {
     place(Borderless, 592, 441, 242, 50);
     place(Restore, 854, 441, 250, 50);
     place(AutoBorderless, 244, 520, 840, 30);
-    place(Volume, 250, 358, 560, 40);
-    place(BoostLevel, 252, 510, 230, 220);
-    place(ApplyBoost, 502, 508, 260, 44);
-    place(DisableBoost, 778, 508, 300, 44);
+    place(AudioOutputView, 244, 212, 160, 38);
+    place(AudioMicView, 416, 212, 180, 38);
+    place(Volume, 250, 378, 664, 46);
+    place(BoostLevel, 264, 499, 150, 220);
+    place(ApplyBoost, 430, 497, 100, 44);
+    place(DisableBoost, 544, 497, 100, 44);
+    place(BassAmount, 700, 499, 150, 220);
+    place(BassApply, 866, 497, 100, 44);
+    place(BassDisable, 980, 497, 108, 44);
+    place(AudioSetupBack, 244, 698, 196, 34);
+    place(AudioGetAPO, 244, 638, 196, 40);
+    place(AudioConfigurator, 456, 638, 200, 40);
+    if (app.audioSetup) {
+        place(AudioFolder, 672, 638, 190, 40);
+        place(SoundSettings, 878, 638, 226, 40);
+    }
+    place(MicRefresh, 978, 277, 126, 38);
+    place(MicDevice, 244, 338, 860, 260);
+    place(MicNoise, 264, 432, 372, 27);
+    place(MicNoisePreset, 264, 490, 372, 220);
+    place(MicChoosePlugin, 264, 542, 170, 38);
+    place(MicDownload, 448, 542, 188, 38);
+    place(MicAutoUpdates, 264, 615, 372, 23);
+    place(MicEQ, 700, 432, 380, 27);
+    place(MicEQPreset, 700, 490, 380, 220);
+    place(MicLow, 700, 560, 112, 260);
+    place(MicMid, 832, 560, 112, 260);
+    place(MicHigh, 964, 560, 116, 260);
+    place(MicApply, 244, 670, 250, 44);
+    place(MicDisable, 510, 670, 140, 44);
+    place(MicSetup, 666, 670, 196, 44);
     place(AudioSetup, 252, 686, 190, 40);
     place(AudioRefresh, 456, 686, 146, 40);
     place(AudioFolder, 616, 686, 222, 40);
-    place(SoundSettings, 852, 686, 224, 40);
+    if (app.audioTab == 1)
+        place(SoundSettings, 878, 670, 226, 44);
+    else
+        place(SoundSettings, 852, 686, 224, 40);
     place(HudMode, 240, 264, 132, 240);
     place(HudStyle, 388, 264, 127, 240);
     place(HudSize, 240, 338, 132, 260);
@@ -946,6 +833,10 @@ void layout() {
     place(CreateShortcut, 1004, 687, 124, 38);
     place(CompatibilityRefresh, 244, 675, 230, 44);
     place(CompatibilityBorderless, 490, 675, 286, 44);
+    if (app.audioSetup) {
+        place(AudioFolder, 672, 638, 190, 40);
+        place(SoundSettings, 878, 638, 226, 40);
+    }
     HFONT previousFont = app.controlFont;
     app.controlFont = CreateFontW(-std::max(11, int(14 * z)), 0, 0, 0, FW_NORMAL, FALSE, FALSE,
                                   FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -955,20 +846,22 @@ void layout() {
         wchar_t cls[32]{};
         GetClassNameW(c.second, cls, 32);
         if (_wcsicmp(cls, L"COMBOBOX") == 0) {
-            SendMessageW(c.second, CB_SETITEMHEIGHT, -1, int(25 * z));
+            SendMessageW(c.second, CB_SETITEMHEIGHT, -1, int((c.first == Preset ? 40 : 25) * z));
             SendMessageW(c.second, CB_SETITEMHEIGHT, 0, int(27 * z));
         }
     }
     if (previousFont)
         DeleteObject(previousFont);
 }
+void syncOutputVolume();
+void startNoiseUpdate(bool force);
 void pageControls(int page) {
     SetWindowPos(app.controls[Target], nullptr, int((page == 5 ? 588 : 232) * app.scale),
                  int((page == 5 ? 246 : 231) * app.scale), int((page == 5 ? 538 : 550) * app.scale),
                  int(300 * app.scale), SWP_NOZORDER | SWP_NOACTIVATE);
     if (page == 1) {
-        app.audio = fg::audioState();
-        SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, int(app.audio.volume * 100));
+        syncOutputVolume();
+        SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, int(app.outputPercent));
         EnableWindow(app.controls[Volume], app.audio.available);
         EnableWindow(app.controls[ApplyBoost], app.audio.available && app.boost.available());
     }
@@ -981,11 +874,17 @@ void pageControls(int page) {
         else if (page == 0)
             show = id == Target || id == Refresh || id == Capture || id == Overlay ||
                    id == Corner || id == Export || id == CaptureDetails;
-        else if (page == 1)
-            show = id >= 210 && id <= SoundSettings;
-        else if (page == 2)
+        else if (page == 1) {
+            show = id == AudioOutputView || id == AudioMicView || id == SoundSettings;
+            if (app.audioTab == 0)
+                show = show || (id >= 210 && id < SoundSettings) ||
+                       (id >= BassAmount && id <= BassDisable);
+            else
+                show = show || (id >= MicDevice && id <= MicSetup) || id == MicAutoUpdates;
+        } else if (page == 2)
             show = id == Target || id == Refresh || id == Capture || id == CapValue ||
-                   id == Preset || id == Attach || id == Disable;
+                   id == Preset || id == Attach || id == Disable || id == CapDown || id == CapUp ||
+                   id == LimiterStudio;
         else if (page == 3)
             show = id == Target || id == Refresh || id == Capture || id == Monitor ||
                    id == Borderless || id == Restore || id == AutoBorderless;
@@ -998,6 +897,10 @@ void pageControls(int page) {
         else if (page == 6)
             show = id == Target || id == Refresh || id == Capture || id == CompatibilityRefresh ||
                    id == CompatibilityBorderless;
+        if (page == 1 && app.audioSetup)
+            show = id == AudioOutputView || id == AudioMicView || id == AudioSetupBack ||
+                   id == AudioGetAPO || id == AudioConfigurator || id == AudioFolder ||
+                   id == SoundSettings;
         ShowWindow(c.second, show ? SW_SHOW : SW_HIDE);
         InvalidateRect(c.second, nullptr, FALSE);
     }
@@ -1012,6 +915,8 @@ void switchPage(int page) {
     app.page = page;
     app.contentDirty = true;
     pageControls(page);
+    if (page == 1 && app.audioTab == 1 && app.autoNoiseUpdates && app.smokeSeconds <= 0)
+        startNoiseUpdate(false);
     if (page == 5)
         syncHudControls();
     if (animate && previous) {
@@ -1031,31 +936,8 @@ void switchPage(int page) {
     }
     InvalidateRect(app.window, nullptr, FALSE);
 }
-void paintAudio(Graphics& g) {
-    rounded(g, RectF(212, 190, 940, 562), card, 16, true);
-    label(g, L"SOUND, ON YOUR TERMS", 250, 218, 780, 25, 11, mint, true);
-    label(g, L"Turn up the quiet moments.", 247, 251, 850, 54, 30, text, true);
-    label(g, app.audio.device, 251, 311, 850, 27, 15, text, true);
-    label(g, L"OUTPUT VOLUME", 252, 343, 300, 20, 11, muted, true);
-    label(g, value(app.audio.volume * 100) + L"%" + (app.audio.mute ? L" · muted" : L""), 850, 363,
-          230, 36, 25, text, true);
-    line(g, 252, 426, 1112, 426);
-    label(g, L"EXTRA BOOST", 252, 450, 320, 25, 13, text, true);
-    auto gain = app.boost.configuredGain(app.audio.guid);
-    label(g, gain ? L"Configured: +" + std::to_wstring(*gain) + L" dB" : L"Not configured", 850,
-          451, 250, 24, 12, gain ? mint : muted, true);
-    label(g,
-          app.boost.available()
-              ? L"Equalizer APO config found · playback-device setup still needs verification."
-              : L"Requires Equalizer APO · use Setup instructions for the one-time setup.",
-          252, 480, 850, 24, 12, app.boost.available() ? mint : amber);
-    label(g,
-          L"Start with a gentle boost. Reduce it if you hear distortion.\nApplies to your current "
-          L"default output and stays applied until you disable it.\nThis is preamplification; it "
-          L"does not include a dynamic compressor.",
-          252, 579, 840, 78, 14, muted, false, true);
-    label(g, app.audioNotice, 214, 777, 938, 38, 12, muted, false, true);
-}
+#include "audio_ui.hpp"
+
 void paintHeaderBase(Graphics& g) {
     double phase = 0;
     SolidBrush background(bg);
@@ -1214,7 +1096,13 @@ void paintLimiter(Graphics& g) {
     label(g, L"A steadier pace.", 242, 333, 820, 46, 30, text, true);
     label(g, L"Choose a target your game can sustain. 0 means uncapped.", 244, 393, 840, 27, 15,
           muted);
-    label(g, L"FRAME LIMIT", 244, 426, 260, 22, 11, muted, true);
+    rounded(g, RectF(244, 450, 128, 46), Color(255, 20, 28, 36), 9, true);
+    if (GetFocus() == app.controls[CapValue])
+        line(g, 258, 495, 358, 495, mint, 1.5f);
+    label(g, L"YOUR TARGET · FPS", 244, 426, 260, 22, 11, muted, true);
+    label(g, L"Saved for each game.", 244, 526, 540, 24, 13, text, true);
+    label(g, L"Fine-tune with + / − or the arrow keys. Choose 0 for no cap.", 244, 550, 590, 23, 12,
+          muted);
     rounded(g, RectF(244, 584, 860, 119), Color(255, 29, 36, 40), 12, true);
     label(g,
           app.hook.active()        ? (app.hook.frameCount() ? L"Limiter connected"
@@ -1526,6 +1414,7 @@ void update() {
         GetProcessHandleCount(GetCurrentProcess(), &handles);
         app.peakHandles = std::max(app.peakHandles, handles);
     }
+    pollAudioWork();
     if (app.smokeSeconds > 0) {
         double elapsed = fg::clockSeconds() - app.diagnosticStart;
         if (elapsed >= app.smokeSeconds) {
@@ -1547,6 +1436,37 @@ void update() {
                             break;
                         }
             }
+        }
+        if (app.smokeAudio && elapsed >= 4 && app.audioCheckStep == 0) {
+            SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, 75);
+            SendMessageW(app.window, WM_HSCROLL, TB_THUMBTRACK,
+                         reinterpret_cast<LPARAM>(app.controls[Volume]));
+            if (app.outputPercent == 75)
+                ++app.audioControlChecks;
+            SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, 200);
+            SendMessageW(app.window, WM_HSCROLL, TB_THUMBPOSITION,
+                         reinterpret_cast<LPARAM>(app.controls[Volume]));
+            if (app.outputPercent == 200 &&
+                SendMessageW(app.controls[Volume], TBM_GETRANGEMAX, 0, 0) == 200)
+                ++app.audioControlChecks;
+            SendMessageW(app.window, WM_COMMAND, AudioMicView, 0);
+            if (app.audioTab == 1 &&
+                (GetWindowLongPtrW(app.controls[MicDevice], GWL_STYLE) & WS_VISIBLE))
+                ++app.audioControlChecks;
+            SendMessageW(app.controls[MicEQPreset], CB_SETCURSEL, 1, 0);
+            SendMessageW(app.window, WM_COMMAND, MAKEWPARAM(MicEQPreset, CBN_SELCHANGE),
+                         reinterpret_cast<LPARAM>(app.controls[MicEQPreset]));
+            if (app.microphoneOptions.equalizer && app.microphoneOptions.low == -3 &&
+                app.microphoneOptions.high == 3)
+                ++app.audioControlChecks;
+            SendMessageW(app.window, WM_COMMAND, MicSetup, 0);
+            if (app.audioSetup &&
+                !(GetWindowLongPtrW(app.controls[Volume], GWL_STYLE) & WS_VISIBLE))
+                ++app.audioControlChecks;
+            SendMessageW(app.window, WM_COMMAND, AudioSetupBack, 0);
+            if (!app.audioSetup)
+                ++app.audioControlChecks;
+            app.audioCheckStep = 1;
         }
         if (app.smokeCustomize && !app.settingsOverride.empty()) {
             if (elapsed >= 4 && app.customizationStep == 0) {
@@ -1629,10 +1549,27 @@ void update() {
                          SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
             app.smokeResizeStep = step;
         }
-        if (elapsed >= 8 && !app.smokeDialogOpened && app.fixedSmokePage < 0) {
+        if (elapsed >= 8 && !app.smokeDialogOpened &&
+            (app.fixedSmokePage < 0 || app.smokeAudio || !app.rulesSnapshotPath.empty())) {
             app.smokeDialogOpened = true;
             showRules();
             HWND rules = GetLastActivePopup(app.window);
+            if (rules && rules != app.window && app.smokeAudio) {
+                SetWindowTextW(GetDlgItem(rules, 1), L"C:\\invalid.exe");
+                SendMessageW(rules, WM_COMMAND, 3, reinterpret_cast<LPARAM>(GetDlgItem(rules, 3)));
+                auto state =
+                    reinterpret_cast<RulesDialogData*>(GetWindowLongPtrW(rules, GWLP_USERDATA));
+                if (IsWindow(rules) && state && state->errorField == 1 && !state->error.empty())
+                    ++app.rulesControlChecks;
+                SetWindowTextW(GetDlgItem(rules, 1), L"FramoryxTest.exe");
+                SendMessageW(rules, WM_COMMAND, 3, reinterpret_cast<LPARAM>(GetDlgItem(rules, 3)));
+                if (!IsWindow(rules) && IsWindowEnabled(app.window) &&
+                    app.rules.hookAllowed("FramoryxTest.exe"))
+                    ++app.rulesControlChecks;
+                rules = nullptr;
+            }
+            if (rules && rules != app.window && !app.rulesSnapshotPath.empty())
+                saveRulesSnapshot(rules, app.rulesSnapshotPath);
             if (rules && rules != app.window)
                 SetTimer(rules, 91, 700, [](HWND w, UINT, UINT_PTR timer, DWORD) {
                     KillTimer(w, timer);
@@ -1713,9 +1650,8 @@ void update() {
             app.memoryReady = true;
         }
         if (app.page == 1) {
-            app.audio = fg::audioState();
             if (GetCapture() != app.controls[Volume])
-                SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, int(app.audio.volume * 100));
+                syncOutputVolume();
             EnableWindow(app.controls[Volume], app.audio.available);
             EnableWindow(app.controls[ApplyBoost], app.audio.available && app.boost.available());
         }
@@ -1908,12 +1844,16 @@ LRESULT CALLBACK toggleProc(HWND w, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DW
         GetClientRect(w, &r);
         {
             Graphics g(dc);
-            g.Clear(id == Motion ? bg : card);
+            g.Clear(id == Motion ? bg
+                                 : (id == MicNoise || id == MicEQ || id == MicAutoUpdates
+                                        ? Color(255, 17, 25, 32)
+                                        : card));
             g.SetSmoothingMode(SmoothingModeAntiAlias);
             float z = app.scale, width = 28 * z, height = 16 * z, y = (r.bottom - height) / 2;
             bool checked = SendMessageW(w, BM_GETCHECK, 0, 0) == BST_CHECKED;
             app.toggleTargets[int(id)] = checked;
-            double progress = app.motion ? app.toggleMotion[int(id)] : (checked ? 1 : 0);
+            double progress =
+                app.motion && IsWindowVisible(w) ? app.toggleMotion[int(id)] : (checked ? 1 : 0);
             rounded(g, RectF(0, y, width, height),
                     mixColor(Color(255, 42, 55, 65), Color(255, 54, 128, 105), progress),
                     height / 2);
@@ -1943,34 +1883,126 @@ LRESULT CALLBACK toggleProc(HWND w, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DW
     return DefSubclassProc(w, msg, wp, lp);
 }
 LRESULT CALLBACK volumeProc(HWND w, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    auto setFromMouse = [&](int x, int code) {
+        RECT r{};
+        GetClientRect(w, &r);
+        float pad = 12 * app.scale, span = std::max(1.f, float(r.right) - 2 * pad);
+        int value = std::clamp(int(std::lround((x - pad) * 200 / span)), 0, 200);
+        DefSubclassProc(w, TBM_SETPOS, FALSE, value);
+        InvalidateRect(w, nullptr, FALSE);
+        SendMessageW(GetParent(w), WM_HSCROLL, MAKEWPARAM(code, value),
+                     reinterpret_cast<LPARAM>(w));
+    };
     if (msg == WM_ERASEBKGND)
         return 1;
+    if (msg == TBM_SETPOS || msg == TBM_SETRANGE) {
+        auto result = DefSubclassProc(w, msg, FALSE, lp);
+        if (wp)
+            InvalidateRect(w, nullptr, FALSE);
+        return result;
+    }
+    if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK) {
+        SetFocus(w);
+        SetCapture(w);
+        setFromMouse(short(LOWORD(lp)), TB_THUMBTRACK);
+        return 0;
+    }
+    if (msg == WM_MOUSEMOVE) {
+        if (GetCapture() == w)
+            setFromMouse(short(LOWORD(lp)), TB_THUMBTRACK);
+        return 0;
+    }
+    if (msg == WM_LBUTTONUP && GetCapture() == w) {
+        setFromMouse(short(LOWORD(lp)), TB_THUMBPOSITION);
+        ReleaseCapture();
+        InvalidateRect(w, nullptr, FALSE);
+        return 0;
+    }
+    if (msg == WM_KEYDOWN) {
+        int value = int(SendMessageW(w, TBM_GETPOS, 0, 0)), next = value;
+        if (wp == VK_LEFT || wp == VK_DOWN)
+            next -= 1;
+        else if (wp == VK_RIGHT || wp == VK_UP)
+            next += 1;
+        else if (wp == VK_PRIOR)
+            next += 10;
+        else if (wp == VK_NEXT)
+            next -= 10;
+        else if (wp == VK_HOME)
+            next = 0;
+        else if (wp == VK_END)
+            next = 200;
+        else
+            return DefSubclassProc(w, msg, wp, lp);
+        next = std::clamp(next, 0, 200);
+        DefSubclassProc(w, TBM_SETPOS, FALSE, next);
+        InvalidateRect(w, nullptr, FALSE);
+        SendMessageW(GetParent(w), WM_HSCROLL, MAKEWPARAM(TB_THUMBPOSITION, next),
+                     reinterpret_cast<LPARAM>(w));
+        return 0;
+    }
+    if (msg == WM_MOUSEWHEEL) {
+        if (GetFocus() == w)
+            SendMessageW(w, WM_KEYDOWN, short(HIWORD(wp)) > 0 ? VK_UP : VK_DOWN, 0);
+        return 0;
+    }
     if (msg == WM_PAINT || msg == WM_PRINTCLIENT) {
         PAINTSTRUCT ps{};
         HDC dc = msg == WM_PRINTCLIENT ? reinterpret_cast<HDC>(wp) : BeginPaint(w, &ps);
         RECT r{};
         GetClientRect(w, &r);
+        Bitmap buffer(std::max(1L, r.right), std::max(1L, r.bottom), PixelFormat32bppPARGB);
         {
-            Graphics g(dc);
+            Graphics g(&buffer);
             g.Clear(card);
             g.SetSmoothingMode(SmoothingModeAntiAlias);
-            float y = float(r.bottom) / 2, left = 10, right = float(r.right - 10),
-                  v = float(SendMessageW(w, TBM_GETPOS, 0, 0)) / 100, x = left + (right - left) * v;
-            rounded(g, RectF(left, y - 2, right - left, 4), edge, 2);
+            float z = app.scale, y = 13 * z, left = 12 * z, right = float(r.right) - 12 * z;
+            float amount = float(SendMessageW(w, TBM_GETPOS, 0, 0)) / 200;
+            float x = left + (right - left) * amount, mid = (left + right) / 2;
+            rounded(g, RectF(left, y - 2 * z, std::max(4.f, right - left), 4 * z), edge, 2 * z);
             if (x > left)
-                rounded(g, RectF(left, y - 2, std::max(4.0f, x - left), 4), mint, 2);
+                rounded(g, RectF(left, y - 2 * z, std::max(4 * z, std::min(x, mid) - left), 4 * z),
+                        mint, 2 * z);
+            if (x > mid)
+                rounded(g, RectF(mid, y - 2 * z, std::max(4 * z, x - mid), 4 * z), amber, 2 * z);
+            line(g, mid, y - 5 * z, mid, y + 5 * z, muted, 1);
             if (GetCapture() == w) {
-                SolidBrush glow(Color(40, 125, 242, 198));
-                g.FillEllipse(&glow, x - 12, y - 12, 24.0f, 24.0f);
+                SolidBrush halo(Color(35, 125, 242, 198));
+                g.FillEllipse(&halo, x - 12 * z, y - 12 * z, 24 * z, 24 * z);
             }
-            SolidBrush knob(IsWindowEnabled(w) ? mint : muted);
-            g.FillEllipse(&knob, x - 6, y - 6, 12.0f, 12.0f);
+            SolidBrush knob(!IsWindowEnabled(w) ? muted : (amount > .5 ? amber : mint));
+            g.FillEllipse(&knob, x - 6 * z, y - 6 * z, 12 * z, 12 * z);
+            label(g, L"0%", left - 2 * z, 24 * z, 70 * z, 18 * z, 10 * z, muted);
+            label(g, L"100%", mid - 14 * z, 24 * z, 70 * z, 18 * z, 10 * z, muted);
+            label(g, L"200%", right - 28 * z, 24 * z, 65 * z, 18 * z, 10 * z,
+                  app.boost.available() ? amber : muted);
+            if (GetFocus() == w)
+                line(g, left, float(r.bottom - 1), right, float(r.bottom - 1), mint, 1);
+        }
+        {
+            Graphics target(dc);
+            target.DrawImage(&buffer, 0, 0);
         }
         if (msg != WM_PRINTCLIENT)
             EndPaint(w, &ps);
         return 0;
     }
-    return DefSubclassProc(w, msg, wp, lp);
+    auto result = DefSubclassProc(w, msg, wp, lp);
+    if (msg == WM_CAPTURECHANGED || msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE)
+        InvalidateRect(w, nullptr, FALSE);
+    return result;
+}
+LRESULT CALLBACK capEditProc(HWND window, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    if (msg == WM_KEYDOWN && (wp == VK_UP || wp == VK_DOWN)) {
+        SendMessageW(app.window, WM_COMMAND, wp == VK_UP ? CapUp : CapDown, 0);
+        return 0;
+    }
+    auto result = DefSubclassProc(window, msg, wp, lp);
+    if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS) {
+        app.contentDirty = true;
+        InvalidateRect(app.window, nullptr, FALSE);
+    }
+    return result;
 }
 HWND control(int id, const wchar_t* cls, const wchar_t* caption, DWORD style = 0) {
     if (_wcsicmp(cls, L"COMBOBOX") == 0)
@@ -1994,7 +2026,11 @@ void createControls() {
     control(Target, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL);
     control(Refresh, L"BUTTON", L"Refresh", BS_OWNERDRAW);
     control(Capture, L"BUTTON", L"Start capture", BS_OWNERDRAW);
-    control(CapValue, L"EDIT", std::to_wstring(app.cap).c_str(), ES_NUMBER | ES_CENTER | WS_BORDER);
+    control(CapValue, L"EDIT", std::to_wstring(app.cap).c_str(), ES_NUMBER | ES_CENTER);
+    SetWindowSubclass(app.controls[CapValue], capEditProc, 1, 0);
+    control(CapDown, L"BUTTON", L"−", BS_OWNERDRAW);
+    control(CapUp, L"BUTTON", L"+", BS_OWNERDRAW);
+    control(LimiterStudio, L"BUTTON", L"Customize in-game overlay  →", BS_OWNERDRAW);
     SendMessageW(app.controls[CapValue], EM_SETLIMITTEXT, 4, 0);
     control(Preset, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL);
     for (auto p :
@@ -2028,14 +2064,56 @@ void createControls() {
     control(Motion, L"BUTTON", L"Motion effects", BS_AUTOCHECKBOX);
     SendMessageW(app.controls[Motion], BM_SETCHECK, app.motion ? BST_CHECKED : BST_UNCHECKED, 0);
     control(FullGuide, L"BUTTON", L"Open full guide", BS_OWNERDRAW);
+    control(AudioSetupBack, L"BUTTON", L"Back to audio controls", BS_OWNERDRAW);
+    control(AudioGetAPO, L"BUTTON", L"Get Equalizer APO  ↗", BS_OWNERDRAW);
+    control(AudioConfigurator, L"BUTTON", L"Open device configurator", BS_OWNERDRAW);
+    control(AudioOutputView, L"BUTTON", L"Output", BS_OWNERDRAW);
+    control(AudioMicView, L"BUTTON", L"Microphone", BS_OWNERDRAW);
+    control(MicDevice, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL);
+    control(MicRefresh, L"BUTTON", L"Refresh", BS_OWNERDRAW);
+    control(MicNoise, L"BUTTON", L"RNNoise suppression", BS_AUTOCHECKBOX);
+    control(MicNoisePreset, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
+    for (auto label : {L"Natural · gentle voice gate", L"Balanced · 85% voice detection",
+                       L"Strong · 95% voice detection"})
+        SendMessageW(app.controls[MicNoisePreset], CB_ADDSTRING, 0,
+                     reinterpret_cast<LPARAM>(label));
+    control(MicEQ, L"BUTTON", L"Microphone equalizer", BS_AUTOCHECKBOX);
+    control(MicEQPreset, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
+    for (auto label : {L"Flat", L"Clarity", L"Warmth", L"Presence"})
+        SendMessageW(app.controls[MicEQPreset], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
+    SendMessageW(app.controls[MicEQPreset], CB_SETCURSEL, 0, 0);
+    for (int id : {MicLow, MicMid, MicHigh}) {
+        control(id, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL);
+        for (int db = -12; db <= 12; db += 3) {
+            auto label = (db > 0 ? L"+" : L"") + std::to_wstring(db) + L" dB";
+            SendMessageW(app.controls[id], CB_ADDSTRING, 0,
+                         reinterpret_cast<LPARAM>(label.c_str()));
+        }
+    }
+    control(MicChoosePlugin, L"BUTTON", L"Advanced · plugin file", BS_OWNERDRAW);
+    control(MicDownload, L"BUTTON", L"Check for updates", BS_OWNERDRAW);
+    control(MicAutoUpdates, L"BUTTON", L"Automatic RNNoise updates", BS_AUTOCHECKBOX);
+    SendMessageW(app.controls[MicAutoUpdates], BM_SETCHECK,
+                 app.autoNoiseUpdates ? BST_CHECKED : BST_UNCHECKED, 0);
+    control(MicApply, L"BUTTON", L"Apply mic effects", BS_OWNERDRAW);
+    control(MicDisable, L"BUTTON", L"Disable effects", BS_OWNERDRAW);
+    control(MicSetup, L"BUTTON", L"Microphone setup", BS_OWNERDRAW);
+    control(BassAmount, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
+    for (auto label : {L"0 dB · flat", L"+3 dB · subtle", L"+6 dB · full", L"+9 dB · deep"})
+        SendMessageW(app.controls[BassAmount], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
+    SendMessageW(app.controls[BassAmount], CB_SETCURSEL, 1, 0);
+    control(BassApply, L"BUTTON", L"Apply", BS_OWNERDRAW);
+    control(BassDisable, L"BUTTON", L"Disable", BS_OWNERDRAW);
+    syncMicrophoneControls();
+    refreshMicrophones();
     control(Volume, TRACKBAR_CLASSW, L"", TBS_NOTICKS | TBS_HORZ);
-    SendMessageW(app.controls[Volume], TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
+    SendMessageW(app.controls[Volume], TBM_SETRANGE, FALSE, MAKELPARAM(0, 200));
     control(BoostLevel, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
-    for (auto p : {L"+3 dB · gentle", L"+6 dB · stronger", L"+9 dB · high", L"+12 dB · maximum"})
+    for (auto p : {L"141% · gentle", L"200% · maximum"})
         SendMessageW(app.controls[BoostLevel], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(p));
     SendMessageW(app.controls[BoostLevel], CB_SETCURSEL, 0, 0);
-    control(ApplyBoost, L"BUTTON", L"Apply boost", BS_OWNERDRAW);
-    control(DisableBoost, L"BUTTON", L"Disable boost", BS_OWNERDRAW);
+    control(ApplyBoost, L"BUTTON", L"Apply", BS_OWNERDRAW);
+    control(DisableBoost, L"BUTTON", L"Disable", BS_OWNERDRAW);
     control(AudioSetup, L"BUTTON", L"Setup instructions", BS_OWNERDRAW);
     control(AudioRefresh, L"BUTTON", L"Refresh audio", BS_OWNERDRAW);
     control(AudioFolder, L"BUTTON", L"Find APO config", BS_OWNERDRAW);
@@ -2155,16 +2233,29 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_ERASEBKGND:
         return 1;
     case WM_HSCROLL:
-        app.contentDirty = true;
         if (reinterpret_cast<HWND>(lp) == app.controls[Volume]) {
-            float v = float(SendMessageW(app.controls[Volume], TBM_GETPOS, 0, 0)) / 100;
-            app.audio.volume = v;
+            int percent = int(SendMessageW(app.controls[Volume], TBM_GETPOS, 0, 0));
+            app.outputPercent = percent;
+            if (percent > 100 && !app.boost.available()) {
+                app.outputPercent = 100;
+                SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, 100);
+                app.audioNotice = L"Above 100% needs Equalizer APO on this output. Complete Setup "
+                                  L"instructions, then the slider can reach 200%.";
+            }
             auto now = GetTickCount64();
             if (LOWORD(wp) != TB_THUMBTRACK || now - app.lastVolumeWrite >= 30) {
-                if (!fg::setAudioVolume(v))
+                float scalar = std::min(100, app.outputPercent) / 100.f;
+                if (!app.smokeAudio && !fg::setAudioVolume(scalar))
                     app.audioNotice = L"Windows could not change this output’s volume.";
+                app.audio.volume = scalar;
                 app.lastVolumeWrite = now;
             }
+            if (app.outputPercent > 100 || app.outputBoostActive) {
+                double db = app.outputPercent > 100 ? 20 * std::log10(app.outputPercent / 100.) : 0;
+                app.gainWorker.request(app.boost.directory(), app.audio.guid, db);
+                app.outputBoostActive = app.outputPercent > 100;
+            }
+            app.contentDirty = true;
             InvalidateRect(window, nullptr, FALSE);
             return 0;
         }
@@ -2257,7 +2348,10 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
             (d->CtlID == BorderlessTab && app.page == 3) ||
             (d->CtlID == OverlayTab && app.page == 5) ||
             (d->CtlID == CompatibilityTab && app.page == 6) || (d->CtlID == Help && app.page == 4);
-        bool primary = d->CtlID == Capture || d->CtlID == ApplyBoost || d->CtlID == HudToggle ||
+        bool stepper = d->CtlID == CapDown || d->CtlID == CapUp;
+        bool primary = (d->CtlID == AudioOutputView && app.audioTab == 0) ||
+                       (d->CtlID == AudioMicView && app.audioTab == 1) || d->CtlID == MicApply ||
+                       d->CtlID == Capture || d->CtlID == ApplyBoost || d->CtlID == HudToggle ||
                        (d->CtlID == AudioSetup && !app.boost.available()),
              disabled = d->itemState & ODS_DISABLED, pressed = d->itemState & ODS_SELECTED;
         float width = float(d->rcItem.right - d->rcItem.left),
@@ -2265,7 +2359,7 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
         double warmth = app.hoverMotion[int(d->CtlID)];
         Color base = nav       ? (active ? Color(255, 28, 59, 52) : bg)
                      : primary ? mint
-                               : Color(255, 27, 40, 48);
+                               : (stepper ? card : Color(255, 27, 40, 48));
         Color hot = nav       ? (active ? Color(255, 33, 72, 61) : Color(255, 25, 37, 44))
                     : primary ? Color(255, 161, 255, 219)
                               : Color(255, 40, 59, 64);
@@ -2273,7 +2367,8 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
                             : pressed ? Color(255, 49, 96, 80)
                                       : mixColor(base, hot, warmth);
         g.Clear(nav ? bg : card);
-        rounded(g, RectF(0, 0, width - 1, height - 1), buttonColor, 9, !nav && !primary);
+        rounded(g, RectF(0, 0, width - 1, height - 1), buttonColor, 9,
+                !nav && !primary && !stepper);
         if (!nav && !disabled && warmth > .01) {
             Pen highlight(Color(BYTE(40 * warmth), 218, 255, 238), 1);
             g.DrawLine(&highlight, 11.f, 1.f, width - 12, 1.f);
@@ -2288,7 +2383,7 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
         StringFormat f;
         f.SetAlignment(nav ? StringAlignmentNear : StringAlignmentCenter);
         f.SetLineAlignment(StringAlignmentCenter);
-        g.DrawString(caption, -1, uiFont(std::max(11.0f, 13 * app.scale), true),
+        g.DrawString(caption, -1, uiFont(std::max(11.0f, (stepper ? 18 : 13) * app.scale), true),
                      RectF(nav ? 17.0f : 1.0f, 0, width - (nav ? 22.0f : 2.0f), height), &f, &b);
         if (d->itemState & ODS_FOCUS) {
             Pen p(mint, 1);
@@ -2326,6 +2421,10 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
                 PostMessageW(window, WM_CLOSE, 0, 0);
             return 0;
         }
+        if (id >= AudioOutputView && id <= AudioConfigurator && audioCommand(id, notification)) {
+            layout();
+            return 0;
+        }
         if (id == Target && notification == CBN_SELCHANGE) {
             app.stats = {};
             app.metricFps = app.metricAverage = app.metricLow = app.metricMs = 0;
@@ -2354,6 +2453,19 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
                 SetWindowTextW(app.controls[CapValue], val);
                 updateCap();
             }
+            return 0;
+        }
+        if (id == CapUp || id == CapDown) {
+            auto n = fg::number(fg::utf8(editText(app.controls[CapValue])));
+            int current = n && *n >= 0 && *n <= 1000 ? int(*n) : app.cap;
+            int next = id == CapUp ? (current < 10 ? 10 : std::min(1000, current + 1))
+                                   : (current <= 10 ? 0 : current - 1);
+            SetWindowTextW(app.controls[CapValue], std::to_wstring(next).c_str());
+            updateCap();
+            return 0;
+        }
+        if (id == LimiterStudio) {
+            switchPage(5);
             return 0;
         }
         if (id == CapValue && notification == EN_KILLFOCUS) {
@@ -2463,45 +2575,37 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
             switchPage(1);
             break;
         case AudioRefresh:
-            app.audio = fg::audioState();
-            SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, int(app.audio.volume * 100));
+            syncOutputVolume();
+            SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, int(app.outputPercent));
             app.audioNotice = L"Output device and volume refreshed.";
             InvalidateRect(window, nullptr, FALSE);
             break;
         case ApplyBoost: {
             app.audio = fg::audioState();
-            int db = 3 * (1 + int(SendMessageW(app.controls[BoostLevel], CB_GETCURSEL, 0, 0)));
-            auto err = app.boost.apply(db, app.audio.guid);
-            app.audioNotice = err.empty() ? L"Saved +" + std::to_wstring(db) + L" dB for " +
-                                                app.audio.device +
-                                                L". Requires Equalizer APO enabled for this "
-                                                L"device; restart audio playback if necessary."
-                                          : err;
-            InvalidateRect(window, nullptr, FALSE);
+            double db = SendMessageW(app.controls[BoostLevel], CB_GETCURSEL, 0, 0) == 0
+                            ? 3.0
+                            : 20 * std::log10(2.0);
+            app.gainWorker.request(app.boost.directory(), app.audio.guid, db);
+            app.outputBoostActive = true;
+            app.outputPercent = std::clamp(
+                int(std::lround(app.audio.volume * 100 * std::pow(10., db / 20.))), 0, 200);
+            SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, app.outputPercent);
+            app.audioNotice = L"Applying amplification. Requires Equalizer APO enabled for this "
+                              L"output; positive gain can clip.";
             break;
         }
-        case DisableBoost: {
-            auto err = app.boost.disable();
+        case DisableBoost:
+            app.gainWorker.request(app.boost.directory(), app.audio.guid, 0);
+            app.outputBoostActive = false;
+            app.outputPercent = int(std::lround(app.audio.volume * 100));
+            SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, app.outputPercent);
             app.audioNotice =
-                err.empty() ? L"Boost disabled (0 dB). Other audio effects are unchanged." : err;
-            InvalidateRect(window, nullptr, FALSE);
+                L"Disabling Framoryx amplification. Other audio effects are unchanged.";
             break;
-        }
         case AudioSetup:
-            MessageBoxW(
-                window,
-                L"Normal volume: drag the slider to change your current Windows output.\n\nBoost "
-                L"above 100%:\n1. Get Equalizer APO from its official SourceForge project. Install "
-                L"it and enable your playback device in its Configurator. Restart Windows if "
-                L"requested.\n2. Return here. If your installation is elsewhere, use Find APO "
-                L"config and choose its config.txt.\n3. Choose +3 dB to start, then Apply boost. "
-                L"The config folder may require Run as administrator. Framoryx backs up config.txt "
-                L"before adding its own Include line.\n4. Click Disable boost to set its gain to 0 "
-                L"dB. Boost persists after Framoryx closes.\n\nThis build does not install an "
-                L"audio driver, certify your device’s APO setup, or provide a compressor. Positive "
-                L"gain can clip.\n\nOfficial project: "
-                L"https://sourceforge.net/projects/equalizerapo/",
-                L"Framoryx audio setup", MB_OK | MB_ICONINFORMATION);
+            app.audioSetup = true;
+            layout();
+            pageControls(1);
             break;
         case AudioFolder: {
             wchar_t path[32768]{};
@@ -2707,6 +2811,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         std::wstring argument = arguments[i];
         if (argument == L"--report" && i + 1 < argumentCount)
             app.diagnosticPath = arguments[++i];
+        else if (argument == L"--rules-snapshot" && i + 1 < argumentCount)
+            app.rulesSnapshotPath = arguments[++i];
+        else if (argument == L"--audio-mic")
+            app.diagnosticMic = true;
         else if (argument == L"--snapshot" && i + 1 < argumentCount)
             app.snapshotPath = arguments[++i];
         else if (argument == L"--smoke-seconds" && i + 1 < argumentCount) {
@@ -2727,6 +2835,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             app.smokeDemo = true;
         if (std::wstring(arguments[i]) == L"--smoke-resize")
             app.smokeResize = true;
+        if (std::wstring(arguments[i]) == L"--smoke-audio-controls" && diagnosticInstance)
+            app.smokeAudio = true;
         if (std::wstring(arguments[i]) == L"--smoke-customize" && !app.settingsOverride.empty())
             app.smokeCustomize = true;
         if (std::wstring(arguments[i]) == L"--smoke-animate" && app.smokeSeconds > 0 &&
@@ -2734,6 +2844,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             app.diagnosticAnimate = true;
     }
     LocalFree(arguments);
+    if (app.smokeAudio) {
+        auto scratch = fs::path(app.settingsOverride).parent_path() /
+                       (L"audio-control-check-" + std::to_wstring(GetCurrentProcessId()));
+        fs::create_directories(scratch);
+        std::ofstream(scratch / L"config.txt")
+            << "# Isolated UI audio test; never loaded by system APO.\n";
+        app.boost.directory(scratch.wstring());
+        app.autoNoiseUpdates = false;
+    }
     app.diagnosticStart = fg::clockSeconds();
     app.trayRestartMessage = RegisterWindowMessageW(L"TaskbarCreated");
     app.brush = CreateSolidBrush(RGB(20, 28, 36));
@@ -2776,6 +2895,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         return 1;
     RECT initialWindow{};
     GetWindowRect(window, &initialWindow);
+    if (app.diagnosticMic && app.smokeSeconds > 0 && !app.settingsOverride.empty()) {
+        app.audioTab = 1;
+        layout();
+    }
     app.smokeOuterWidth = initialWindow.right - initialWindow.left;
     app.smokeOuterHeight = initialWindow.bottom - initialWindow.top;
     BOOL dark = TRUE;
@@ -2843,6 +2966,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
                << ",\n  \"animationFrames\": " << app.animationFrames
                << ",\n  \"animationRefreshHz\": " << app.animationHz
                << ",\n  \"customizationChecks\": " << app.customizationChecks
+               << ",\n  \"audioControlChecks\": " << app.audioControlChecks
+               << ",\n  \"rulesControlChecks\": " << app.rulesControlChecks
                << ",\n  \"customizationRoundTrip\": "
                << (app.customizationRoundTrip ? "true" : "false")
                << ",\n  \"effectiveUiScale\": " << app.scale << ",\n  \"cpuSamplesSeconds\": [";
@@ -2876,7 +3001,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     GdiplusShutdown(token);
     CoUninitialize();
     return (app.smokeDemo && app.smokeSeconds > 0 && !app.demoLiveSamples) ||
-                   (app.smokeCustomize && app.customizationChecks < 4)
+                   (app.smokeCustomize && app.customizationChecks < 4) ||
+                   (app.smokeAudio && (app.audioControlChecks < 6 || app.rulesControlChecks < 2))
                ? 1
                : 0;
 }

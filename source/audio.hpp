@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <iomanip>
 
 namespace fg {
 template <class T> struct Com {
@@ -161,7 +162,7 @@ class AudioBoost {
         return GetFileAttributesW((directory_ + L"\\config.txt").c_str()) !=
                INVALID_FILE_ATTRIBUTES;
     }
-    std::optional<int> configuredGain(const std::wstring& endpointGuid) const {
+    std::optional<double> configuredGain(const std::wstring& endpointGuid) const {
         if (endpointGuid.empty())
             return {};
         std::string config, filter;
@@ -179,9 +180,9 @@ class AudioBoost {
         pos += 8;
         auto end = filter.find(' ', pos);
         auto n = number(filter.substr(pos, end - pos));
-        return n ? std::optional<int>(int(*n)) : std::nullopt;
+        return n ? std::optional<double>(*n) : std::nullopt;
     }
-    std::wstring apply(int db, const std::wstring& endpointGuid) {
+    std::wstring apply(double db, const std::wstring& endpointGuid) {
         bool validGuid = endpointGuid.size() == 38 && endpointGuid.front() == L'{' &&
                          endpointGuid.back() == L'}';
         if (validGuid)
@@ -193,7 +194,7 @@ class AudioBoost {
                              (c >= L'A' && c <= L'F')))
                     validGuid = false;
             }
-        if (db < 0 || db > 12 || !validGuid)
+        if (!std::isfinite(db) || db < 0 || db > 12 || !validGuid)
             return L"Choose a default output device and a boost between 0 and 12 dB.";
         if (!available())
             return L"Equalizer APO is not installed or its config folder was not found. Open Setup "
@@ -219,15 +220,17 @@ class AudioBoost {
                 return L"Cannot back up audio configuration. Run Framoryx as administrator to "
                        L"apply boost.";
         }
-        std::string filter =
-            "# Framoryx audio boost. 0 dB disables amplification.\r\nDevice: " +
-            utf8(endpointGuid) +
-            "\r\nStage: post-mix\r\nChannel: all\r\nPreamp: " + std::to_string(db) + " dB\r\n";
+        std::ostringstream gainText;
+        gainText << std::setprecision(8) << db;
+        std::string filter = "# Framoryx audio boost. 0 dB disables amplification.\r\nDevice: " +
+                             utf8(endpointGuid) +
+                             "\r\nStage: post-mix\r\nChannel: all\r\nPreamp: " + gainText.str() +
+                             " dB\r\n";
         if (!write(base / L"framoryx-boost.txt", filter))
             return L"Cannot save boost. Run Framoryx as administrator to change the Equalizer APO "
                    L"config.";
         if (!installed) {
-            config += "\r\n# Framoryx audio boost\r\nInclude: framoryx-boost.txt\r\n";
+            config += "\r\n# Framoryx audio boost\r\nDevice: all\r\nInclude: framoryx-boost.txt\r\n";
             if (!write(base / L"config.txt", config)) {
                 write(base / L"framoryx-boost.txt", "# Framoryx audio boost\r\nPreamp: 0 dB\r\n");
                 return L"Cannot link the audio configuration. No boost applied.";

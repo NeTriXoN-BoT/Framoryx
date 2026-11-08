@@ -41,3 +41,6 @@ SKILL.md
 PROMPTS.txt
 *provenance*
 *private-notes*
+
+# Runtime plugin downloads
+/tools/rnnoise/

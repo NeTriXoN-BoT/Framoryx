@@ -166,21 +166,26 @@ selection and a fresh confirmation, even for allow-listed executables.
 
 AUDIO
 
-The output-volume slider controls the normal Windows default output.
-Extra boost supports +3, +6, +9 and +12 dB through optional Equalizer APO.
-Equalizer APO is not bundled or installed by Framoryx. Set it up once for
-your playback device using its Configurator; use Audio > Setup instructions.
-Official project: https://sourceforge.net/projects/equalizerapo/
+Output and Microphone have separate views, with a built-in setup guide.
+The live volume slider spans 0-200%. Values through 100% control Windows;
+above 100% uses Equalizer APO gain (200% = +6.0206 dB, twice the amplitude).
+Without an APO config, the slider stops at 100% and explains setup.
+Positive gain can clip. This is not a dynamic compressor.
 
-Framoryx backs up Equalizer APO's config.txt before adding its own Include
-line and writes a separate framoryx-boost.txt for your default output's
-device GUID. Editing a protected config directory may require running
-Framoryx as administrator. Existing filters are preserved. Disable boost
-sets Framoryx's contribution to 0 dB. A configured boost persists after
-Framoryx closes. Positive gain can clip: start low and reduce it if you
-hear distortion. This is preamplification, not a dynamic compressor.
-Finding a config file does not prove APO is enabled for that audio device.
-Exclusive/raw/ASIO audio paths may bypass system effects.
+Bass enhancement uses a 90 Hz shelf with matching headroom reduction.
+Microphone EQ provides low/mid/high bands and voice presets. RNNoise
+suppression uses the official external x64 VST2 plugin at 48,000 Hz.
+The latest stable package downloads automatically in the background when
+you open Microphone, with compatibility checks and a manual update switch.
+New versions are selected for the next Apply; active files are not replaced.
+The app records no microphone audio. No virtual mic driver is bundled.
+
+Extra effects require Equalizer APO enabled for the playback/capture
+device in its configurator. Finding its config does not prove it is active.
+Existing filters are preserved and root configs backed up before linking.
+Effects persist after exit until disabled. Raw/exclusive/ASIO paths may
+bypass system effects. See docs/AUDIO.md for setup and limitations.
+Official project: https://sourceforge.net/projects/equalizerapo/
 
 HOTKEYS
 
@@ -199,10 +204,13 @@ manual and contains the current target's retained frame data. Frame
 history stays in bounded memory; capture does not automatically write
 CSV or ETL recordings. Normal operation has no accounts or telemetry.
 Audio setup and Windows sound-settings buttons act only when clicked.
+Automatic RNNoise downloads contact the official GitHub release service;
+this option can be disabled. No voice audio is uploaded.
 
-Unsigned personal software may be treated differently by Windows or
-game publishers. This build is not signed or certified by an anti-cheat
-vendor. See TEST-RESULTS.txt for what was actually validated.
+UNSIGNED WINDOWS BUILD: no Authenticode publisher certificate is included.
+Windows may show an unknown-publisher or SmartScreen warning. Verify the
+ZIP SHA-256. A matching hash checks integrity, not safety or game approval.
+See docs/VALIDATION.md for completed checks and current limits.
 
 BUILD AND VERIFY
 

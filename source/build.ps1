@@ -41,10 +41,17 @@ try {
     }
     Invoke-Compiler $rc @('-i','app.rc','-o',(Join-Path $BuildDirectory 'app.o'))
     Write-Output 'Building native app...'
-    Invoke-Compiler $cxx ($flags + @('-municode','-mwindows','main.cpp',(Join-Path $BuildDirectory 'app.o'),'-o',(Join-Path $packageDirectory 'Framoryx.exe'),'-lgdiplus','-lgdi32','-luser32','-lshell32','-lole32','-luuid','-lcomctl32','-lcomdlg32','-ldwmapi','-luxtheme','-ladvapi32','-Wl,--dynamicbase,--nxcompat,--high-entropy-va','-s'))
+    $zipObjects=@()
+    foreach($file in @('miniz.c','miniz_zip.c','miniz_tinfl.c')){
+        $obj=Join-Path $BuildDirectory ($file+'.o')
+        Invoke-Compiler $cc @('-O2','-DMINIZ_NO_DEFLATE_APIS','-c',('vendor/miniz/'+$file),'-o',$obj)
+        $zipObjects+=$obj
+    }
+    Invoke-Compiler $cxx ($flags + @('-DMINIZ_NO_DEFLATE_APIS','-municode','-mwindows','main.cpp','noise_updates.cpp',(Join-Path $BuildDirectory 'app.o')) + $zipObjects + @('-o',(Join-Path $packageDirectory 'Framoryx.exe'),'-lwininet','-lbcrypt','-lgdiplus','-lgdi32','-luser32','-lshell32','-lole32','-luuid','-lcomctl32','-lcomdlg32','-ldwmapi','-luxtheme','-ladvapi32','-Wl,--dynamicbase,--nxcompat,--high-entropy-va','-s'))
     Write-Output 'Building opt-in hook module...'
     Invoke-Compiler $cxx ($flags + @('-shared','-Ivendor\minhook\include','-Ivendor\imgui','hook.cpp','vendor\imgui\imgui.cpp','vendor\imgui\imgui_draw.cpp','vendor\imgui\imgui_tables.cpp','vendor\imgui\imgui_widgets.cpp','vendor\imgui\backends\imgui_impl_dx11.cpp') + $objects + @('-o',(Join-Path $packageDirectory 'FramoryxHook.dll'),'-ld3d11','-ld3d12','-ldxgi','-ld3dcompiler','-lgdi32','-luser32','-Wl,--dynamicbase,--nxcompat,--high-entropy-va','-s'))
     Write-Output 'Building graphics test scene and core checks...'
+    Invoke-Compiler $cxx ($flags + @('-municode','audio_probe.cpp','-o',(Join-Path $packageDirectory 'tools\FramoryxAudioProbe.exe'),'-lcrypt32','-ladvapi32','-lole32','-luuid','-s'))
     Invoke-Compiler $cxx ($flags + @('-municode','-mwindows','test_scene.cpp','-o',(Join-Path $packageDirectory 'tools\FramoryxTest.exe'),'-ld3d11','-ldxgi','-ld3dcompiler','-lshell32','-luser32','-ladvapi32','-s'))
     Invoke-Compiler $cxx ($flags + @('-municode','-mwindows','test_scene12.cpp','-o',(Join-Path $packageDirectory 'tools\FramoryxTest12.exe'),'-ld3d12','-ldxgi','-lshell32','-luser32','-ladvapi32','-s'))
     Write-Output 'Building 32-bit DX11 compatibility modules...'
@@ -65,5 +72,8 @@ try {
     Invoke-Compiler $cxx ($flags + @('audio_tests.cpp','-o',(Join-Path $BuildDirectory 'audio-tests.exe'),'-ladvapi32','-lole32','-luuid'))
     & (Join-Path $BuildDirectory 'audio-tests.exe') (Join-Path $BuildDirectory 'audio-tests-data')
     if ($LASTEXITCODE -ne 0) { throw 'Audio configuration tests failed' }
+    Invoke-Compiler $cxx ($flags + @('microphone_tests.cpp','-o',(Join-Path $BuildDirectory 'microphone-tests.exe'),'-ladvapi32','-lole32','-luuid'))
+    & (Join-Path $BuildDirectory 'microphone-tests.exe') (Join-Path $BuildDirectory 'audio-tests-data')
+    if ($LASTEXITCODE -ne 0) { throw 'Microphone/bass configuration tests failed' }
     Write-Output 'Build and core checks passed.'
 } finally { Pop-Location }

@@ -24,7 +24,27 @@ LLVM-MinGW 20261104 UCRT x86_64 toolchain
 Equalizer APO (optional, separately installed by the user)
   https://sourceforge.net/projects/equalizerapo/
   No Equalizer APO executable, library or driver is bundled. Framoryx can
-  write an optional device-specific Preamp configuration for an existing
+  write optional endpoint-specific gain, bass, EQ and VST configurations for an existing
   installation after the user requests it in the Audio page.
   Configuration reference:
   https://sourceforge.net/p/equalizerapo/wiki/Configuration%20reference/
+
+miniz 3.1.2
+  https://github.com/richgel999/miniz/releases/tag/3.1.2
+  Vendored archive-reader source: source/vendor/miniz
+  License: MIT; see source/vendor/miniz/LICENSE and source notices.
+
+nlohmann/json 3.12.0
+  https://github.com/nlohmann/json/releases/tag/v3.12.0
+  Vendored header: source/vendor/json/json.hpp
+  License: MIT; see source/vendor/json/LICENSE.MIT.
+
+RNNoise noise-suppression-for-voice (optional runtime download)
+  https://github.com/werman/noise-suppression-for-voice
+  Plugin license: GPL-3.0; source and license are available upstream.
+  No plugin executable is embedded in this source/release ZIP. The app can
+  download the official stable Windows VST2 release directly for the user.
+  Tested upstream release: v1.10, win-rnnoise.zip
+  SHA-256: e4dcc186102850f8dcebeb766ad1bf34c24f6280bd614ef84b72dae4783fc517
+  Equalizer APO hosts the separately downloaded plugin. Framoryx's isolated
+  compatibility probe links no plugin or SDK implementation code.

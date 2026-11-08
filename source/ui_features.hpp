@@ -390,6 +390,13 @@ void paintCompatibility(Graphics& g) {
     label(g, app.notice, 214, 777, 938, 38, 12, muted, false, true);
 }
 std::unique_ptr<Bitmap> captureScene() {
+    if (!app.bufferDC) {
+        RECT client{};
+        GetClientRect(app.window, &client);
+        HDC dc = GetDC(app.window);
+        paintMain(dc, client);
+        ReleaseDC(app.window, dc);
+    }
     if (!app.bufferDC || app.bufferWidth < 1 || app.bufferHeight < 1)
         return {};
     HDC screen = GetDC(app.window), dc = CreateCompatibleDC(screen);
@@ -398,7 +405,7 @@ std::unique_ptr<Bitmap> captureScene() {
     RECT rect{0, 0, app.bufferWidth, app.bufferHeight};
     paintMain(dc, rect);
     for (auto& control : app.controls)
-        if (IsWindowVisible(control.second)) {
+        if (GetWindowLongPtrW(control.second, GWL_STYLE) & WS_VISIBLE) {
             RECT child{};
             GetWindowRect(control.second, &child);
             MapWindowPoints(nullptr, app.window, reinterpret_cast<POINT*>(&child), 2);

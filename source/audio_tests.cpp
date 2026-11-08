@@ -42,6 +42,11 @@ int main(int argc, char** argv) {
               "gain applies to selected output only");
         check(boost.configuredGain(device) == 6, "read configured gain");
         check(boost.apply(3, device).empty(), "update existing gain");
+        double maximum=20*std::log10(2.0);
+        check(boost.apply(maximum,device).empty() && boost.configuredGain(device) &&
+              std::abs(100*std::pow(10.,*boost.configuredGain(device)/20.)-200)<.001,
+              "200 percent corresponds to precise double-amplitude gain");
+        check(boost.apply(3, device).empty(),"restore gentle gain after maximum check");
         config = read(scratch / "config.txt");
         auto pos = config.find(include);
         check(config.find(include, pos + 1) == std::string::npos, "no duplicate include");
