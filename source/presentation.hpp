@@ -82,8 +82,8 @@ inline float hudWidth(const HudOptions& options) {
     if(options.style==1||options.style==3)return 230;
     if(options.style==4)return 390;
     if(options.style!=2)return 260;
-    float width=28;
-    for(auto field:orderedFields(options))if((options.fields&field)&&field!=HudGraph)width+=field==HudFps?152:104;
+    float width=32;bool previous=false;
+    for(auto field:orderedFields(options))if((options.fields&field)&&field!=HudGraph){if(previous)width+=12;width+=field==HudFps?172:104;previous=true;}
     return std::max(260.f,width);
 }
 struct HudCell {uint32_t field=0;float x=0,y=0,width=0,height=0;bool column=false;};
@@ -101,7 +101,7 @@ inline HudLayout hudLayout(HudOptions options){
         if(field==HudBrand)height=compact?16.f:21.f;
         if(field==HudGraph)height=compact?36.f:47.f;
         float cellX=padding;
-        if(bar){cellX=x;width=field==HudFps?152.f:104.f;height=50;x+=width;}
+        if(bar){cellX=x;width=field==HudFps?172.f:104.f;height=50;x+=width+12;}
         if(dashboard&&metric){width=(result.width-2*padding-12)/2;cellX=padding+gridColumn*(width+12);height=44;}
         result.cells[result.count++]={field,cellX,y,width,height,bar||(dashboard&&metric)};
         if(bar)continue;
