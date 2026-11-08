@@ -174,7 +174,7 @@ void Platform::refresh(){
 #else
     const bool wayland=waylandSession();
     const bool compositing=wayland||x11::compositing();c->setState("compositing",compositing);
-    list<<QVariantMap{{"name","External overlay transparency"},{"ready",compositing},{"detail",compositing?"Desktop compositing is available for a transparent external HUD.":"Desktop compositing is off. The external HUD uses an opaque surface; enable your desktop compositor for transparent backgrounds."}};
+    list<<QVariantMap{{"name","External overlay transparency"},{"ready",!wayland&&compositing},{"detail",wayland?"Wayland restricts external HUD positioning and passive capture. Use the explicitly enabled Vulkan/OpenGL game layer where permitted.":compositing?"Desktop compositing is available for a transparent external HUD.":"Desktop compositing is off. The external HUD uses an opaque surface; enable your desktop compositor for transparent backgrounds."}};
     list<<QVariantMap{{"name","Framoryx · Vulkan/OpenGL game runtime"},{"ready",!mangoExecutable().isEmpty()},{"detail","The bundled 64-bit MangoHud integration provides the custom HUD, live limits and local frame telemetry. Keep the complete package together. 32-bit in-game rendering is not bundled; use external monitoring for those games."}};
     list<<QVariantMap{{"name","Gamescope · fullscreen and pacing"},{"ready",!exe("gamescope").isEmpty()},{"detail","Optional game compositor for controlled fullscreen sizing and frame pacing."}};
     list<<QVariantMap{{"name","PipeWire · audio processing"},{"ready",!exe("pipewire").isEmpty()&&!exe("wpctl").isEmpty()},{"detail","Output gain, bass, microphone EQ and the Framoryx noise-suppressed input."}};

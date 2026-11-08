@@ -96,7 +96,7 @@ int main(int argc,char** argv){
     QMetaObject::Connection displayConnection;
     auto followDisplay=[&]{QObject::disconnect(displayConnection);if(auto screen=window->screen())displayConnection=QObject::connect(screen,&QScreen::availableGeometryChanged,window,[&](const QRect&){displayMetrics();});displayMetrics();};
     followDisplay();QObject::connect(window,&QWindow::screenChanged,window,[&](QScreen*){followDisplay();});
-    if(!smoke){auto screen=window->screen();if(screen){const auto area=screen->availableGeometry();const auto scale=controller.options()["uiScale"].toInt()?controller.options()["uiScale"].toInt()/100.:window->property("autoUiScale").toDouble();const int width=qBound(640,qRound(1360*scale),std::max(640,area.width()-32)),height=qBound(460,qRound(900*scale),std::max(460,area.height()-48));window->resize(width,height);window->setPosition(area.center()-QPoint(width/2,height/2));}}
+    if(!smoke){auto screen=window->screen();if(screen){const auto area=screen->availableGeometry();const auto scale=controller.options()["uiScale"].toInt()?controller.options()["uiScale"].toInt()/100.:window->property("autoUiScale").toDouble();const int width=qBound(640,qRound(1360*scale),std::max(640,area.width()-32)),height=qBound(460,qRound(900*scale),std::max(460,area.height()-48));window->resize(width,height);if(!QGuiApplication::platformName().startsWith("wayland"))window->setPosition(area.center()-QPoint(width/2,height/2));}}
 
 #ifdef Q_OS_WIN
     BOOL dark=TRUE;DwmSetWindowAttribute(HWND(window->winId()),20,&dark,sizeof(dark));
@@ -158,7 +158,7 @@ int main(int argc,char** argv){
             }
             else if(*step==24){
                 timer->stop();const bool pass=!qmlFailure&&*frames>10&&interactions->value("sliderPassed").toBool()&&(bundleTest||(interactions->value("tabNavigationPassed").toBool()&&interactions->value("statePreserved").toBool()));
-                QSaveFile file(destination+"/ui-result.json");file.open(QIODevice::WriteOnly);file.write(QJsonDocument(QJsonObject{{"passed",pass},{"interactions",QJsonObject::fromVariantMap(*interactions)},{"qmlWarnings",qmlFailure},{"warnings",QJsonArray::fromStringList(qmlWarnings)},{"frames",*frames},{"exposed",window->isExposed()},{"visible",window->isVisible()},{"graphicsApi",int(window->rendererInterface()->graphicsApi())},{"pages",7},{"screenshots",13},{"platform",controller.platformName()}}).toJson());file.commit();delete step;application.exit(pass?0:1);return;
+                QSaveFile file(destination+"/ui-result.json");file.open(QIODevice::WriteOnly);file.write(QJsonDocument(QJsonObject{{"passed",pass},{"interactions",QJsonObject::fromVariantMap(*interactions)},{"qmlWarnings",qmlFailure},{"warnings",QJsonArray::fromStringList(qmlWarnings)},{"frames",*frames},{"exposed",window->isExposed()},{"visible",window->isVisible()},{"graphicsApi",int(window->rendererInterface()->graphicsApi())},{"pages",7},{"screenshots",13},{"platform",controller.platformName()},{"displayBackend",QGuiApplication::platformName()}}).toJson());file.commit();delete step;application.exit(pass?0:1);return;
             }
             ++*step;
         });timer->start();

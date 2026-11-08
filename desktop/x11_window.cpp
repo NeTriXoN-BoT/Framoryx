@@ -23,6 +23,7 @@ struct Display {
 };
 }
 namespace x11 {
+quint32 foreground(){Display display;if(!display.root)return 0;const auto bytes=display.property(display.root,"_NET_ACTIVE_WINDOW",XCB_ATOM_WINDOW,32);quint32 id=0;if(bytes.size()==4)memcpy(&id,bytes.constData(),4);return id;}
 WindowState inspect(quint32 id){Display display;return display.inspect(id);}
 bool fullscreen(const WindowState& original,bool enabled){
     if(!original.valid)return false;Display display;const auto current=display.inspect(original.id);

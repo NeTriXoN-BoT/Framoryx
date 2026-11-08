@@ -21,7 +21,7 @@ ColumnLayout {
                     if(app.platformName==="Linux"&&currentIndex===2)layerDialog.open();else app.setOption(app.platformName==="Windows"?"mode":"linuxOverlayMode",currentIndex)
                 }
             }
-            Text { text: app.platformName==="Windows"?"External monitoring does not load code into your game. In-game mode requires a separate, explicit hook approval.":"External capture uses X11 presentation events. Native Wayland and some renderers may not expose them; Framoryx explains when frames are unavailable."; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Text { text: app.platformName==="Windows"?"External monitoring does not load code into your game. In-game mode requires a separate, explicit hook approval.":app.state.session==="Wayland"?"Wayland: select a library game, explicitly enable its Vulkan/OpenGL layer where permitted, then launch. External capture and desktop HUD positioning are unavailable.":"External capture uses X11 presentation events. Some renderers may not expose them; Framoryx explains when frames are unavailable."; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
             Dialog {
                 id: layerDialog; anchors.centerIn: Overlay.overlay; width: Theme.px(520); height: Theme.px(300); modal: true; title: "Enable the MangoHud game layer?"; standardButtons: Dialog.Yes|Dialog.Cancel
                 background: Rectangle { color: Theme.surface; radius: Theme.px(14); border.color: Theme.border }

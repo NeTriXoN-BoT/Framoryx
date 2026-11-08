@@ -78,11 +78,14 @@ class Checks : public QObject {
             }
             await(state["live"].toBool()&&state["fps"].toDouble()>10&&!c->graph().isEmpty(),"Real presentation events reach the frontend",25000);break;
         case 2:
+#ifndef Q_OS_WIN
+            if(first){c->setOption("allow",QStringList{"FramoryxPresentScene"});c->selectGame("auto");}
+#endif
             if(first){c->setOption("style",4);c->setOption("fields",65535);c->setOption("opacity",0);c->setOption("hudX",.85);c->setOption("hudY",.05);if(!state["overlay"].toBool())c->action("overlay");}
 #ifdef Q_OS_WIN
             await(state["overlay"].toBool()&&state["live"].toBool(),"Transparent customized external HUD remains live");
 #else
-            {bool exposed=false;for(auto window:QGuiApplication::allWindows())if(window->objectName()=="FramoryxExternalOverlay")exposed=window->isVisible()&&window->isExposed();await(exposed&&state["live"].toBool(),"External HUD works while the control window is hidden");}
+            {bool exposed=false;for(auto window:QGuiApplication::allWindows())if(window->objectName()=="FramoryxExternalOverlay")exposed=window->isVisible()&&window->isExposed();await(exposed&&state["live"].toBool()&&c->options()["selectedGame"]=="auto","Auto selects an allowed foreground game from a fresh connection and displays its external HUD while controls are hidden");}
 #endif
             break;
         case 3:
@@ -140,7 +143,7 @@ class Checks : public QObject {
         case 12:
             if(first){c->setOption("startWithSystem",true);record("Sign-in entry is registered",lifecycle::startupEnabled());c->setOption("startWithSystem",false);record("Sign-in entry can be removed",!lifecycle::startupEnabled());next();}break;
         case 13:
-            if(first){c->action("fixtureClose");c->setOption("linuxOverlayMode",2);c->setOption("cap",30);c->action("fixture");}
+            if(first){c->action("fixtureClose");if(!state["overlay"].toBool())c->action("overlay");c->setOption("linuxOverlayMode",2);c->setOption("cap",30);c->action("fixture");}
             await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34&&phase.elapsed()>2000,"OpenGL game layer streams real frames at 30 FPS",20000);if(stage==14){record("Game rendering resolution reaches automatic HUD sizing",state["gamePixelWidth"].toInt()>0&&state["gamePixelHeight"].toInt()>0);record("OpenGL HUD generates visible geometry",state["gameHudFrames"].toLongLong()>0);}break;
         case 14:
             if(first){screenshot("hud-opengl-glass.png");c->setOption("cap",60);c->setOption("style",4);c->setOption("fields",65535);c->setOption("opacity",0);}

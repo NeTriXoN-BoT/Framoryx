@@ -1,4 +1,5 @@
 #include "passive_linux.hpp"
+#include "x11_window.hpp"
 #include <QSocketNotifier>
 #include <QByteArray>
 #include <cstdlib>
@@ -67,5 +68,5 @@ void PassiveCapture::stop(){
 }
 bool PassiveCapture::running()const{return d->connection&&d->target&&!xcb_connection_has_error(d->connection);}
 quint32 PassiveCapture::window()const{return d->target;}
-quint32 PassiveCapture::foreground()const{return d->connection?xProperty(d->connection,d->root,d->activeAtom,XCB_ATOM_WINDOW):0;}
+quint32 PassiveCapture::foreground()const{return running()?xProperty(d->connection,d->root,d->activeAtom,XCB_ATOM_WINDOW):x11::foreground();}
 QList<double> PassiveCapture::takeFrames(){drain();QList<double> result;result.swap(d->pending);return result;}
