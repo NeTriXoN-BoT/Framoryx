@@ -22,9 +22,9 @@ The initial package target is x86-64 desktop Linux built on Ubuntu 22.04, with g
 
 X11 provides window selection and positioning. A compositor enables transparent external backgrounds; without compositing, Framoryx uses an opaque HUD surface. Some rendering paths do not expose usable X Present events. Unavailable timing is reported instead of inventing FPS or silently loading a layer.
 
-Native Wayland restricts external positioning and monitoring of other applications. Vulkan/OpenGL layers and compositor-supported launches provide the in-game path there. Gamescope remains optional. Its MangoApp integration may be required for a Gamescope session; a normal MangoHud layer is not a universal Gamescope overlay.
+Native Wayland restricts external positioning and monitoring of other applications. Vulkan/OpenGL layers provide the supported in-game path there where permitted. Gamescope remains optional for compositor sizing and launch limits. Framoryx currently treats Gamescope and its in-game layer as alternative launch methods; their combined overlay path is not supported.
 
-32-bit games need matching host MangoHud libraries. Proton, Steam Flatpak, containers and other runtimes may need a compatible layer inside their sandbox. An x86-64 AppImage cannot support every architecture, distribution, driver or compositor universally.
+The bundled in-game runtime supports 64-bit games. Known 32-bit native executables are directed to external monitoring; a 32-bit in-game runtime is not bundled. Proton, Steam Flatpak, containers and other runtimes may need a compatible layer inside their sandbox. An x86-64 AppImage cannot support every architecture, distribution, driver or compositor universally.
 
 PipeWire and WirePlumber must be available for audio effects. Choose **Framoryx Microphone** in voice settings or **Framoryx Output** as playback output after applying the corresponding effects. Apply does not silently change the default device.
 

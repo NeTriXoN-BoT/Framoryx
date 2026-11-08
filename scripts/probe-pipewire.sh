@@ -38,4 +38,11 @@ for variant in ordered-json ordered-spa; do
     kill -KILL "$probe" 2>/dev/null || true
     wait "$probe" || true
     tail -n 45 "work/pipewire-diagnostics/$variant.log"
+    python3 - "work/pipewire-diagnostics/$variant-nodes.json" <<'PY'
+import json, pathlib, sys
+nodes=json.loads(pathlib.Path(sys.argv[1]).read_text())
+names={node.get('info',{}).get('props',{}).get('node.name') for node in nodes}
+assert {'framoryx_output','playback.framoryx_output'} <= names, 'The filter graph did not publish its output nodes'
+print('PASS: ordered filter graph publishes both output nodes')
+PY
 done

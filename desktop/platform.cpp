@@ -294,6 +294,7 @@ void Platform::linuxLaunch(){
     if(denied(c->m_options,file.fileName())){c->notify("This executable is blocked by your process rules.","warning");return;}
     const bool inProcess=c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected";
     if(inProcess&&c->m_options["gamescope"].toBool()){c->notify("Choose either the Framoryx game layer or Gamescope for this launch. Their combined rendering path is not supported yet.","warning");return;}
+    if(inProcess){QFile binary(file.absoluteFilePath());if(binary.open(QIODevice::ReadOnly)&&binary.read(5)==QByteArray("\x7f" "ELF\x01",5)){c->notify("The bundled game layer supports 64-bit games. Use external monitoring for this 32-bit executable.","warning");return;}}
     if(inProcess&&mangoExecutable().isEmpty()){c->notify("The game runtime is missing. Extract the complete package or install MangoHud.","warning");return;}
     if(c->m_options["gamescope"].toBool()&&exe("gamescope").isEmpty()){c->notify("Gamescope is unavailable. Disable its launch option or install it in Setup.","warning");return;}
     applyOptions();flushOptions();c->m_store.clear();c->m_frameTime=0;

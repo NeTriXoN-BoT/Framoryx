@@ -8,6 +8,7 @@ from urllib import error, parse, request
 
 ALLOWED_HOSTS = {"github.com", "api.github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"}
 ASSET = "Framoryx-Windows-x64.zip"
+ALL_ASSETS = (ASSET, "Framoryx-Linux-x86_64.AppImage", "Framoryx-Linux-x86_64.tar.gz", "Framoryx-Source.zip")
 
 
 class PublicRedirects(request.HTTPRedirectHandler):
@@ -43,9 +44,33 @@ def download(url, limit):
             time.sleep(2 * (attempt + 1))
 
 
+def asset_digest(url, limit=512_000_000):
+    validate_url(url)
+    opener = request.build_opener(PublicRedirects())
+    for attempt in range(3):
+        try:
+            digest, size = hashlib.sha256(), 0
+            req = request.Request(url, headers={"User-Agent": "Framoryx-Download-Check", "Accept": "application/octet-stream"})
+            with opener.open(req, timeout=30) as response:
+                validate_url(response.url)
+                if response.status != 200:
+                    raise RuntimeError(f"HTTP {response.status}")
+                while block := response.read(1024 * 1024):
+                    size += len(block)
+                    if size > limit:
+                        raise RuntimeError("Asset exceeds the audit size limit")
+                    digest.update(block)
+            return size, digest.hexdigest()
+        except (error.URLError, TimeoutError):
+            if attempt == 2:
+                raise
+            time.sleep(2 * (attempt + 1))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", default="NeTriXoN-BoT/Framoryx")
+    parser.add_argument("--all-assets", action="store_true", help="Require and verify both desktop platforms and clean source.")
     args = parser.parse_args()
     owner, name = args.repository.split("/")
     if any(not part or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for c in part) for part in (owner, name)):
@@ -59,7 +84,8 @@ def main():
     if release["draft"] or release["prerelease"]:
         raise RuntimeError("Latest must be a published stable release")
     assets = {item["name"]: item for item in release["assets"]}
-    for required in (ASSET, ASSET + ".sha256"):
+    expected_assets = ALL_ASSETS if args.all_assets else (ASSET,)
+    for required in [name + suffix for name in expected_assets for suffix in ("", ".sha256")]:
         if required not in assets:
             raise RuntimeError("Latest release is missing " + required)
     readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
@@ -68,15 +94,20 @@ def main():
     if f'href="{windows}"' not in readme or f'href="{latest}"' not in readme:
         raise RuntimeError("README buttons must use the stable latest-release routes")
     download(latest, 5_000_000)
-    checksum = download(windows + ".sha256", 4096).decode("utf-8").split()[0].lower()
-    data = download(windows, 128_000_000)
-    digest = hashlib.sha256(data).hexdigest()
-    if digest != checksum:
-        raise RuntimeError("Public ZIP does not match its public checksum")
-    advertised = assets[ASSET].get("digest")
-    if advertised and advertised != "sha256:" + digest:
-        raise RuntimeError("Public ZIP differs from GitHub's asset digest")
-    print(json.dumps({"anonymous": True, "release": release["tag_name"], "latestPage": "HTTP 200", "windowsZip": "HTTP 200", "checksum": "matched", "bytes": len(data), "sha256": digest}, indent=2))
+    verified = []
+    for name in expected_assets:
+        url = base + "/releases/latest/download/" + name
+        if args.all_assets and name.endswith(".AppImage") and f'href="{url}"' not in readme:
+            raise RuntimeError("README Linux button must use the latest AppImage route")
+        checksum = download(url + ".sha256", 4096).decode("utf-8").split()[0].lower()
+        size, digest = asset_digest(url)
+        if digest != checksum:
+            raise RuntimeError("Public asset does not match its checksum: " + name)
+        advertised = assets[name].get("digest")
+        if advertised and advertised != "sha256:" + digest:
+            raise RuntimeError("Public asset differs from GitHub's asset digest: " + name)
+        verified.append({"asset": name, "status": "HTTP 200", "bytes": size, "sha256": digest, "checksum": "matched"})
+    print(json.dumps({"anonymous": True, "release": release["tag_name"], "latestPage": "HTTP 200", "assets": verified}, indent=2))
 
 
 if __name__ == "__main__":

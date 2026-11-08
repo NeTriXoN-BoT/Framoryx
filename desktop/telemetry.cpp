@@ -110,6 +110,7 @@ class HardwareBackend {
         Device selected=nullptr;int best=-1;Utilization utilization{};
         for(unsigned i=0;i<std::min(count,16u);++i){Device device=nullptr;Utilization candidate{};if(handleFn(i,&device)!=0)continue;const bool valid=utilizationFn&&utilizationFn(device,&candidate)==0;const int score=valid?int(candidate.gpu):0;if(!selected||score>best){selected=device;best=score;utilization=candidate;if(!valid)best=0;}}
         if(!selected)return;
+        if(values["gpu"].isValid()&&values["gpu"].toDouble()>best)return;
         // Clear readings from another adapter rather than mixing different GPUs.
         for(const auto& key:QStringList{"gpu","vramPercent","vramUsed","vramTotal","gpuTemp","gpuHotspot","gpuPower","gpuClock","gpuFan"})values[key]=QVariant();
         if(utilizationFn&&utilizationFn(selected,&utilization)==0&&utilization.gpu<=100)values["gpu"]=utilization.gpu;
@@ -146,7 +147,8 @@ class HardwareBackend {
             if(total&&used&&*total>0&&*used<=*total){gpu["vramUsed"]=*used/1073741824.;gpu["vramTotal"]=*total/1073741824.;gpu["vramPercent"]=100.*(*used)/(*total);}
             for(const auto& monitor:QDir(root+"/hwmon").entryList(QDir::Dirs|QDir::NoDotAndDotDot)){
                 const QString hwmon=root+"/hwmon/"+monitor;
-                put(gpu,"gpuTemp",number(hwmon+"/temp1_input",1000.),150);put(gpu,"gpuHotspot",number(hwmon+"/temp2_input",1000.),150);
+                put(gpu,"gpuTemp",number(hwmon+"/temp1_input",1000.),150);
+                const auto label=readSmall(hwmon+"/temp2_label").toLower();if(label.contains("junction")||label.contains("hotspot"))put(gpu,"gpuHotspot",number(hwmon+"/temp2_input",1000.),150);
                 auto power=number(hwmon+"/power1_average",1000000.);if(!power)power=number(hwmon+"/power1_input",1000000.);put(gpu,"gpuPower",power,2000);
                 put(gpu,"gpuClock",number(hwmon+"/freq1_input",1000000.),10000);
             }
@@ -190,9 +192,12 @@ void Telemetry::poll(){
 bool Telemetry::selfTest(const QString& root,QString* error){
     auto write=[&](const QString& path,const QByteArray& data){QDir().mkpath(QFileInfo(path).absolutePath());QSaveFile file(path);return file.open(QIODevice::WriteOnly)&&file.write(data)==data.size()&&file.commit();};
     const QString sys=root+"/sensor-fixture";const QString cpu=sys+"/class/hwmon/hwmon0",gpu=sys+"/class/drm/card0/device";
+    QFile::remove(gpu+"/hwmon/hwmon1/temp2_input");QFile::remove(gpu+"/hwmon/hwmon1/temp2_label");
     if(!write(cpu+"/name","coretemp")||!write(cpu+"/temp1_input","65000")||!write(cpu+"/temp2_input","nan")||!write(gpu+"/vendor","0x1002")||!write(gpu+"/gpu_busy_percent","72")||!write(gpu+"/mem_info_vram_total","8589934592")||!write(gpu+"/mem_info_vram_used","4294967296")||!write(gpu+"/hwmon/hwmon1/temp1_input","71000")||!write(gpu+"/hwmon/hwmon1/power1_average","123000000")||!write(gpu+"/hwmon/hwmon1/freq1_input","2100000000")){*error="Sensor fixtures could not be written";return false;}
     HardwareBackend backend(sys);const auto values=backend.read();
     if(values["cpuTemp"]!=65.||values["gpu"]!=72.||values["vramPercent"]!=50.||values["vramUsed"]!=4.||values["gpuTemp"]!=71.||values["gpuPower"]!=123.||values["gpuClock"]!=2100.||values["gpuHotspot"].isValid()){*error="Sensor units, percentages or unavailable values are incorrect";return false;}
+    write(gpu+"/hwmon/hwmon1/temp2_input","90000");if(backend.read()["gpuHotspot"].isValid()){*error="An unlabeled temperature was incorrectly called a hotspot";return false;}
+    write(gpu+"/hwmon/hwmon1/temp2_label","junction");if(backend.read()["gpuHotspot"]!=90.){*error="A labeled GPU junction sensor was not read";return false;}
     write(gpu+"/gpu_busy_percent","200");write(cpu+"/temp1_input","999999");const auto invalid=backend.read();
     if(invalid["gpu"].isValid()||invalid["cpuTemp"].isValid()){*error="Invalid sensor ranges were accepted";return false;}
     return true;
