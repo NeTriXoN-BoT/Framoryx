@@ -138,7 +138,8 @@ void Platform::applyOptions(const QString& key){
     if(!c->m_state["overlay"].toBool()||!fields)config+="no_display\n";
     if(style==2)config+="horizontal\ntable_columns=10\n";
     const QStringList values{"fps","fps_metrics=avg","fps_metrics=0.01","frametime","frame_timing","cpu_stats","ram","show_fps_limit","engine_version","custom_text=FRAMORYX"};
-    for(const auto& index:o["order"].toList()){const int i=index.toInt();if(fields&(1<<i))config+=values.value(i).toUtf8()+'\n';}
+    bool metricsWritten=false;
+    for(const auto& index:o["order"].toList()){const int i=index.toInt();if(!(fields&(1<<i)))continue;if(i==1||i==2){if(!metricsWritten){QStringList metrics;if(fields&2)metrics<<"avg";if(fields&4)metrics<<"0.01";config+="fps_metrics="+metrics.join(',').toUtf8()+'\n';metricsWritten=true;}}else config+=values.value(i).toUtf8()+'\n';}
     if(!writeFile(c->root()+"/MangoHud.conf",config))c->notify("The overlay configuration could not be written.","warning");
     if(key=="cap"||key=="style"||key=="fields"||key=="opacity"||key=="overlayScale"||key=="accent"||key=="order"||key=="hudX"||key=="hudY"||key=="fontScale"){
         if(c->m_state["gameRunning"].toBool())c->setState("overlayHint","Saved. Use MangoHud's reload shortcut (Shift+F4) in the game, or relaunch for all changes.");
@@ -239,7 +240,8 @@ void Platform::linuxAudio(bool microphone){
     QJsonArray nodes,links;QString previous,first;
     auto add=[&](QString name,QString label,QJsonObject controls,QString type="builtin"){
         QJsonObject node{{"type",type},{"name",name},{"label",label},{"control",controls}};if(type=="ladspa")node["plugin"]=plugin;
-        nodes.append(node);if(first.isEmpty())first=name+":In";if(!previous.isEmpty())links.append(QJsonObject{{"output",previous},{"input",name+":In"}});previous=name+":Out";
+        const QString input=name+(type=="ladspa"?":Input":":In"),output=name+(type=="ladspa"?":Output":":Out");
+        nodes.append(node);if(first.isEmpty())first=input;if(!previous.isEmpty())links.append(QJsonObject{{"output",previous},{"input",input}});previous=output;
     };
     if(microphone){
         if(o["noise"].toBool())add("denoise","noise_suppressor_mono",{{"VAD Threshold (%)",QList<int>{50,85,95}.value(o["noisePreset"].toInt(),85)},{"VAD Grace Period (ms)",200},{"Retroactive VAD Grace (ms)",0}},"ladspa");

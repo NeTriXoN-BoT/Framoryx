@@ -44,7 +44,7 @@ inline bool matches(const std::vector<std::string>& patterns, const std::string&
     return false;
 }
 inline const std::vector<std::string> systemDeny = {
-    "framoryx.exe",        "presentmon*.exe", "dwm.exe",      "explorer.exe",
+    "framoryx.exe", "framoryxengine.exe", "presentmon*.exe", "dwm.exe", "explorer.exe",
     "svchost.exe",         "csrss.exe",       "winlogon.exe", "lsass.exe",
     "services.exe",        "smss.exe",        "system",       "registry",
     "securityhealth*.exe", "msmpeng.exe"};

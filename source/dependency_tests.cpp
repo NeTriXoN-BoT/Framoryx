@@ -70,9 +70,9 @@ int main() {
         auto literal = fg::scalarFormatLiteral(callerFormat, fg::ScalarFormat::Signed32);
         check(literal != callerFormat && std::string(literal) == callerFormat,
               "return trusted literal rather than caller storage");
-        char small[3]{'x', 'x', 'x'};
-        ImGui::DataTypeFormatString(small, sizeof(small), ImGuiDataType_S32, &number, "%04d");
-        check(small[2] == 0 && std::string(small) == "00",
+        char shortBuffer[3]{'x', 'x', 'x'};
+        ImGui::DataTypeFormatString(shortBuffer, sizeof(shortBuffer), ImGuiDataType_S32, &number, "%04d");
+        check(shortBuffer[2] == 0 && std::string(shortBuffer) == "00",
               "truncate numeric output with termination");
         for (float t : {0.f, .1234567f, .5f, .75f, 1.f}) {
             ImS64 maximum = 10000000000123456LL;

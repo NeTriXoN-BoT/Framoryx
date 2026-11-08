@@ -65,6 +65,7 @@ std::wstring createDesktopShortcut() {
         return L"Windows could not create a desktop shortcut.";
     wchar_t executable[32768]{};
     GetModuleFileNameW(nullptr, executable, 32768);
+    if(app.engineMode){const auto frontend=fg::executableDir()+L"\\Framoryx.exe";if(frontend.size()>=32768){link->Release();return L"The application path is too long.";}wcscpy_s(executable,frontend.c_str());}
     auto existingTarget = [&](const std::wstring& path) {
         std::wstring target;
         IShellLinkW* previous = nullptr;

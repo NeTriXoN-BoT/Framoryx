@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            arch: gcc_64
+            arch: linux_gcc_64
             label: Linux-x64
           - os: windows-latest
             arch: win64_msvc2022_64

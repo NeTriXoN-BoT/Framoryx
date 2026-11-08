@@ -6,6 +6,7 @@
 #include "compatibility.hpp"
 #include "animation.hpp"
 #include "export.hpp"
+#include "vendor/json/json.hpp"
 #include <shlobj.h>
 #include <commctrl.h>
 #include <commdlg.h>
@@ -118,6 +119,8 @@ struct MonitorInfo {
     std::wstring name;
 };
 struct App {
+    bool engineMode = false, engineDirty = false;
+    std::wstring engineToken;
     HINSTANCE instance{};
     HWND window{}, hud{};
     float scale = 1, originX = 0, originY = 0;
@@ -662,7 +665,7 @@ bool updateCap(bool persist = true) {
         saveSettings();
     return true;
 }
-void attachHook() {
+void attachHook(bool confirmed = false) {
     auto* t = selected();
     if (!t) {
         setNotice(L"Select a specific game window before enabling the experimental limiter.");
@@ -692,7 +695,7 @@ void attachHook() {
                   L"borderless changes if enabled.\n\n";
     prompt += L"Disable restores hook entry points. Restart the game to remove the DLL "
               L"completely.\n\nEnable for this process now?";
-    if (MessageBoxW(app.window, prompt.c_str(), L"Enable experimental hook",
+    if (!confirmed && MessageBoxW(app.window, prompt.c_str(), L"Enable experimental hook",
                     MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
         return;
     if (!app.rules.hookAllowed(t->exe)) {
@@ -1423,7 +1426,10 @@ LRESULT CALLBACK hudProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(window, msg, wp, lp);
 }
 #include "feature_smoke.hpp"
+void launchDemo();
+#include "engine_server.hpp"
 void update() {
+    if(app.engineMode)engineCommands();
     // Static pages reuse their body until a control, notice or device state changes.
     if (app.page == 0 || app.page == 5 || app.page == 6)
         app.contentDirty = true;
@@ -1746,7 +1752,7 @@ void update() {
         }
     }
     if (app.tick % 4 == 0) {
-        updateTray();
+        if(!app.engineMode)updateTray();
         FILETIME idle{}, kernel{}, user{};
         if (GetSystemTimes(&idle, &kernel, &user)) {
             auto n = [](FILETIME t) {
@@ -1831,6 +1837,7 @@ void update() {
         app.notice = captureMessage;
     EnableWindow(app.controls[Disable], app.hook.active() || app.hook.status() == 0);
     positionHud();
+    if(app.engineMode){if(app.engineDirty&&app.tick%4==0){saveSettings();app.engineDirty=false;}enginePublish();}
     if (previousNotice != app.notice)
         app.contentDirty = true;
     if (!IsIconic(app.window) && (GetForegroundWindow() == app.window || app.tick % 4 == 0))
@@ -2303,7 +2310,7 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_CREATE:
         app.window = window;
         createControls();
-        updateTray();
+        if(!app.engineMode)updateTray();
         SetTimer(window, 1, 250, nullptr);
         app.animationRunning = app.animation.start(window);
         if (!app.animationRunning)
@@ -2878,7 +2885,11 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_CLOSE:
         DestroyWindow(window);
         return 0;
+    case WM_APP+70:
+        engineCommands();
+        return 0;
     case WM_DESTROY:
+        if(app.engineMode){saveSettings();enginePipe.stop();}
         app.shuttingDown = true;
         app.animation.stop();
         {
@@ -2912,8 +2923,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     int diagnosticCount = 0;
     auto diagnosticArgs = CommandLineToArgvW(GetCommandLineW(), &diagnosticCount);
     bool smokeArgument = false, reportArgument = false, settingsArgument = false;
+    bool engineArgument = false;
     for (int i = 1; i < diagnosticCount; ++i) {
         std::wstring argument = diagnosticArgs[i];
+        if(argument==L"--engine-server"){
+            engineArgument=true;
+            if(i+1<diagnosticCount){const std::wstring token=diagnosticArgs[i+1];if(token.size()>=16&&token.size()<=128&&token.find_first_not_of(L"0123456789abcdef")==std::wstring::npos){app.engineMode=true;app.engineToken=token;}}
+        }
         if (argument == L"--smoke-seconds" && i + 1 < diagnosticCount) {
             auto n = fg::number(fg::utf8(diagnosticArgs[i + 1]));
             smokeArgument = n && *n > 0 && *n <= 120;
@@ -2925,12 +2941,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     }
     if (diagnosticArgs)
         LocalFree(diagnosticArgs);
+    if(engineArgument&&!app.engineMode)return 2;
     bool diagnosticInstance = smokeArgument && reportArgument && settingsArgument;
     auto mutexName = diagnosticInstance
                          ? L"Local\\Framoryx.Validation." + std::to_wstring(GetCurrentProcessId())
-                         : L"Local\\Framoryx.Desktop";
+                         : app.engineMode ? L"Local\\Framoryx.Engine" : L"Local\\Framoryx.Desktop";
     fg::Handle singleton(CreateMutexW(nullptr, TRUE, mutexName.c_str()));
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        if(app.engineMode)return 0;
         HWND existing = FindWindowW(L"Framoryx.Desktop", nullptr);
         if (existing) {
             ShowWindowAsync(existing, IsIconic(existing) ? SW_RESTORE : SW_SHOW);
@@ -2956,6 +2974,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     if (earlyArguments)
         LocalFree(earlyArguments);
     loadSettings();
+    if(app.engineMode){app.motion=false;app.fixedSmokePage=0;}
     app.hudOptions = app.hudBase.options;
     app.hudMode = app.hudBase.mode;
     app.corner = app.hudBase.corner;
@@ -3037,7 +3056,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     wc.hIcon = icon;
     wc.hIconSm = icon;
     wc.lpfnWndProc = mainProc;
-    auto mainClass = diagnosticInstance ? L"Framoryx.Validation" : L"Framoryx.Desktop";
+    auto mainClass = diagnosticInstance ? L"Framoryx.Validation" : app.engineMode ? L"Framoryx.Engine" : L"Framoryx.Desktop";
     wc.lpszClassName = mainClass;
     RegisterClassExW(&wc);
     wc.lpfnWndProc = rulesProc;
@@ -3086,8 +3105,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     if (!hotkeys)
         app.notice = L"Some hotkeys are already used by another app. All features remain available "
                      L"through the buttons.";
-    ShowWindow(window, app.diagnosticShown ? SW_SHOWNOACTIVATE : show);
-    if (app.diagnosticMaximized)
+    if(app.engineMode&&!enginePipe.start(window)){DestroyWindow(window);return 2;}
+    ShowWindow(window, app.engineMode ? SW_HIDE : app.diagnosticShown ? SW_SHOWNOACTIVATE : show);
+    if (app.diagnosticMaximized&&!app.engineMode)
         ShowWindow(window, SW_MAXIMIZE);
     UpdateWindow(window);
     if (app.smokeDemo)
