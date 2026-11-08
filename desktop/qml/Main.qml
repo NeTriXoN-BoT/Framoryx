@@ -133,7 +133,7 @@ ApplicationWindow {
                             sourceComponent: [overview,studio,audio,games,rules,settings,changes][index]
                         }
                     }
-                    Text { anchors.centerIn: parent; visible: {const loader=pages.itemAt(window.page);return !loader||loader.status!==Loader.Ready}; text: "Preparing your workspace…"; color: Theme.muted; font.pixelSize: Theme.px(13) }
+                    Text { anchors.centerIn: parent; visible: {const loader=pages.itemAt(window.page);return !loader||loader.status!==Loader.Ready} text: "Preparing your workspace…"; color: Theme.muted; font.pixelSize: Theme.px(13) }
                     Connections { target: window; function onPageChanged(){scroll.contentItem.contentY=0;pageEnter.restart()} }
                     NumberAnimation { id: pageEnter; target: pageHost; property: "opacity"; from: Theme.motion?.7:1; to: 1; duration: Theme.duration; easing.type: Easing.OutCubic }
                 }

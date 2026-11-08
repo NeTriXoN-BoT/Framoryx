@@ -153,6 +153,7 @@ struct App {
     double animationTime = 0, lastAnimation = 0, metricFps = 0, metricAverage = 0, metricLow = 0,
            metricMs = 0, metricCpu = 0;
     std::map<int, double> hoverMotion, toggleMotion;
+    std::map<int,std::unique_ptr<Bitmap>> buttonSurfaces;
     std::map<int, bool> toggleTargets;
     std::unique_ptr<Bitmap> transitionOld, transitionNew;
     double transitionStart = 0;
@@ -1914,8 +1915,9 @@ LRESULT CALLBACK controlProc(HWND w, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, D
         TRACKMOUSEEVENT event{sizeof(event), TME_LEAVE, w, 0};
         TrackMouseEvent(&event);
     }
+    if (msg == WM_ERASEBKGND)return 1;
     if (msg == WM_MOUSELEAVE) {
-        app.hoverId = 0;
+        if(app.hoverId==int(id))app.hoverId = 0;
         InvalidateRect(w, nullptr, FALSE);
     }
     if (msg == WM_SETCURSOR && IsWindowEnabled(w)) {
@@ -2273,17 +2275,17 @@ void createControls() {
     for (auto label : {L"Auto", L"Desktop", L"In-game"})
         SendMessageW(app.controls[HudMode], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     control(HudStyle, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
-    for (auto label : {L"Glass", L"Compact", L"Telemetry"})
+    for (auto label : {L"Glass", L"Compact", L"Telemetry", L"Minimal", L"Dashboard"})
         SendMessageW(app.controls[HudStyle], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     control(HudSize, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
     for (auto label : {L"Auto", L"50%", L"75%", L"90%", L"100%", L"110%", L"125%", L"150%", L"175%",
                        L"200%", L"250%", L"300%"})
         SendMessageW(app.controls[HudSize], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     control(HudOpacity, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
-    for (auto label : {L"30%", L"45%", L"60%", L"75%", L"85%", L"90%", L"95%", L"100%"})
+    for (auto label : {L"0%", L"15%", L"30%", L"45%", L"60%", L"75%", L"85%", L"90%", L"95%", L"100%"})
         SendMessageW(app.controls[HudOpacity], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     control(HudAccent, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
-    for (auto label : {L"Mint", L"Ice blue", L"Violet", L"Amber"})
+    for (auto label : {L"Mint", L"Ice blue", L"Violet", L"Amber", L"Rose", L"Cyan", L"Solar", L"Lime", L"Coral", L"Silver"})
         SendMessageW(app.controls[HudAccent], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     control(HudPosition, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
     for (auto label : {L"Top left", L"Top right", L"Bottom left", L"Bottom right"})
@@ -2486,9 +2488,13 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
         }
         if (d->CtlType != ODT_BUTTON)
             break;
-        Graphics g(d->hDC);
+        const int surfaceWidth=d->rcItem.right-d->rcItem.left,surfaceHeight=d->rcItem.bottom-d->rcItem.top;
+        if(surfaceWidth<=0||surfaceHeight<=0)return TRUE;
+        auto& surface=app.buttonSurfaces[int(d->CtlID)];
+        if(!surface||int(surface->GetWidth())!=surfaceWidth||int(surface->GetHeight())!=surfaceHeight)surface=std::make_unique<Bitmap>(surfaceWidth,surfaceHeight,PixelFormat32bppPARGB);
+        Graphics g(surface.get());
         g.SetSmoothingMode(SmoothingModeAntiAlias);
-        g.Clear(card);
+        g.SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
         bool nav = d->CtlID == GamingTab || d->CtlID == AudioTab || d->CtlID == LimiterTab ||
                    d->CtlID == BorderlessTab || d->CtlID == OverlayTab ||
                    d->CtlID == CompatibilityTab || d->CtlID == Rules || d->CtlID == Help;
@@ -2542,6 +2548,9 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
             Pen p(mint, 1);
             g.DrawRectangle(&p, 3.0f, 3.0f, width - 7, height - 7);
         }
+        g.Flush(FlushIntentionSync);
+        Graphics destination(d->hDC);
+        destination.DrawImage(surface.get(),d->rcItem.left,d->rcItem.top,surfaceWidth,surfaceHeight);
         return TRUE;
     }
     case WM_HOTKEY:

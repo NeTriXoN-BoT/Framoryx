@@ -41,7 +41,7 @@ bool denied(const QVariantMap& options,const QString& name){
 bool allowed(const QVariantMap& options,const QString& name){if(denied(options,name))return false;for(const auto& pattern:options["allow"].toStringList())if(fg::wildcard(pattern.toStdString(),name.toStdString()))return true;return false;}
 }
 Platform::Platform(Controller* controller):QObject(controller),c(controller){
-    m_optionTimer.setInterval(50);m_optionTimer.setSingleShot(true);connect(&m_optionTimer,&QTimer::timeout,this,&Platform::flushOptions);
+    m_optionTimer.setInterval(75);m_optionTimer.setSingleShot(true);connect(&m_optionTimer,&QTimer::timeout,this,&Platform::flushOptions);
     m_volumeTimer.setSingleShot(true);m_volumeTimer.setInterval(45);
     connect(&m_volumeTimer,&QTimer::timeout,this,[this]{
 #ifdef Q_OS_WIN
@@ -125,12 +125,12 @@ void Platform::refresh(){
     c->m_capabilities=list;emit c->capabilitiesChanged();
 }
 void Platform::applyOptions(const QString& key){
-    if(key=="volume"){m_volumeTimer.start();return;}
+    if(key=="volume"){if(!m_volumeTimer.isActive())m_volumeTimer.start();return;}
     m_pendingOptions.insert(key);if(!m_optionTimer.isActive())m_optionTimer.start();
 }
 void Platform::flushOptions(){
     m_optionTimer.stop();const auto keys=m_pendingOptions.values();m_pendingOptions.clear();const QString key=keys.size()==1?keys.first():QString();
-    if(key=="volume"){m_volumeTimer.start();return;}
+    if(key=="volume"){if(!m_volumeTimer.isActive())m_volumeTimer.start();return;}
 #ifdef Q_OS_WIN
     auto values=c->m_options;values["micDevice"]=QString::fromUtf8(QByteArray::fromBase64(c->m_options["micId"].toByteArray()));
     for(const auto& entry:c->m_devices)if(entry.toMap()["id"]==c->m_options["micId"])values["micName"]=entry.toMap()["name"];

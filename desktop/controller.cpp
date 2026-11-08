@@ -175,7 +175,7 @@ QVariantList Controller::changelog()const{
     return result;
 }
 QString Controller::processRuleStatus(const QString& name)const{
-    const auto native=name.toStdString();fg::Rules rules;
+    const auto native=name.toStdString();fg::Rules rules;rules.deny.clear();
     if(rules.blocked(native))return "Protected";
     for(const auto& item:m_processes)if(item.toMap()["name"]==name&&item.toMap()["protected"].toBool())return "Protected";
     for(const auto& pattern:m_options["deny"].toStringList())if(fg::wildcard(pattern.toStdString(),native))return "Blocked";

@@ -31,7 +31,7 @@ ColumnLayout {
                     anchors.fill: parent; anchors.margins: Theme.px(10); spacing: Theme.px(10)
                     ColumnLayout { Layout.fillWidth: true; spacing: 2
                         Text { text: modelData.name; color: Theme.text; font.pixelSize: Theme.px(13); font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
-                        Text { text: "PID "+modelData.pid+" · "+status; property string status: {const rules=app.options;return app.processRuleStatus(modelData.name)}; color: status==="Blocked"||status==="Protected"?Theme.amber:Theme.muted; font.pixelSize: Theme.px(10) }
+                        Text { text: "PID "+modelData.pid+" · "+status; property string status: {const rules=app.options;return app.processRuleStatus(modelData.name)} color: status==="Blocked"||status==="Protected"?Theme.amber:Theme.muted; font.pixelSize: Theme.px(10) }
                     }
                     FButton { text: "Allow"; quiet: true; enabled: !modelData.protected; hint: "Add executable name to allow list; hooks remain manual"; onClicked: app.addProcessRule(modelData.name,false) }
                     FButton { text: "Block"; quiet: true; danger: true; onClicked: app.addProcessRule(modelData.name,true) }

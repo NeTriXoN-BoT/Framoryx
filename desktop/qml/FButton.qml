@@ -22,6 +22,7 @@ Button {
         color: !control.enabled ? Theme.muted : control.primary ? "#081916" : control.danger ? Theme.red : Theme.text
         font.pixelSize: Math.max(11,Theme.px(13))
         font.weight: Font.DemiBold
+        renderType: Text.NativeRendering
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
