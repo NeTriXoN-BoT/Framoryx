@@ -20,7 +20,7 @@ xcb_atom_t atom(xcb_connection_t* connection,const QByteArray& name){
     auto reply=xcb_intern_atom_reply(connection,xcb_intern_atom(connection,1,uint16_t(name.size()),name.constData()),nullptr);
     if(!reply)return 0;const auto result=reply->atom;free(reply);return result;
 }
-quint32 property(xcb_connection_t* connection,xcb_window_t window,xcb_atom_t key,xcb_atom_t type){
+quint32 xProperty(xcb_connection_t* connection,xcb_window_t window,xcb_atom_t key,xcb_atom_t type){
     if(!key)return 0;
     auto reply=xcb_get_property_reply(connection,xcb_get_property(connection,0,window,key,type,0,1),nullptr);
     quint32 result=0;if(reply&&reply->format==32&&xcb_get_property_value_length(reply)==4)result=*static_cast<const uint32_t*>(xcb_get_property_value(reply));free(reply);return result;
@@ -37,7 +37,7 @@ bool PassiveCapture::start(quint32 window,quint32 pid,QString* error){
     const auto extension=xcb_get_extension_data(d->connection,&xcb_present_id);
     if(!extension||!extension->present)return fail("This X server does not provide the Present extension.");
     const auto pidAtom=atom(d->connection,"_NET_WM_PID");
-    if(!window||!pid||property(d->connection,window,pidAtom,XCB_ATOM_CARDINAL)!=pid)return fail("The game window identity changed. Refresh the game list before capturing.");
+    if(!window||!pid||xProperty(d->connection,window,pidAtom,XCB_ATOM_CARDINAL)!=pid)return fail("The game window identity changed. Refresh the game list before capturing.");
     d->activeAtom=atom(d->connection,"_NET_ACTIVE_WINDOW");d->target=window;d->subscription=xcb_generate_id(d->connection);
     d->events=xcb_register_for_special_xge(d->connection,&xcb_present_id,d->subscription,&d->stamp);
     if(!d->events)return fail("Present event monitoring could not be registered.");
@@ -67,5 +67,5 @@ void PassiveCapture::stop(){
 }
 bool PassiveCapture::running()const{return d->connection&&d->target&&!xcb_connection_has_error(d->connection);}
 quint32 PassiveCapture::window()const{return d->target;}
-quint32 PassiveCapture::foreground()const{return d->connection?property(d->connection,d->root,d->activeAtom,XCB_ATOM_WINDOW):0;}
+quint32 PassiveCapture::foreground()const{return d->connection?xProperty(d->connection,d->root,d->activeAtom,XCB_ATOM_WINDOW):0;}
 QList<double> PassiveCapture::takeFrames(){drain();QList<double> result;result.swap(d->pending);return result;}

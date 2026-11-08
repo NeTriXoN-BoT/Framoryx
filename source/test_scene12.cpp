@@ -129,6 +129,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     if (!createBuffers())
         return 9;
     Ref<ID3D12CommandAllocator> allocator;
+    Ref<ID3D12CommandAllocator> secondAllocator;
+    UINT64 frameFences[2]{};
     Ref<ID3D12GraphicsCommandList> commands;
     if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
                                               __uuidof(ID3D12CommandAllocator),
@@ -139,6 +141,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
                                          reinterpret_cast<void**>(&commands.p))))
         return 11;
     commands->Close();
+    if(FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,__uuidof(ID3D12CommandAllocator),reinterpret_cast<void**>(&secondAllocator.p))))return 10;
     Ref<ID3D12CommandQueue> extraQueue;
     Ref<ID3D12CommandAllocator> extraAllocator;
     Ref<ID3D12GraphicsCommandList> extraCommands;
@@ -205,7 +208,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         if (newWidth != width || newHeight != height) {
             if (!waitForGpu())
                 return 14;
-            allocator->Reset();
+            allocator->Reset();secondAllocator->Reset();
             commands->Reset(allocator.p, nullptr);
             commands->Close();
             for (auto& buffer : buffers)
@@ -218,9 +221,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             width = newWidth;
             height = newHeight;
         }
-        if (FAILED(allocator->Reset()) || FAILED(commands->Reset(allocator.p, nullptr)))
-            return 17;
         UINT index = swap->GetCurrentBackBufferIndex();
+        if(frameFences[index]&&fence->GetCompletedValue()<frameFences[index]){
+            if(FAILED(fence->SetEventOnCompletion(frameFences[index],completed.h))||WaitForSingleObject(completed.h,2000)!=WAIT_OBJECT_0)return 20;
+        }
+        auto currentAllocator=index?secondAllocator.p:allocator.p;
+        if (FAILED(currentAllocator->Reset()) || FAILED(commands->Reset(currentAllocator, nullptr)))
+            return 17;
         D3D12_RESOURCE_BARRIER transition{};
         transition.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         transition.Transition.pResource = buffers[index].p;
@@ -245,8 +252,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         queue->ExecuteCommandLists(1, submit);
         if (FAILED(swap->Present(0, tearing ? DXGI_PRESENT_ALLOW_TEARING : 0)))
             return 19;
-        if (!waitForGpu())
-            return 20;
+        // Retire each back buffer separately. Serial GPU waits on every frame
+        // can make a software-rendered CI fixture too slow to exercise a 60 FPS cap.
+        frameFences[index]=++fenceValue;
+        if(FAILED(queue->Signal(fence.p,fenceValue)))return 20;
         LARGE_INTEGER due{};
         due.QuadPart = -10000;
         if (timer && SetWaitableTimer(timer.h, &due, 0, nullptr, nullptr, FALSE))
