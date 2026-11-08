@@ -1,0 +1,83 @@
+name: Wayland presentation diagnostics
+on:
+  workflow_dispatch:
+    inputs:
+      desktop_run:
+        description: Successful shared desktop run containing the Linux portable package
+        required: true
+        default: '42520294684'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  pacing:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: sudo apt-get update && sudo apt-get install -y weston mesa-vulkan-drivers libvulkan1 libgl1 libegl1 libxkbcommon0 libpulse0 dbus-x11
+      - name: Fetch a previously verified Linux package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.desktop_run }}
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || exit 2
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '{name,conclusion,head_branch}' > run.json
+          python3 -c 'import json; r=json.load(open("run.json")); assert r["conclusion"]=="success" and r["head_branch"]=="main" and r["name"]=="Shared desktop / Windows and Linux"'
+          gh run download "$RUN_ID" --name Framoryx-Desktop-Linux-x64 --dir work/input
+          (cd work/input && sha256sum --check Framoryx-Linux-x86_64.tar.gz.sha256)
+          tar -xzf work/input/Framoryx-Linux-x86_64.tar.gz --no-same-owner --no-same-permissions -C work/input
+      - name: Compare actual native Wayland presentation paths
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/framoryx-wayland-probe"
+          export WAYLAND_DISPLAY=framoryx-probe QT_QPA_PLATFORM=wayland XDG_SESSION_TYPE=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+          unset DISPLAY
+          mkdir -p "$XDG_RUNTIME_DIR" work/wayland-pacing
+          chmod 700 "$XDG_RUNTIME_DIR"
+          weston --backend=headless-backend.so --use-gl --width=1920 --height=1080 --socket="$WAYLAND_DISPLAY" --idle-time=0 --no-config --log="$PWD/work/wayland-pacing/compositor.log" & compositor=$!
+          trap 'kill "$compositor" 2>/dev/null || true' EXIT
+          for attempt in {1..100}; do [[ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]] || break; sleep .1; done
+          python3 - <<'PY'
+          import json, os, pathlib, socket, subprocess, time
+          appdir=pathlib.Path('work/input/Framoryx.AppDir').resolve()
+          binary=appdir/'usr/bin/FramoryxVulkanScene'
+          runtime=appdir/'usr/bin/runtime/mangohud/bin/mangohud'
+          output=pathlib.Path('work/wayland-pacing')
+          base=dict(os.environ,LD_LIBRARY_PATH=str(appdir/'usr/lib'),QT_PLUGIN_PATH=str(appdir/'usr/plugins'))
+          results=[]
+          cases=[('bare',0,'late',False,''),('uncapped-layer',0,'late',False,''),('30-late',30,'late',False,''),('60-late',60,'late',False,''),('60-early',60,'early',False,''),('60-late-hud',60,'late',True,''),('60-early-hud',60,'early',True,''),('60-mailbox-hud',60,'late',True,',vulkan_present_mode=mailbox')]
+          for name,cap,method,hud,extra in cases:
+              report=(output/(name+'.json')).resolve()
+              env=dict(base,FRAMORYX_HUD='1',MANGOHUD_CONFIG=f'legacy_layout=0,no_display=0,cpu_stats=0,gpu_stats=0,frame_timing=0,fps=0,font_size=34,fps_limit={cap},fps_limit_method={method},control=framoryx-probe-%p'+extra)
+              command=([str(runtime),'--dlsym'] if name!='bare' else [])+[str(binary),'--seconds','8','--report',str(report)]
+              connection=None
+              with (output/(name+'.log')).open('w') as log:
+                  process=subprocess.Popen(command,env=env,stdout=log,stderr=log)
+                  try:
+                      if hud:
+                          for attempt in range(100):
+                              connection=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+                              try: connection.connect('\0framoryx-probe-'+str(process.pid)); break
+                              except OSError: connection.close();connection=None;time.sleep(.02)
+                          if connection:
+                              values=[1,65535,0,85,8,2,100,300,300,cap,1]+list(range(16))
+                              connection.sendall((':framoryx_hud='+'|'.join(map(str,values))+';').encode())
+                      code=process.wait(timeout=15)
+                  except subprocess.TimeoutExpired:
+                      process.kill();code=process.wait()
+                  finally:
+                      if connection: connection.close()
+              data=json.loads(report.read_text()) if report.exists() else {}
+              result=dict(case=name,exitCode=code,frames=data.get('frames'),elapsedMs=data.get('elapsedMs'),fps=data.get('frames',0)*1000/max(1,data.get('elapsedMs',1)),valid=data.get('valid'),hudConnected=bool(connection))
+              results.append(result);print(json.dumps(result),flush=True)
+          (output/'results.json').write_text(json.dumps(results,indent=2))
+          assert all(x['exitCode']==0 and x['valid'] and x['frames']>0 for x in results)
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: Wayland-pacing-diagnostics
+          path: work/wayland-pacing
+          retention-days: 7
