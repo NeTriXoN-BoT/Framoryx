@@ -67,6 +67,10 @@ class Checks : public QObject {
         if(total.elapsed()>210000){record("Bounded integration timeout",false);complete();return;}
         maximumInput=std::max(maximumInput,c->state()["inputLevel"].toDouble());
         const bool first=!entered;entered=true;const auto state=c->state();
+        // QVulkanWindow uses FIFO; the private software Wayland compositor
+        // presents this scene at about 34 FPS even without any layer. Exercise
+        // two achievable caps there; X11 and OpenGL retain the 30/60 checks.
+        const int vulkanLow=scope=="wayland"?20:30,vulkanHigh=scope=="wayland"?30:60;
         switch(stage){
         case 0:await(state["connected"].toBool(),"Native backend connects");break;
         case 1:
@@ -153,11 +157,11 @@ class Checks : public QObject {
         case 16:
             if(first)c->action("capture");await(state["capture"].toBool()&&state["live"].toBool()&&phase.elapsed()>1500,"Game-layer telemetry reconnects to the running game");break;
         case 17:
-            if(first){c->action("capture");c->action("fixtureClose");c->setOption("linuxOverlayMode",2);c->setOption("cap",30);c->action("fixture",{{"api","vulkan"}});}
-            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34&&phase.elapsed()>2000,"Vulkan game layer streams real frames at 30 FPS",20000);if(stage==18)record("Vulkan HUD generates visible geometry",state["gameHudFrames"].toLongLong()>0);break;
+            if(first){c->action("capture");c->action("fixtureClose");c->setOption("linuxOverlayMode",2);c->setOption("cap",vulkanLow);QFile::remove(c->root()+"/fixture-result.json");c->action("fixture",{{"api","vulkan"},{"seconds",35},{"report",true}});}
+            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>vulkanLow*.9&&state["fps"].toDouble()<vulkanLow*1.1&&phase.elapsed()>2000,QString("Vulkan game layer streams real frames at %1 FPS").arg(vulkanLow),20000);if(stage==18)record("Vulkan HUD generates visible geometry",state["gameHudFrames"].toLongLong()>0);break;
         case 18:
-            if(first){screenshot("hud-vulkan-glass.png");c->setOption("cap",60);c->setOption("style",2);c->setOption("fields",65535);c->setOption("accent",8);c->setOption("opacity",85);}
-            await(state["fps"].toDouble()>54&&state["fps"].toDouble()<66&&phase.elapsed()>2500,"Vulkan limiter updates to 60 FPS without relaunch",15000);break;
+            if(first){screenshot("hud-vulkan-glass.png");c->setOption("cap",vulkanHigh);c->setOption("style",2);c->setOption("fields",65535);c->setOption("accent",8);c->setOption("opacity",85);}
+            await(state["fps"].toDouble()>vulkanHigh*.9&&state["fps"].toDouble()<vulkanHigh*1.1&&state["appliedCap"].toInt()==vulkanHigh&&phase.elapsed()>2500,QString("Vulkan limiter updates to %1 FPS without relaunch").arg(vulkanHigh),15000);break;
         case 19:
             if(first){screenshot("hud-vulkan-telemetry.png");c->action("capture");}await(!state["capture"].toBool(),"Vulkan telemetry stops cleanly");break;
         case 20:
@@ -165,9 +169,9 @@ class Checks : public QObject {
         case 21:
             if(first){c->action("capture");c->action("capture");}await(!state["live"].toBool()&&state["appliedCap"].toInt()==0&&phase.elapsed()>1200,"Restarting capture does not override a process block");break;
         case 22:
-            if(first)c->setOption("deny",QStringList{});await(state["live"].toBool()&&state["appliedCap"].toInt()==60,"Removing a process block restores the explicitly selected method");break;
+            if(first)c->setOption("deny",QStringList{});await(state["live"].toBool()&&state["appliedCap"].toInt()==vulkanHigh,"Removing a process block restores the explicitly selected method");break;
         case 23:
-            if(first)c->action("fixtureClose");await(!state["gameRunning"].toBool()&&!state["live"].toBool(),"Exiting the game clears live telemetry");break;
+            {QFile file(c->root()+"/fixture-result.json");QJsonObject report;if(!state["gameRunning"].toBool()&&file.open(QIODevice::ReadOnly))report=QJsonDocument::fromJson(file.read(16384)).object();await(!state["gameRunning"].toBool()&&!state["live"].toBool()&&report["valid"].toBool()&&report["frames"].toInt()>0&&report["exitCode"].toInt(-1)==0,"Normal game shutdown releases its surface and clears telemetry",45000);}break;
         default:complete();break;
 #endif
         }

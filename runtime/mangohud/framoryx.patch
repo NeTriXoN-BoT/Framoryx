@@ -630,3 +630,33 @@ index 7030d29..f33bc7c 100644
 +      return;
 +   data->font_uploaded = true;
 +   size_t upload_size = size_t(width) * size_t(height);
+diff --git a/src/wayland_keybinds.cpp b/src/wayland_keybinds.cpp
+index 7838fc7..1ebffe1 100644
+--- a/src/wayland_keybinds.cpp
++++ b/src/wayland_keybinds.cpp
+@@ -13,0 +14 @@
++#include "framoryx_hud.hpp"
+@@ -43,3 +44,3 @@ struct wayland_display
+-        wl_seat_destroy(this->seat);
+-        wl_keyboard_destroy(this->keyboard);
+-        wl_event_queue_destroy(this->queue);
++        if (this->keyboard) wl_keyboard_destroy(this->keyboard);
++        if (this->seat) wl_seat_destroy(this->seat);
++        if (this->queue) wl_event_queue_destroy(this->queue);
+@@ -201,0 +203,2 @@ void init_wayland_data(struct wl_display *display, void *vk_surface)
++    // Framoryx controls live in its own UI; no game keyboard listener is needed.
++    if (framoryx_hud::requested()) return;
+@@ -248 +251 @@ void wayland_data_unref(struct wl_display *display, void *vk_surface)
+-            if (display.second.vk_surfaces.count(vk_surface))
++            if (display.second.vk_surfaces.erase(vk_surface))
+@@ -254 +257 @@ void wayland_data_unref(struct wl_display *display, void *vk_surface)
+-    for (auto it = displays.begin(); it != displays.end(); it++)
++    for (auto it = displays.begin(); it != displays.end();)
+@@ -256,5 +259,2 @@ void wayland_data_unref(struct wl_display *display, void *vk_surface)
+-        if (it->second.ref == 0)
+-            it = displays.erase(it);
+-
+-        if (it == displays.end())
+-            break;
++        if (it->second.ref <= 0) it = displays.erase(it);
++        else ++it;

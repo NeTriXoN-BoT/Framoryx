@@ -30,3 +30,7 @@ mode=--ui-smoke
 timeout 45 "$app" "$mode" --test-root "$XDG_CONFIG_HOME/ui" --snapshot-dir "$report/ui"
 timeout 120 "$app" --backend-test --backend-scope wayland \
     --test-root "$XDG_CONFIG_HOME/games" --snapshot-dir "$report/games"
+
+if [[ "$app" != *.AppImage ]]; then
+    python3 scripts/check-graphics-apis.py --bin "$(dirname "$app")" --output "$report/normal-exit"
+fi

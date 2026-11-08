@@ -6,6 +6,8 @@ Integration checks found and corrected saved-game restoration order, out-of-orde
 
 Default monitoring loads no game layer. Explicit game-layer launches wait for pending compatibility inspection, known indicators select external monitoring, and loaded code still requires a game restart to remove fully. Audio remains opt-in, microphone samples stay in memory, and downloaded plugins are verified before use.
 
+Native Wayland testing also found a runtime cleanup fault on desktops without a keyboard/seat object. A captured native backtrace identified an unconditional proxy destroy. Cleanup now checks object existence, removes surface references once and erases display entries safely. Framoryx mode skips the unused game-keyboard listener entirely. The live suite verifies graceful Vulkan scene exit as well as forced fixture cleanup. Its software-rendered Qt FIFO scene cannot reach 60 FPS even without a layer, so Wayland Vulkan exercises distinct 20/30 FPS targets; OpenGL and X11 keep their 30/60 FPS checks.
+
 See [feature verification](FEATURE-CHECKS.md) for current integration scope and [runtime sources](RUNTIME-SOURCES.md) for dependencies and licenses. No universal game, ban-free, zero-overhead or physical-device certification is claimed.
 
 ## Earlier audit records

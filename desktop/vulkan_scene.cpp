@@ -47,6 +47,6 @@ int main(int argc,char** argv){
     bool valid=false;const int seconds=arguments.value(secondsIndex+1).toInt(&valid);
     if(secondsIndex>=0&&valid&&seconds>0&&seconds<=600)QTimer::singleShot(seconds*1000,&application,&QGuiApplication::quit);
     QElapsedTimer elapsed;elapsed.start();const int status=application.exec();
-    if(reportIndex>=0){QSaveFile file(arguments.value(reportIndex+1));const QJsonObject result{{"api","Vulkan"},{"frames",qint64(window.frames)},{"elapsedMs",elapsed.elapsed()},{"valid",window.rendered}};if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(result).toJson())<0||!file.commit())return 3;}
+    if(reportIndex>=0){QSaveFile file(arguments.value(reportIndex+1));const QJsonObject result{{"api","Vulkan"},{"exitCode",status},{"frames",qint64(window.frames)},{"elapsedMs",elapsed.elapsed()},{"valid",window.rendered}};if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(result).toJson())<0||!file.commit())return 3;}
     return status?status:window.frames>0?0:1;
 }
