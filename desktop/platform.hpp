@@ -29,6 +29,10 @@ private:
     std::unique_ptr<PassiveCapture> m_passive;
     bool attachPassive(bool explain=false);
     QString m_passiveName;quint32 m_passivePid=0;
+    QMap<QProcess*,QString> m_pendingAudio;
+    QMap<QProcess*,quint64> m_audioGeneration;
+    QString m_outputTarget;
+    void startAudio(QProcess* process);
     QProcess m_engine, m_game, m_mic, m_output;
     QByteArray m_incoming;
     QString m_token, m_logFile;

@@ -14,6 +14,7 @@
 #include <windows.h>
 #include <dxgi1_2.h>
 #include <pdh.h>
+#include <pdhmsg.h>
 #endif
 namespace {
 QByteArray readSmall(const QString& path){QFile file(path);if(!file.open(QIODevice::ReadOnly))return {};const auto data=file.read(4097);return data.size()<=4096?data.trimmed():QByteArray();}

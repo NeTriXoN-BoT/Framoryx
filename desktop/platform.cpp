@@ -57,7 +57,7 @@ Platform::Platform(Controller* controller):QObject(controller),c(controller){
     });
     for(auto* process:{&m_mic,&m_output}){
         connect(process,&QProcess::readyReadStandardError,this,[this,process]{auto error=process->readAllStandardError();if(error.size()>4096)error=error.right(4096);c->setState(process==&m_mic?"micDiagnostic":"outputDiagnostic",QString::fromUtf8(error));});
-        connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this,process](int code,QProcess::ExitStatus){c->setState(process==&m_mic?"micConfigured":"bassConfigured",false);if(code&&!m_closing)c->notify("An audio filter stopped. Open Audio setup to inspect its status.","warning");});
+        connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this,process](int code,QProcess::ExitStatus){c->setState(process==&m_mic?"micConfigured":"bassConfigured",false);if(code&&!m_closing&&!m_pendingAudio.contains(process))c->notify("An audio filter stopped. Open Audio setup to inspect its status.","warning");if(m_pendingAudio.contains(process)&&!m_closing)QTimer::singleShot(0,this,[this,process]{startAudio(process);});});
     }
 }
 Platform::~Platform(){shutdown();}
@@ -200,7 +200,7 @@ void Platform::linuxScan(){
     if(!exe("wpctl").isEmpty())command(exe("wpctl"),{"get-volume","@DEFAULT_AUDIO_SINK@"},[this](int code,QByteArray output){if(code)return;const auto parts=output.simplified().split(' ');if(parts.size()>1){const int value=qBound(0,qRound(parts[1].toDouble()*100),200);if(!m_volumeTimer.isActive()&&c->m_clock.elapsed()>c->m_volumeUntil){c->m_state["volume"]=value;c->m_options["volume"]=value;emit c->optionsChanged();}c->m_state["muted"]=output.contains("MUTED");}});
     if(!exe("pw-dump").isEmpty())command(exe("pw-dump"),{},[this](int code,QByteArray output){
         m_refreshing=false;if(code)return;const auto array=QJsonDocument::fromJson(output).array();QVariantList nodes;
-        for(const auto& item:array){const auto object=item.toObject();if(object["type"]!="PipeWire:Interface:Node")continue;const auto props=object["info"].toObject()["props"].toObject();const auto media=props["media.class"].toString();if(media!="Audio/Source"&&media!="Audio/Sink")continue;nodes<<QVariantMap{{"id",object["id"].toInt()},{"name",props["node.name"].toString()},{"description",props["node.description"].toString()},{"media",media},{"rate",props["audio.rate"].toInt()}};}
+        for(const auto& item:array){const auto object=item.toObject();if(object["type"]!="PipeWire:Interface:Node")continue;const auto props=object["info"].toObject()["props"].toObject();const auto media=props["media.class"].toString();if(!media.startsWith("Audio/Source")&&!media.startsWith("Audio/Sink"))continue;nodes<<QVariantMap{{"id",object["id"].toInt()},{"name",props["node.name"].toString()},{"description",props["node.description"].toString()},{"media",media},{"rate",props["audio.rate"].toInt()}};}
         c->setState("audioNodes",nodes);
     });else m_refreshing=false;
 #endif
@@ -309,16 +309,35 @@ void Platform::linuxAudio(bool microphone){
     QJsonObject capture{{"node.name",microphone?"capture.framoryx_mic":"framoryx_output"},{"node.description",microphone?"Framoryx microphone input":"Framoryx Output"},{"audio.position",QJsonArray{microphone?"MONO":"FL",microphone?"MONO":"FR"}}};
     QJsonObject playback{{"node.name",microphone?"framoryx_mic":"playback.framoryx_output"},{"node.description",microphone?"Framoryx Microphone":"Framoryx output playback"}};
     if(microphone){capture["node.passive"]=true;capture["audio.rate"]=48000;capture["audio.channels"]=1;capture["audio.position"]=QJsonArray{"MONO"};playback["media.class"]="Audio/Source";playback["audio.rate"]=48000;playback["audio.channels"]=1;playback["audio.position"]=QJsonArray{"MONO"};
-        const QString chosen=QString::fromUtf8(QByteArray::fromBase64(o["micId"].toByteArray()));for(const auto& value:c->m_state["audioNodes"].toList()){const auto entry=value.toMap();if(entry["media"]=="Audio/Source"&&entry["name"]!="framoryx_mic"&&(entry["name"]==chosen||entry["description"]==c->m_state["selectedMicName"]))capture["target.object"]=entry["name"].toString();}
-    }else{capture["media.class"]="Audio/Sink";playback["node.passive"]=true;}
+        const QString chosen=QString::fromUtf8(QByteArray::fromBase64(o["micId"].toByteArray()));QString target;QStringList descriptions;
+        for(const auto& value:c->m_state["audioNodes"].toList()){const auto entry=value.toMap();if(!entry["media"].toString().startsWith("Audio/Source")||entry["name"]=="framoryx_mic")continue;if(entry["name"]==chosen)target=entry["name"].toString();if(!c->m_state["selectedMicName"].toString().isEmpty()&&entry["description"]==c->m_state["selectedMicName"])descriptions<<entry["name"].toString();}
+        if(target.isEmpty()&&descriptions.size()==1)target=descriptions.first();
+        if(target.isEmpty()){c->notify("The selected physical microphone is unavailable. Refresh devices and select its input before applying effects.","warning");return;}capture["target.object"]=target;
+    }else{
+        capture["media.class"]="Audio/Sink";playback["node.passive"]=true;
+        const auto output=QMediaDevices::defaultAudioOutput();const auto chosen=QString::fromUtf8(output.id());QString target;
+        for(const auto& value:c->m_state["audioNodes"].toList()){const auto entry=value.toMap();if(!entry["media"].toString().startsWith("Audio/Sink")||entry["name"]=="framoryx_output")continue;if(entry["name"]==chosen||entry["description"]==output.description())target=entry["name"].toString();if(target.isEmpty()&&entry["name"]==m_outputTarget)target=m_outputTarget;}
+        if(target.isEmpty()){c->notify("A physical output could not be identified. Refresh audio devices before applying bass.","warning");return;}m_outputTarget=target;playback["target.object"]=target;
+    }
     const QJsonObject graph{{"nodes",nodes},{"links",links},{"inputs",QJsonArray{first}},{"outputs",QJsonArray{previous}}};
     const QJsonObject args{{"node.description",microphone?"Framoryx Microphone":"Framoryx Output"},{"filter.graph",graph},{"capture.props",capture},{"playback.props",playback}};
     QJsonArray modules{QJsonObject{{"name","libpipewire-module-rt"},{"flags",QJsonArray{"ifexists","nofail"}}},QJsonObject{{"name","libpipewire-module-protocol-native"}},QJsonObject{{"name","libpipewire-module-client-node"}},QJsonObject{{"name","libpipewire-module-adapter"}},QJsonObject{{"name","libpipewire-module-filter-chain"},{"args",args}}};
     QJsonObject config{{"context.properties",QJsonObject{{"log.level",1}}},{"context.spa-libs",QJsonObject{{"audio.convert.*","audioconvert/libspa-audioconvert"},{"support.*","support/libspa-support"}}},{"context.modules",modules}};
     const QString path=c->root()+(microphone?"/microphone.conf":"/output.conf");if(!writeFile(path,QJsonDocument(config).toJson())){c->notify("Audio configuration could not be saved.","error");return;}
-    auto process=microphone?&m_mic:&m_output;if(process->state()!=QProcess::NotRunning){process->terminate();if(!process->waitForFinished(800))process->kill();}
+    auto process=microphone?&m_mic:&m_output;m_pendingAudio[process]=path;++m_audioGeneration[process];
+    if(process->state()==QProcess::NotRunning)startAudio(process);
+    else {const auto oldPid=process->processId();process->terminate();QTimer::singleShot(800,this,[this,process,oldPid]{if(!m_closing&&process->state()!=QProcess::NotRunning&&process->processId()==oldPid)process->kill();});}
+
+#endif
+}
+void Platform::startAudio(QProcess* process){
+#ifndef Q_OS_WIN
+    if(m_closing||!m_pendingAudio.contains(process))return;
+    const auto path=m_pendingAudio.take(process);const auto generation=m_audioGeneration[process];const bool microphone=process==&m_mic;
     process->start(exe("pipewire"),{"-c",path});
-    QTimer::singleShot(1200,this,[this,process,microphone]{const bool running=process->state()==QProcess::Running;c->setState(microphone?"micConfigured":"bassConfigured",running);c->setState("audioStatus",running?(microphone?"Framoryx Microphone is ready. Select it in your game's voice settings.":"Framoryx Output is ready. Choose it as playback output to hear bass enhancement."):"The audio filter could not start. Open Compatibility for its diagnostic.");linuxScan();});
+    QTimer::singleShot(1200,this,[this,process,generation,microphone]{if(generation!=m_audioGeneration[process]||m_closing)return;const bool running=process->state()==QProcess::Running;c->setState(microphone?"micConfigured":"bassConfigured",running);c->setState("audioStatus",running?(microphone?"Framoryx Microphone is ready. Select it in your game's voice settings.":"Framoryx Output is ready. Choose it as playback output to hear bass enhancement."):"The audio filter could not start. Open Settings for its diagnostic.");linuxScan();});
+#else
+    Q_UNUSED(process);
 #endif
 }
 void Platform::updateNoise(bool force){
@@ -398,7 +417,7 @@ void Platform::action(const QString& name,const QVariantMap& args){
     if(name=="overlay"){c->setState("overlay",!c->m_state["overlay"].toBool());applyOptions("fields");c->notify(c->m_state["overlay"].toBool()?"Overlay enabled for monitored launches. Reload it with Shift+F4 in a running game.":"Overlay hidden for monitored launches. Reload it with Shift+F4 in a running game.");return;}
     if(name=="micApply"){linuxAudio(true);return;}
     if(name=="bassApply"){linuxAudio(false);return;}
-    if(name=="micDisable"||name=="bassDisable"){auto process=name=="micDisable"?&m_mic:&m_output;process->terminate();c->setState(name=="micDisable"?"micConfigured":"bassConfigured",false);c->setState("pendingMic",false);c->notify("The selected Framoryx effects are disabled.");return;}
+    if(name=="micDisable"||name=="bassDisable"){auto process=name=="micDisable"?&m_mic:&m_output;m_pendingAudio.remove(process);++m_audioGeneration[process];process->terminate();c->setState(name=="micDisable"?"micConfigured":"bassConfigured",false);c->setState("pendingMic",false);c->notify("The selected Framoryx effects are disabled.");return;}
     if(name=="defaultMic"||name=="defaultOutput"){const QString target=name=="defaultMic"?"framoryx_mic":"framoryx_output";for(const auto& value:c->m_state["audioNodes"].toList()){const auto node=value.toMap();if(node["name"]==target){command(exe("wpctl"),{"set-default",node["id"].toString()},[this](int code,QByteArray){c->notify(code?"The default audio device could not be changed.":"Framoryx is now the default audio device.",code?"warning":"info");});return;}}c->notify("Apply this effect first, then choose its virtual device.");return;}
     if(name=="shortcut"){const QString folder=QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);if(folder.isEmpty()){c->notify("No desktop folder is configured. Framoryx is available in your app launcher.");return;}const QString program=QCoreApplication::applicationFilePath();QByteArray entry="[Desktop Entry]\nType=Application\nName=Framoryx\nExec=\""+QFile::encodeName(program).replace("\"","\\\"")+"\"\nIcon=io.framoryx.Framoryx\nTerminal=false\nCategories=Game;Utility;\n";const QString path=folder+"/Framoryx.desktop";if(writeFile(path,entry)){QFile::setPermissions(path,QFile::permissions(path)|QFile::ExeOwner);c->notify("Desktop shortcut created. Your desktop may ask you to trust the launcher once.");}else c->notify("The desktop shortcut could not be created.","warning");return;}
     if(name=="fixture"){const QString scene=QCoreApplication::applicationDirPath()+"/FramoryxScene";c->addGame(QUrl::fromLocalFile(scene),"Framoryx test scene","");linuxLaunch();return;}

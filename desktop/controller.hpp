@@ -93,7 +93,6 @@ signals:
 private:
     friend class Platform;
     friend class AudioMonitor;
-class Telemetry;
     QString m_root;
     bool m_test = false, m_active = true, m_scanningProcesses = false;
     QVariantMap m_state, m_options;

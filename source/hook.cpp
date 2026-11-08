@@ -51,13 +51,17 @@ std::array<float, 120> hudTimes{};
 size_t hudHead = 0, hudCount = 0;
 float fontScale = 0;
 int fontStyle = -1;
+float requestedFontScale=0;ULONGLONG requestedFontAt=0;
 ImFont* largeFont = nullptr;
 double rollingAverage = 0, rollingLow = 0;
 std::vector<double> rollingIntervals;
 bool prepareHudFonts(float scale, int style) {
-    if (std::abs(fontScale - scale) < .015f && fontStyle == style)
-        return true;
     auto& io = ImGui::GetIO();
+    if (std::abs(fontScale - scale) < .015f && fontStyle == style){io.FontGlobalScale=scale/fontScale;return true;}
+    if(fontScale>0&&fontStyle==style){
+        if(std::abs(requestedFontScale-scale)>.015f){requestedFontScale=scale;requestedFontAt=GetTickCount64();}
+        if(GetTickCount64()-requestedFontAt<180){io.FontGlobalScale=scale/fontScale;return true;}
+    }
     ImGui_ImplDX11_InvalidateDeviceObjects();
     io.Fonts->Clear();
     wchar_t windows[32768]{};

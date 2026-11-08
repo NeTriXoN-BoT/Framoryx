@@ -61,6 +61,7 @@ ApplicationWindow {
                         required property int index
                         required property string modelData
                         text: modelData
+                        objectName: "navigation-"+index
                         Layout.fillWidth: true
                         implicitHeight: Theme.px(46)
                         quiet: window.page!==index

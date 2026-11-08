@@ -139,6 +139,7 @@ void Controller::setOption(const QString& key,const QVariant& value){
         const QList<QList<int>> presets{{0,0,0},{-3,0,3},{3,0,-3},{0,-3,6},{6,-3,0}};
         const int i=m_options[key].toInt();if(i<5){m_options["low"]=presets[i][0];m_options["mid"]=presets[i][1];m_options["high"]=presets[i][2];m_options["eq"]=true;}
     }
+    if(key=="micId"){m_state["selectedMicName"]="";for(const auto& item:m_devices)if(item.toMap()["id"]==m_options["micId"])m_state["selectedMicName"]=item.toMap()["name"];}
     if(key=="volume"){m_volumeUntil=m_clock.elapsed()+700;setState("volume",m_options["volume"]);}
     if(key=="micId"||key=="noise"||key=="eq"||key=="noisePreset"||key=="voicePreset"||key=="low"||key=="mid"||key=="high")setState("pendingMic",false);
     emit optionsChanged();if(QStringList{"fields","order","style","opacity","overlayScale","fontScale","hudX","hudY","accent"}.contains(key))emit overlayChanged();scheduleSave();
@@ -248,7 +249,7 @@ void Controller::setState(const QString& key,const QVariant& value){if(m_state.v
 void Controller::setWindowActive(bool active){m_active=active;}
 void Controller::refreshDevices(){
     QVariantList out;for(const auto& device:QMediaDevices::audioInputs())out<<QVariantMap{{"id",QString::fromLatin1(device.id().toBase64())},{"name",device.description()},{"rate",device.preferredFormat().sampleRate()},{"channels",device.preferredFormat().channelCount()}};
-    m_devices=out;emit devicesChanged();
+    m_devices=out;for(const auto& item:m_devices)if(item.toMap()["id"]==m_options["micId"])m_state["selectedMicName"]=item.toMap()["name"];emit devicesChanged();
     if(m_options["micId"].toString().isEmpty()&&!out.isEmpty())setOption("micId",QString::fromLatin1(QMediaDevices::defaultAudioInput().id().toBase64()));
 }
 void Controller::refreshCapabilities(){if(!m_test)m_platform->refresh();}
@@ -283,7 +284,11 @@ void Controller::action(const QString& name,const QVariantMap& args){
     if(name=="processRefresh"){refreshProcesses();return;}
     if(name=="hideToTray"){emit hideRequested();return;}
     if(name=="refresh"){refreshDevices();refreshCapabilities();return;}
-    if(name=="record"){if(m_test)return;m_audio->record(QByteArray::fromBase64(m_options["micId"].toByteArray()));return;}
+    if(name=="record"){if(m_test)return;auto device=QByteArray::fromBase64(m_options["micId"].toByteArray());
+#ifndef Q_OS_WIN
+        if(m_state["micConfigured"].toBool())for(const auto& input:QMediaDevices::audioInputs())if(input.id()=="framoryx_mic"||input.description()=="Framoryx Microphone"){device=input.id();break;}
+#endif
+        m_audio->record(device);return;}
     if(name=="playSample"){if(!m_test)m_audio->play();return;}
     if(name=="stopSample"){m_audio->stop();return;}
     if(name=="export"){writeCsv(QUrl(args["url"].toString()).toLocalFile());return;}

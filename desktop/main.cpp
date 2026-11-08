@@ -19,6 +19,8 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QQuickItem>
+#include <QMouseEvent>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QSystemTrayIcon>
@@ -105,9 +107,9 @@ int main(int argc,char** argv){
         ShowWindow(HWND(window->winId()),SW_SHOWNOACTIVATE);
 #endif
         window->requestUpdate();
-        auto timer=new QTimer(&application);timer->setInterval(950);int* step=new int(0);auto frames=std::make_shared<int>(0);
+        auto timer=new QTimer(&application);timer->setInterval(950);int* step=new int(0);auto frames=std::make_shared<int>(0);auto interactions=std::make_shared<QVariantMap>();
         QObject::connect(window,&QQuickWindow::frameSwapped,&application,[frames]{++*frames;});
-        QObject::connect(timer,&QTimer::timeout,&application,[&,timer,step,frames,destination]{
+        QObject::connect(timer,&QTimer::timeout,&application,[&,timer,step,frames,interactions,destination]{
             if(*step<7){window->setProperty("page",*step);}
             else if(*step<14){const int page=*step-7;window->setProperty("page",page);QTimer::singleShot(450,&application,[&,page,destination]{if(!window->grabWindow().save(destination+QString("/page-%1.png").arg(page)))qmlFailure=true;});}
             else if(*step==14){controller.setOption("style",1);window->setProperty("page",1);}
@@ -117,9 +119,25 @@ int main(int argc,char** argv){
             else if(*step==18){window->grabWindow().save(destination+"/compact-auto.png");controller.setOption("motion",false);}
             else if(*step==19){window->resize(1440,980);window->setProperty("page",1);controller.setOption("style",3);controller.setOption("opacity",0);}
             else if(*step==20){window->grabWindow().save(destination+"/studio-transparent.png");controller.setOption("style",4);controller.setOption("opacity",90);controller.setOption("accent",4);}
-            else if(*step==21){
-                timer->stop();window->grabWindow().save(destination+"/studio-dashboard.png");const bool pass=!qmlFailure&&*frames>10;
-                QSaveFile file(destination+"/ui-result.json");file.open(QIODevice::WriteOnly);file.write(QJsonDocument(QJsonObject{{"passed",pass},{"qmlWarnings",qmlFailure},{"warnings",QJsonArray::fromStringList(qmlWarnings)},{"frames",*frames},{"exposed",window->isExposed()},{"visible",window->isVisible()},{"graphicsApi",int(window->rendererInterface()->graphicsApi())},{"pages",7},{"screenshots",13},{"platform",controller.platformName()}}).toJson());file.commit();delete step;application.exit(pass?0:1);return;
+            else if(*step==21){window->grabWindow().save(destination+"/studio-dashboard.png");window->setProperty("page",2);controller.setOption("uiScale",100);}
+            else if(*step==22){
+                auto item=window->findChild<QQuickItem*>("output-volume-slider");bool pass=item&&item->isVisible();QElapsedTimer elapsed;elapsed.start();
+                if(pass){auto send=[&](QEvent::Type type,qreal x,Qt::MouseButton button,Qt::MouseButtons buttons){const auto position=item->mapToScene(QPointF(x,item->height()/2));QMouseEvent event(type,position,QPointF(window->mapToGlobal(position.toPoint())),button,buttons,Qt::NoModifier);QCoreApplication::sendEvent(window,&event);};
+                    send(QEvent::MouseButtonPress,8,Qt::LeftButton,Qt::LeftButton);
+                    for(int i=0;i<120;++i)send(QEvent::MouseMove,8+(item->width()-16)*(i%40)/39.,Qt::NoButton,Qt::LeftButton);
+                    send(QEvent::MouseMove,item->width()-8,Qt::NoButton,Qt::LeftButton);send(QEvent::MouseButtonRelease,item->width()-8,Qt::LeftButton,Qt::NoButton);
+                    pass=controller.options()["volume"].toInt()==200;
+                }
+                (*interactions)["sliderDragMs"]=elapsed.elapsed();(*interactions)["sliderFinalValue"]=controller.options()["volume"];(*interactions)["sliderPassed"]=pass;(*interactions)["sliderEvents"]=123;
+            }
+            else if(*step==23){
+                bool pass=true;QElapsedTimer elapsed;elapsed.start();
+                for(int i=0;i<7;++i){auto item=window->findChild<QQuickItem*>(QString("navigation-%1").arg(i));if(!item){pass=false;continue;}const auto position=item->mapToScene(QPointF(item->width()/2,item->height()/2));const QPointF global(window->mapToGlobal(position.toPoint()));QMouseEvent press(QEvent::MouseButtonPress,position,global,Qt::LeftButton,Qt::LeftButton,Qt::NoModifier),release(QEvent::MouseButtonRelease,position,global,Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&press);QCoreApplication::sendEvent(window,&release);pass=pass&&window->property("page").toInt()==i;}
+                (*interactions)["sevenTabSwitchesMs"]=elapsed.elapsed();(*interactions)["tabNavigationPassed"]=pass;(*interactions)["statePreserved"]=controller.options()["volume"].toInt()==200;
+            }
+            else if(*step==24){
+                timer->stop();const bool pass=!qmlFailure&&*frames>10&&interactions->value("sliderPassed").toBool()&&interactions->value("tabNavigationPassed").toBool()&&interactions->value("statePreserved").toBool();
+                QSaveFile file(destination+"/ui-result.json");file.open(QIODevice::WriteOnly);file.write(QJsonDocument(QJsonObject{{"passed",pass},{"interactions",QJsonObject::fromVariantMap(*interactions)},{"qmlWarnings",qmlFailure},{"warnings",QJsonArray::fromStringList(qmlWarnings)},{"frames",*frames},{"exposed",window->isExposed()},{"visible",window->isVisible()},{"graphicsApi",int(window->rendererInterface()->graphicsApi())},{"pages",7},{"screenshots",13},{"platform",controller.platformName()}}).toJson());file.commit();delete step;application.exit(pass?0:1);return;
             }
             ++*step;
         });timer->start();
