@@ -1407,9 +1407,10 @@ LRESULT CALLBACK hudProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(window, msg, wp, lp);
 }
 void update() {
-    // Static audio/help pages reuse their body until a control or device state changes.
-    if (app.page != 1 && app.page != 4)
+    // Static pages reuse their body until a control, notice or device state changes.
+    if (app.page == 0 || app.page == 5 || app.page == 6)
         app.contentDirty = true;
+    auto previousNotice = app.notice;
     PerfMeter perf(app.updateMilliseconds);
     ++app.tick;
     if (app.pendingDemoPid) {
@@ -1802,6 +1803,8 @@ void update() {
         app.notice = captureMessage;
     EnableWindow(app.controls[Disable], app.hook.active() || app.hook.status() == 0);
     positionHud();
+    if (previousNotice != app.notice)
+        app.contentDirty = true;
     if (!IsIconic(app.window) && (GetForegroundWindow() == app.window || app.tick % 4 == 0))
         InvalidateRect(app.window, nullptr, FALSE);
 }

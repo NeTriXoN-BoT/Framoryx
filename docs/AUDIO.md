@@ -20,7 +20,7 @@ APO must also be enabled for that playback device in its device configurator. Fi
 
 The RNNoise presets use voice-detection thresholds of 50% (**Natural**), 85% (**Balanced**) and 95% (**Strong**), with a 200 ms grace period and no retroactive lookahead. A higher threshold can cut quiet speech; try Natural if words disappear. RNNoise is designed for voice and cannot guarantee removal of every sound or echo. See the [upstream settings and sample-rate requirements](https://github.com/werman/noise-suppression-for-voice#plugin-settings).
 
-**Microphone EQ** has low (150 Hz), mid (1.2 kHz) and high (6 kHz) bands, adjustable from −12 to +12 dB in 3 dB steps, plus Flat, Clarity, Warmth and Presence presets. Positive gains receive conservative headroom compensation. EQ alone does not require the noise plugin or a 48 kHz format.
+**Microphone EQ** has low (150 Hz), mid (1.2 kHz) and high (6 kHz) bands, adjustable from −12 to +12 dB in 3 dB steps, plus Flat, Clarity, Warmth, Presence and **Bassy voice** presets. Bassy voice adds +6 dB below 150 Hz, cuts 1.2 kHz by 3 dB to reduce boxiness, and leaves the high band flat. A −6 dB preamp reserves headroom. This can warm a thin microphone; the result still depends on its capsule, placement and room. Preset labels restore from saved gains, and edited combinations show Custom. EQ alone does not require the noise plugin or a 48 kHz format.
 
 ## Automatic plugin updates
 
@@ -28,7 +28,9 @@ Automatic checks run when opening the microphone controls, at most once per 24 h
 
 Downloads use HTTPS from the official GitHub repository and GitHub's asset servers, with bounded sizes, archive CRC checks, x64/plugin-name checks and an isolated audio/preset compatibility probe. Available upstream SHA-256 digests are checked; the verified v1.10 archive is additionally pinned to its known SHA-256. A locally calculated hash alone does not establish publisher identity.
 
-Versions live in separate folders under `tools/rnnoise`, with source/version information. Downloads do not overwrite a plugin currently in use. A failed check leaves the existing configuration intact. New compatible versions become the automatic selection for the next Apply; Framoryx does not silently rewrite an active microphone chain just because a new version appears. Keep the app folder in a stable location, or reapply effects after moving it.
+Versions live in separate folders under `tools/rnnoise`, with source/version information. Cached DLLs are checked against stored hashes, with compiled known-file hashes for v1.10. Applying an effect verifies the selected bytes again and stages a separate copy under `EqualizerAPO/config/FramoryxPlugins/<SHA-256>/`; the APO config uses that installed copy. Moving or editing a download does not change an already installed plugin. Folder permissions still matter: keep your APO installation and configuration under your control.
+
+A failed check leaves the existing configuration intact. New compatible versions become the automatic selection for the next Apply; Framoryx does not silently rewrite an active microphone chain just because a new version appears. Old installed versions remain available for existing configurations. Audio writes are serialized within the app and use atomic replacement to prevent gain, bass and microphone updates from losing each other's include lines.
 
 The external plugin is GPL-3.0 and downloaded directly from its upstream distribution; it is not embedded in Framoryx's executable. [RNNoise source and license](https://github.com/werman/noise-suppression-for-voice) and [EasyEffects](https://github.com/wwmm/easyeffects) are separate projects. Framoryx's current Windows audio controls do not include the full EasyEffects effect chain.
 

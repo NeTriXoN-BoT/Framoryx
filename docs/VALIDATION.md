@@ -1,4 +1,20 @@
-# Version 0.2 validation
+# Version 0.2.1 validation
+
+The maintenance release completed the following Windows checks:
+
+- **110 core checks**, including 75 viewport combinations across normal, maximized, ultrawide, smaller and 4K client sizes, three DPI levels and five percentage settings.
+- **20 gain**, **38 microphone/bass** and **49 file-integrity/concurrent-audio checks** in scratch folders; no system audio changes.
+- **20,000 deterministic malformed-input cases**. Core, malformed-input and all three audio suites also passed with address/undefined-behavior sanitizers.
+- **67 graphics/lifecycle checks** against the bundled x64 DX11, x64 DX12 and x86 DX11 test scenes.
+- **Five native layout checks** for maximize, 80%, 125%, Auto and restore, checking visible control bounds and maximized state on the local ultrawide display.
+- **Eight audio UI checks**, including the live percentage, 200% maximum, Bassy voice gains and saved-preset label; **two process-rule UI checks**. Diagnostic audio mode suppresses Windows volume writes and uses a scratch APO config.
+- **Four profile/percentage checks** through the real controls. The 28-second motion/profile run received 100 live demo samples, completed 13 transitions and targeted the detected 144 Hz display. It averaged 2.624 ms per paint, with a 196.617 ms peak during initial/layout/cache work while other audit workloads were running. The maximized audio run averaged 1.418 ms per paint and reused its body cache (6 full paints among 469 paints). These are diagnostic measurements, not frame-presentation or idle-power guarantees.
+- A **fresh official RNNoise v1.10 download**, verified archive and isolated mono/stereo audio/preset probes; valid cached official DLLs were accepted, a modified DLL was rejected, and deeply nested metadata was rejected.
+- A **120-second non-injecting ETW/borderless soak**: 391 steady observations, zero missing telemetry, seven window transitions, zero post-warm-up collector private-byte growth and zero handle growth.
+
+CodeQL, clang-tidy and secret-scan scope/dispositions are documented in the [audit record](AUDIT.md). Public downloads are checked from an anonymous runner, including a complete ZIP/checksum comparison.
+
+## Earlier 0.2.0 record
 
 The local Windows validation completed:
 

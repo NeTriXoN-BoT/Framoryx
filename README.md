@@ -50,7 +50,7 @@ Keep an eye on real frame data, make the HUD your own, and get back to playing. 
 2. Open **Framoryx.exe**. Open your game, then choose its window or leave **Auto** selected.
 3. Click **Show overlay**. Capture starts automatically.
 
-Open **Overlay Studio** to choose a layout, readouts, size, colors and opacity. The Studio preview labels sample values when a game is not reporting data. **Desktop app size → Auto** fits the app to your screen; percentages give you manual control. **Create shortcut** adds a desktop link to the extracted copy.
+Open **Overlay Studio** to choose a layout, readouts, size, colors and opacity. The Studio preview labels sample values when a game is not reporting data. **Desktop app size → Auto** adapts to your resolution, DPI and work area; percentages give you manual control. Maximizing preserves your selected size and centers the design with consistent proportions. **Create shortcut** adds a desktop link to the extracted copy.
 
 Keep the application folder together. No account, installer or background service is required for normal monitoring.
 
@@ -90,9 +90,9 @@ See [building and testing](docs/BUILDING.md) for details. The Linux CI job check
 
 ## Project status
 
-Version **0.2.0** adds microphone noise suppression/EQ controls, compensated bass, refreshed process rules and limiter controls, Overlay Studio, three HUD layouts, per-game presentation profiles, sharp font resizing, desktop scale controls, a refresh-aware animation clock, DX12 HUD support, compatibility inspection and tray access.
+Version **0.2.1** improves maximize/restore and automatic scaling, adds a Bassy voice preset, fixes concurrent audio configuration updates, verifies cached RNNoise files and installs separate plugin copies for APO. Static audio pages reuse their rendering cache, and audio file operations run on workers. The toolkit also includes Overlay Studio, three HUD layouts, per-game profiles, DX12 HUD support, process rules, compatibility inspection and tray access.
 
-Local test scenes establish behavior on the development configuration; they are not a commercial-game compatibility certification. [Validation](docs/VALIDATION.md) and [release notes](docs/releases/v0.2.0.md) describe completed checks and current limits. A native Linux application is [planned separately](docs/LINUX.md).
+Local test scenes establish behavior on the development configuration; they are not a commercial-game compatibility certification. [Validation](docs/VALIDATION.md), the [audit record](docs/AUDIT.md) and [release notes](docs/releases/v0.2.1.md) describe completed checks and current limits. A native Linux application is [planned separately](docs/LINUX.md).
 
 ## Contribute
 

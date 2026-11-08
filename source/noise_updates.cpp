@@ -14,6 +14,16 @@ namespace fg {
 namespace {
 using Json = nlohmann::json;
 namespace fs = std::filesystem;
+Json parseMetadata(const std::vector<unsigned char>& bytes, bool strict = true) {
+    return Json::parse(
+        bytes.begin(), bytes.end(),
+        [](int depth, Json::parse_event_t, Json&) {
+            if (depth > 48)
+                throw std::runtime_error("RNNoise metadata is nested too deeply.");
+            return true;
+        },
+        strict);
+}
 struct Internet {
     HINTERNET value{};
     ~Internet() {
@@ -183,7 +193,7 @@ struct NoiseUpdater::State {
                            .count();
             Json cache;
             if (auto bytes = readRegularFile(base / L"latest.json", 65536))
-                cache = Json::parse(bytes->begin(), bytes->end(), nullptr, false);
+                cache = parseMetadata(*bytes, false);
             bool fresh = cache.is_object() && cache.contains("checked") &&
                          cache["checked"].is_number_integer();
             int64_t checked = fresh ? cache["checked"].get<int64_t>() : 0;
@@ -202,7 +212,7 @@ struct NoiseUpdater::State {
                 auto metadata = get(L"https://api.github.com/repos/werman/"
                                     L"noise-suppression-for-voice/releases/latest",
                                     2 * 1024 * 1024);
-                release = Json::parse(metadata);
+                release = parseMetadata(metadata);
             } catch (const std::exception&) {
                 if (cancel)
                     throw;
@@ -210,7 +220,7 @@ struct NoiseUpdater::State {
                 auto metadata =
                     get(L"https://api.github.com/repos/werman/noise-suppression-for-voice/releases",
                         2 * 1024 * 1024);
-                for (const auto& item : Json::parse(metadata))
+                for (const auto& item : parseMetadata(metadata))
                     if (!item.value("prerelease", false) && !item.value("draft", false)) {
                         release = item;
                         break;

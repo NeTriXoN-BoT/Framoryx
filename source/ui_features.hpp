@@ -505,11 +505,9 @@ void advanceMotion() {
     app.metricMs = app.motion ? fg::approach(app.metricMs, app.stats.ms, dt, 14) : app.stats.ms;
     app.metricCpu = app.motion ? fg::approach(app.metricCpu, app.cpu, dt, 12) : app.cpu;
     if (foreground && app.motion) {
-        RECT rect{
-            int(app.originX), int(app.originY), int(app.originX + BW * app.scale),
-            int(app.originY +
-                (app.transitionNew || app.page == 0 || app.page == 5 ? BH : 178) * app.scale) +
-                1};
+        RECT rect{int(app.originX), int(app.originY), int(app.originX + BW * app.scale),
+                  int(app.originY + (app.transitionNew || app.page == 0 ? BH : 178) * app.scale) +
+                      1};
         InvalidateRect(app.window, &rect, FALSE);
     }
 }
