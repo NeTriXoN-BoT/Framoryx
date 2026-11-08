@@ -40,7 +40,6 @@ void AudioMonitor::consume(){
     const QByteArray bytes=m_stream->readAll();
     if(bytes.size()+m_recording.size()>16*1024*1024){stop();return;}
     m_recording+=bytes;
-    m_controller->setState("sampleBytes",m_recording.size());
     const int sampleBytes=m_format.bytesPerSample();
     if(sampleBytes<=0)return;
     for(qsizetype p=0;p+sampleBytes<=bytes.size();p+=sampleBytes){
@@ -76,5 +75,5 @@ void AudioMonitor::stop(){
     if(m_input){m_input->stop();m_input.reset();}m_stream=nullptr;
     if(m_output){m_output->stop();m_output.reset();}
     m_playback.close();
-    if(m_controller){m_controller->setState("recording",false);m_controller->setState("playing",false);m_controller->setState("inputLevel",0.);m_controller->setState("sampleReady",!m_recording.isEmpty());}
+    if(m_controller){m_controller->setState("sampleBytes",m_recording.size());m_controller->setState("recording",false);m_controller->setState("playing",false);m_controller->setState("inputLevel",0.);m_controller->setState("sampleReady",!m_recording.isEmpty());}
 }

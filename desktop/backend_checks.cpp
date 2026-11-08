@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QProcess>
 #include <QTimer>
 #include <algorithm>
 #ifndef Q_OS_WIN
