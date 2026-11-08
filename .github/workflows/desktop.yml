@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['desktop/**', 'runtime/**', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'scripts/check-wayland.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
+    paths: ['desktop/**', 'runtime/**', 'source/**', 'assets/**', 'docs/releases/**', 'VERSION', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'scripts/check-wayland.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
   pull_request:
-    paths: ['desktop/**', 'runtime/**', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'scripts/check-wayland.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
+    paths: ['desktop/**', 'runtime/**', 'source/**', 'assets/**', 'docs/releases/**', 'VERSION', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'scripts/check-wayland.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
