@@ -489,7 +489,7 @@ DWORD WINAPI worker(void*) {
         return 0;
     control = static_cast<fg::HookControl*>(
         MapViewOfFile(map, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(fg::HookControl)));
-    if (!control || control->magic != fg::ipcMagic || control->version != 7 ||
+    if (!control || control->magic != fg::ipcMagic || control->version != fg::ipcVersion ||
         control->targetPid != GetCurrentProcessId() ||
         control->creationTime != fg::creationTime(GetCurrentProcess())) {
         if (control)

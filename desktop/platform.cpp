@@ -214,7 +214,7 @@ void Platform::linuxLaunch(){
     QProcessEnvironment env=QProcessEnvironment::systemEnvironment();env.insert("MANGOHUD_CONFIGFILE",c->root()+"/MangoHud.conf");env.insert("MANGOHUD_DLSYM","1");m_game.setProcessEnvironment(env);
     QStringList args{"--dlsym"};if(c->m_options["gamescope"].toBool())args<<exe("gamescope")<<"-b"<<"-r"<<QString::number(c->m_options["cap"].toInt())<<"--";
     args<<file.absoluteFilePath();args+=unlock::arguments(QProcess::splitCommand(game["arguments"].toString()),game["unlock"].toBool()&&unlock::supported(file.absoluteFilePath()));
-    m_game.setWorkingDirectory(file.absolutePath());m_game.setProgram(exe("mangohud"));m_game.setArguments(args);m_game.setStandardOutputFile(QProcess::nullDevice());m_game.setStandardErrorFile(c->root()+"/game-launch.log");if(!m_game.startDetached(&m_launchedPid)){c->notify("The game could not start. Check its executable and launch arguments.","error");return;}m_monitoring=true;c->m_state["gameRunning"]=true;c->m_state["capture"]=true;c->m_state["game"]=game["name"];c->m_state["renderer"]="MangoHud · Vulkan / OpenGL";c->m_state["launchTime"]=QDateTime::currentMSecsSinceEpoch();
+    m_game.setWorkingDirectory(file.absolutePath());m_game.setProgram(exe("mangohud"));m_game.setArguments(args);m_game.setStandardOutputFile(QProcess::nullDevice());m_game.setStandardErrorFile(c->root()+"/game-launch.log");if(!m_game.startDetached(&m_launchedPid)){c->notify("The game could not start. Check its executable and launch arguments.","error");return;}m_monitoring=true;c->m_state["profilePid"]=quint32(m_launchedPid);c->m_state["profileExe"]=file.fileName();c->m_state["profilePath"]=file.absoluteFilePath();c->m_state["gameRunning"]=true;c->m_state["capture"]=true;c->m_state["game"]=game["name"];c->m_state["renderer"]="MangoHud · Vulkan / OpenGL";c->m_state["launchTime"]=QDateTime::currentMSecsSinceEpoch();
     c->notify("Launching with your overlay and frame-limit settings.");
 #endif
 }
@@ -330,6 +330,14 @@ void Platform::updateNoise(bool force){
 #endif
 }
 void Platform::action(const QString& name,const QVariantMap& args){
+    if(name=="safetyFallback"){
+#ifdef Q_OS_WIN
+        send({{"action","safetyFallback"},{"enabled",args["enabled"].toBool()}});
+#else
+        c->setState("externalPreferred",args["enabled"].toBool());
+#endif
+        return;
+    }
     if(name=="copySteam"){QGuiApplication::clipboard()->setText(launchCommand());c->notify("Steam launch options copied. Paste them into the game's Properties → Launch Options.");return;}
     if(name=="noiseUpdate"){updateNoise(true);return;}
     if(name=="audioOpen"){if(c->m_options["autoNoise"].toBool())updateNoise(false);return;}

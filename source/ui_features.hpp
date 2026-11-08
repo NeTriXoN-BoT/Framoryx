@@ -170,7 +170,7 @@ void pushHookPresentation() {
     auto profile = found == app.hudProfiles.end() ? app.hudBase : found->second;
     app.hook.hudOptions(profile.options);
     app.hook.corner(profile.corner);
-    app.hook.overlay(app.overlay && profile.mode != 1);
+    app.hook.overlay(app.overlay && profile.mode != 1&&!app.safetyFallback);
 }
 void storeHudProfile() {
     app.contentDirty = true;

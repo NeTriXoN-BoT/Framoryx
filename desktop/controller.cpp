@@ -3,6 +3,7 @@
 #include "platform.hpp"
 #include "lifecycle.hpp"
 #include "process_catalog.hpp"
+#include "game_safety.hpp"
 #include "unlock.hpp"
 #include "presentation.hpp"
 #include <QtConcurrent>
@@ -58,7 +59,9 @@ Controller::Controller(QString root,bool testing,QObject* parent):QObject(parent
     connect(&m_poll,&QTimer::timeout,this,&Controller::poll);
     connect(&m_media,&QMediaDevices::audioInputsChanged,this,&Controller::refreshDevices);
     connect(&m_media,&QMediaDevices::audioOutputsChanged,this,&Controller::refreshDevices);
-    if(!m_test){refreshDevices();m_platform->start();m_poll.start(250);}
+    m_state["antiCheatStatus"]="unknown";m_state["antiCheatDetail"]="Select a game to check for known indicators. Inspection cannot establish anti-cheat approval.";
+    m_safetyTimer.setInterval(10000);connect(&m_safetyTimer,&QTimer::timeout,this,[this]{assessCurrentGame(true);});
+    if(!m_test){refreshDevices();m_platform->start();m_poll.start(250);m_safetyTimer.start();}
 }
 Controller::~Controller(){m_poll.stop();m_audio->stop();m_platform->shutdown();save();}
 QString Controller::platformName()const{
@@ -153,7 +156,7 @@ QVariantMap Controller::overlayLayout()const{
 }
 void Controller::setReadout(int index,bool visible){if(index<0||index>=10)return;int fields=m_options["fields"].toInt();setOption("fields",visible?fields|(1<<index):fields&~(1<<index));}
 void Controller::moveReadout(int index,int direction){auto order=m_options["order"].toList();const int at=order.indexOf(index),to=at+(direction<0?-1:1);if(at<0||to<0||to>=order.size())return;order.swapItemsAt(at,to);setOption("order",order);}
-void Controller::selectGame(const QString& id){setOption("selectedGame",id);if(!m_test)m_platform->select(id);}
+void Controller::selectGame(const QString& id){setOption("selectedGame",id);if(!m_test){m_platform->select(id);assessCurrentGame(true);}}
 void Controller::addGame(const QUrl& url,const QString& label,const QString& arguments){
     const QString path=QFileInfo(url.toLocalFile()).canonicalFilePath();
     const QFileInfo info(path);
@@ -181,6 +184,27 @@ QString Controller::processRuleStatus(const QString& name)const{
     for(const auto& pattern:m_options["deny"].toStringList())if(fg::wildcard(pattern.toStdString(),native))return "Blocked";
     for(const auto& pattern:m_options["allow"].toStringList())if(fg::wildcard(pattern.toStdString(),native))return "Allowed";
     return "Default";
+}
+void Controller::assessCurrentGame(bool force){
+    if(m_test)return;
+    QString path;quint32 pid=0;const auto selected=m_options["selectedGame"].toString();
+    for(const auto& item:m_games){const auto game=item.toMap();if(game["id"]==selected){path=game["executable"].toString();if(QFileInfo(path).fileName().compare(m_state["profileExe"].toString(),Qt::CaseInsensitive)==0)pid=m_state["profilePid"].toUInt();}}
+    for(const auto& item:m_state["windows"].toList()){const auto window=item.toMap();if(window["id"]==selected){pid=window["pid"].toUInt();break;}}
+    if(selected=="auto"){pid=m_state["profilePid"].toUInt();path=m_state["profilePath"].toString();}
+    const auto key=path+":"+QString::number(pid);if(!force&&key==m_safetyKey)return;
+    if(key!=m_safetyKey){m_manualRiskKey.clear();m_state["antiCheatStatus"]="unknown";m_state["antiCheatDetail"]="Checking known per-game and system-wide indicators…";m_platform->action("safetyFallback",{{"enabled",true}});}
+    if(m_safetyBusy){m_safetyKey=key;return;}
+    m_safetyKey=key;m_safetyBusy=true;
+    auto watcher=new QFutureWatcher<QVariantMap>(this);
+    connect(watcher,&QFutureWatcher<QVariantMap>::finished,this,[this,watcher,key]{
+        const auto result=watcher->result();watcher->deleteLater();m_safetyBusy=false;
+        if(key!=m_safetyKey){assessCurrentGame(true);return;}
+        m_state["antiCheatStatus"]=result["status"];m_state["antiCheatDetail"]=result["detail"];
+        const bool fallback=result["status"]!="no-known-indicator"&&m_manualRiskKey!=key+":"+result["status"].toString();
+        if(result["status"]=="detected")m_manualRiskKey.clear();
+        m_platform->action("safetyFallback",{{"enabled",result["status"]=="detected"||fallback}});emit stateChanged();
+    });
+    watcher->setFuture(QtConcurrent::run(assessGame,path,pid));emit stateChanged();
 }
 void Controller::refreshProcesses(){
     if(m_test||m_scanningProcesses)return;
@@ -232,7 +256,7 @@ void Controller::receive(const QJsonObject& incoming){
     if(next.contains("microphones")){const auto list=next.take("microphones").toList();m_state["engineMicrophones"]=list;}
     if(next.contains("graph"))m_graph=next.take("graph").toList();
     for(auto it=next.begin();it!=next.end();++it)m_state[it.key()]=it.value();
-    emit stateChanged();
+    emit stateChanged();if(!m_test)assessCurrentGame();
 }
 void Controller::sampleFrames(const QList<double>& times,const QString& app,quint32 pid){
     const double now=m_clock.elapsed()/1000.;m_livePid=pid;
@@ -265,6 +289,10 @@ void Controller::action(const QString& name,const QVariantMap& args){
     if(name=="release"){QDesktopServices::openUrl(QUrl("https://github.com/NeTriXoN-BoT/Framoryx/releases/latest"));return;}
     if(name=="quit"){emit quitRequested();return;}
     if(name=="resetOverlay"){auto values=defaults();for(const auto& key:QStringList{"fields","order","style","opacity","overlayScale","fontScale","hudX","hudY","accent"})m_options[key]=values[key];emit optionsChanged();emit overlayChanged();scheduleSave();if(!m_test)m_platform->applyOptions();return;}
+    if(name=="enableHook"){
+        if(!args["confirmed"].toBool()||m_state["antiCheatStatus"]=="detected"){notify("In-game hooks are blocked while known anti-cheat indicators are present.","warning");return;}
+        m_manualRiskKey=m_safetyKey+":"+m_state["antiCheatStatus"].toString();if(!m_test)m_platform->action("safetyFallback",{{"enabled",false}});
+    }
     if(!m_test)m_platform->action(name,args);
 }
 bool Controller::selfTest(QString* error){
@@ -290,6 +318,11 @@ bool Controller::selfTest(QString* error){
     const auto exported=QUrl::fromLocalFile(m_root+"/presets.json");if(!check(exportProfiles(exported),"Export presets"))return false;
     if(!check(importProfiles(exported),"Import bounded preset file"))return false;
     setOption("deny",QStringList{"example","../bad","bad,name","x\ny"});if(!check(m_options["deny"].toStringList()==QStringList{"example"},"Reject rule paths and control characters"))return false;
+    m_processes=QVariantList{QVariantMap{{"name","fixture.exe"},{"pid",123},{"protected",false}},QVariantMap{{"name","dwm.exe"},{"pid",124},{"protected",true}}};
+    addProcessRule("fixture.exe",false);if(!check(m_options["allow"].toStringList().contains("fixture.exe"),"Add a listed executable to allow rules"))return false;
+    addProcessRule("fixture.exe",true);if(!check(processRuleStatus("fixture.exe")=="Blocked","A process block wins over allow rules"))return false;
+    const auto allow=m_options["allow"];addProcessRule("dwm.exe",false);addProcessRule("unlisted.exe",false);if(!check(m_options["allow"]==allow,"Protect immutable and absent process names"))return false;
+    if(!check(changelog().size()==5,"Include the full offline release history"))return false;
     sampleFrames(QList<double>(120,16.666666),"Fixture",42);if(!check(m_state["fps"].toDouble()>50&&!m_graph.isEmpty(),"Compute real portable frame statistics"))return false;
     qInfo("PASS: %d desktop model/profile/audio-setting checks; no device changes",count);return true;
 }

@@ -61,6 +61,6 @@ ColumnLayout {
     FCard {
         Layout.fillWidth: true
         Text { text: "Diagnostics"; color: Theme.text; font.pixelSize: Theme.px(19); font.weight: Font.DemiBold }
-        Text { text: [app.state.engineDiagnostic,app.state.gameDiagnostic,app.state.micDiagnostic,app.state.outputDiagnostic].filter(function(x){return x&&String(x).trim().length}).join("\n")||"No component errors reported."; color: Theme.muted; font.family: "monospace"; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
+        Text { text: [app.state.antiCheatDetail,app.state.engineDiagnostic,app.state.gameDiagnostic,app.state.micDiagnostic,app.state.outputDiagnostic].filter(function(x){return x&&String(x).trim().length}).join("\n")||"No component errors reported."; color: Theme.muted; font.family: "monospace"; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
     }
 }

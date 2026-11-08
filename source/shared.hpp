@@ -8,6 +8,7 @@
 #include "presentation.hpp"
 
 namespace fg {
+constexpr LONG ipcVersion = 7;
 constexpr LONG ipcMagic = 0x46475032;
 constexpr size_t hookRingSize = 8192;
 struct alignas(8) HookFrame {

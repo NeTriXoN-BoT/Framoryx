@@ -119,7 +119,7 @@ struct MonitorInfo {
     std::wstring name;
 };
 struct App {
-    bool engineMode = false, engineDirty = false;
+    bool engineMode = false, engineDirty = false, safetyFallback = false;
     std::wstring engineToken;
     HINSTANCE instance{};
     HWND window{}, hud{};
@@ -1359,7 +1359,7 @@ void paintMain(HDC destination, const RECT& invalid) {
     app.maxPaintMs = std::max(app.maxPaintMs, paintMs);
 }
 void positionHud() {
-    if (!app.overlay || !app.hudOptions.fields || app.hudMode == 2) {
+    if (!app.overlay || !app.hudOptions.fields || (app.hudMode == 2&&!app.safetyFallback)) {
         ShowWindow(app.hud, SW_HIDE);
         return;
     }

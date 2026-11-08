@@ -108,7 +108,7 @@ int main(int argc,char** argv){
         QObject::connect(window,&QQuickWindow::frameSwapped,&application,[frames]{++*frames;});
         QObject::connect(timer,&QTimer::timeout,&application,[&,timer,step,frames,destination]{
             if(*step<7){window->setProperty("page",*step);}
-            else if(*step<14){const int page=*step-7;window->setProperty("page",page);if(!window->grabWindow().save(destination+QString("/page-%1.png").arg(page)))qmlFailure=true;}
+            else if(*step<14){const int page=*step-7;window->setProperty("page",page);QTimer::singleShot(450,&application,[&,page,destination]{if(!window->grabWindow().save(destination+QString("/page-%1.png").arg(page)))qmlFailure=true;});}
             else if(*step==14){controller.setOption("style",1);window->setProperty("page",1);}
             else if(*step==15){window->grabWindow().save(destination+"/studio-compact.png");controller.setOption("style",2);}
             else if(*step==16){window->grabWindow().save(destination+"/studio-telemetry.png");controller.setOption("uiScale",125);window->showMaximized();}

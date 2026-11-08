@@ -97,7 +97,10 @@ private:
     QVariantMap m_state, m_options;
     QVariantList m_processes, m_games, m_profiles, m_devices, m_capabilities, m_graph;
     QMediaDevices m_media;
-    QTimer m_poll, m_saveTimer;
+    QTimer m_poll, m_saveTimer, m_safetyTimer;
+    QString m_safetyKey, m_manualRiskKey;
+    bool m_safetyBusy=false;
+    void assessCurrentGame(bool force=false);
     QElapsedTimer m_clock;
     fg::Store m_store;
     double m_frameTime = 0;

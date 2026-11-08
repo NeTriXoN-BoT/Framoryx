@@ -21,7 +21,7 @@ ApplicationWindow {
     Binding { target: Theme; property: "accent"; value: window.colors[app.options.accent||0] }
     Binding { target: Theme; property: "scale"; value: app.options.uiScale>0?app.options.uiScale/100:Screen.width<1200?.9:Screen.width>2400?1.1:1 }
     Binding { target: Theme; property: "motion"; value: app.options.motion&&(window.active||window.diagnosticAnimating)&&window.visibility!==Window.Minimized&&window.visible }
-    function requestHook(){hookDialog.open()}
+    function requestHook(){if(app.state.antiCheatStatus==="detected")app.notify("Known anti-cheat indicators are present. In-game hooks are blocked; use the external overlay.","warning");else hookDialog.open()}
     function chooseGame(){gameFile.open()}
     function chooseApo(){apoFile.open()}
     function exportCapture(){captureFile.open()}
@@ -115,6 +115,14 @@ ApplicationWindow {
                         }
                         FButton { text: "Refresh"; visible: column.width>Theme.px(780); onClicked: app.action("refresh") }
                         FButton { text: app.state.capture?"Stop capture":app.platformName==="Linux"?"Launch & capture":"Start capture"; primary: true; onClicked: app.action("capture") }
+                    }
+                }
+                FCard {
+                    Layout.fillWidth: true; padding: Theme.px(13)
+                    RowLayout { Layout.fillWidth: true
+                        Rectangle { width: Theme.px(7); height: width; radius: width/2; color: app.state.antiCheatStatus==="detected"?Theme.amber:Theme.muted }
+                        Text { text: app.state.antiCheatStatus==="detected"?"Anti-cheat indicators detected":app.state.antiCheatStatus==="no-known-indicator"?"No known anti-cheat indicators · approval unverified":"Anti-cheat status unknown · external overlay preferred"; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                        FButton { text: "Details"; quiet: true; implicitHeight: Theme.px(30); onClicked: window.page=5 }
                     }
                 }
                 Item {

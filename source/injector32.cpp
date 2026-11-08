@@ -34,7 +34,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         InterlockedExchange(&ipc->status, -code);
         return code;
     };
-    if (ipc->magic != fg::ipcMagic || ipc->version != 6 || ipc->targetPid != pid ||
+    if (ipc->magic != fg::ipcMagic || ipc->version != fg::ipcVersion || ipc->targetPid != pid ||
         !ipc->ownerPid || fg::read32(&ipc->request) || fg::read32(&ipc->status) != 0 ||
         GetTickCount64() - ULONGLONG(fg::read64(&ipc->heartbeat)) > 3500)
         return fail(4);

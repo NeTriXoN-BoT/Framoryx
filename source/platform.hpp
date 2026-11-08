@@ -281,7 +281,7 @@ class HookClient {
             return L"Cannot map hook controls: " + winError();
         ZeroMemory(view, sizeof(*view));
         view->magic = ipcMagic;
-        view->version = 7;
+        view->version = ipcVersion;
         view->ownerPid = GetCurrentProcessId();
         view->targetPid = pid;
         view->creationTime = birth;
