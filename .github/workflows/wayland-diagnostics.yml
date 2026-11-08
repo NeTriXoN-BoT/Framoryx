@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - run: sudo apt-get update && sudo apt-get install -y weston mesa-vulkan-drivers libvulkan1 libgl1 libegl1 libxkbcommon0 libpulse0 dbus-x11
+      - run: sudo apt-get update && sudo apt-get install -y weston mesa-vulkan-drivers libvulkan1 libgl1 libopengl0 libegl1 libxkbcommon0 libpulse0 dbus-x11
       - name: Fetch a previously verified Linux package
         env:
           GH_TOKEN: ${{ github.token }}
