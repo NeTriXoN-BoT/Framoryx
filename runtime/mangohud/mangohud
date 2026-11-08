@@ -8,7 +8,10 @@ if [ "${1-}" = --dlsym ]; then shift; fi
 # MangoHud implicit layer, which would impose a second independent frame cap.
 unset MANGOHUD
 export MANGOHUD_DLSYM=1
-export LD_PRELOAD="$root/lib/libMangoHud_shim.so${LD_PRELOAD:+:$LD_PRELOAD}"
+# LD_PRELOAD splits on whitespace, even within an absolute filename. Resolve
+# the bare library name through LD_LIBRARY_PATH so portable folders may contain spaces.
+export LD_LIBRARY_PATH="$root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_PRELOAD="libMangoHud_shim.so${LD_PRELOAD:+:$LD_PRELOAD}"
 export VK_LAYER_PATH="$root/layers${VK_LAYER_PATH:+:$VK_LAYER_PATH}"
 case ":${VK_INSTANCE_LAYERS-}:" in
     *:VK_LAYER_FRAMORYX_overlay_x86_64:*) ;;

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import statistics
+import shutil
 import subprocess
 import tempfile
 
@@ -18,14 +19,15 @@ args.output.mkdir(parents=True, exist_ok=True)
 checks = []
 with tempfile.TemporaryDirectory(prefix='framoryx-apis-') as folder:
     root = Path(folder)
+    runtime = root / 'portable runtime with spaces'
+    shutil.copytree(args.bin.resolve() / 'runtime/mangohud', runtime)
     for api, executable in [('OpenGL', 'FramoryxScene'), ('Vulkan', 'FramoryxVulkanScene')]:
         logs = root / api
         logs.mkdir()
         config=f'fps_limit=30,autostart_log=1,log_interval=0,log_duration=6,output_folder={logs},cpu_stats=0,gpu_stats=0,fps,frametime'
         env = dict(os.environ, MANGOHUD_CONFIG=config, MANGOHUD_DLSYM='1')
         report = logs / 'scene.json'
-        runtime = args.bin.resolve() / 'runtime/mangohud/bin/mangohud'
-        process = subprocess.run([str(runtime), '--dlsym', str(args.bin.resolve() / executable), '--seconds', '8', '--report', str(report)], env=env, capture_output=True, text=True, timeout=25)
+        process = subprocess.run([str(runtime / 'bin/mangohud'), '--dlsym', str(args.bin.resolve() / executable), '--seconds', '8', '--report', str(report)], env=env, capture_output=True, text=True, timeout=25)
         durations = []
         for log in logs.glob('*.csv'):
             with log.open(encoding='utf-8') as source:

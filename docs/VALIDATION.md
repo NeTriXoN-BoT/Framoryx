@@ -1,3 +1,17 @@
+# Version 0.3.0 verification
+
+The [shared desktop workflow](https://github.com/NeTriXoN-BoT/framoryx/actions/workflows/desktop.yml) checks the Qt application and deployed Windows/Linux packages. X11 checks cover passive Present capture, automatic foreground selection, the external HUD with hidden controls, and reversible fullscreen. A separate private Weston session forces native Wayland with no X11 display and checks the UI plus actual OpenGL/Vulkan game-layer rendering, live 30/60 FPS changes, pause/resume and process blocks. HUD geometry acknowledgements distinguish drawing from frame collection. These are fixture checks, not certification of every compositor or commercial game.
+
+Windows graphics coverage includes x64 DX11/DX12 and x86 DX11, customized readouts, font rebuilding, resize/restoration, live limits, heartbeat loss and conservative multi-queue fallback. The standard endurance check uses passive ETW capture. The separate [core workflow](https://github.com/NeTriXoN-BoT/framoryx/actions/workflows/ci.yml) also exercises audio files, updater flows and the diagnostic engine harness.
+
+Linux audio checks use a private PipeWire session and a verified nonzero synthetic microphone signal, then exercise bass, Bassy Voice EQ, five-second recording/playback, verified official RNNoise, bypass and startup registration/removal. Input tests drag the volume slider rapidly to 200%, click all seven cached pages, preserve state, maximize and exercise automatic/percentage scaling. Packages start after removing the Qt build environment; the Linux workflow checks both display backends.
+
+The final candidate must pass the complete build, shared desktop, security-extended CodeQL and full-history secret workflows before its packages can be promoted. Failed or incomplete runs remain visible and are not counted as passes. Fresh local address/undefined-behavior sanitizer checks passed 327,792 core assertions, 20,000 deterministic malformed-input cases, 20 audio configuration checks, 38 microphone/bass checks, 49 file/concurrency checks, 42 dependency checks and 146 export/worker/updater checks. These console checks open no app windows and change no system audio.
+
+The app remains unsigned. Sensor availability, physical hardware, HDR, sandboxed/32-bit Linux runtimes, arbitrary compositors and anti-cheat approval retain the [documented limits](COMPATIBILITY.md). See [Linux support](LINUX.md), the [feature matrix](FEATURE-CHECKS.md) and the [audit](AUDIT.md).
+
+## Earlier verification records
+
 # Version 0.2.3 verification
 
 The [feature matrix](FEATURE-CHECKS.md) maps each feature to its checks and practical limits. Native GUI/game tests run on an isolated Windows runner; local compilation and console tests open no app windows and change no system audio.

@@ -22,7 +22,7 @@ The initial package target is x86-64 desktop Linux built on Ubuntu 22.04, with g
 
 X11 provides window selection and positioning. A compositor enables transparent external backgrounds; without compositing, Framoryx uses an opaque HUD surface. Some rendering paths do not expose usable X Present events. Unavailable timing is reported instead of inventing FPS or silently loading a layer.
 
-Native Wayland restricts external positioning and monitoring of other applications. Vulkan/OpenGL layers provide the supported in-game path there where permitted. Gamescope remains optional for compositor sizing and launch limits. Framoryx currently treats Gamescope and its in-game layer as alternative launch methods; their combined overlay path is not supported.
+Both X11 and native Wayland are supported desktop backends. The Qt Wayland platform plugin is included in the packages. Native Wayland restricts external positioning and monitoring of other applications. Vulkan/OpenGL layers provide the supported in-game path there where permitted. Gamescope remains optional for compositor sizing and launch limits. Framoryx currently treats Gamescope and its in-game layer as alternative launch methods; their combined overlay path is not supported.
 
 The bundled in-game runtime supports 64-bit games. Known 32-bit native executables are directed to external monitoring; a 32-bit in-game runtime is not bundled. Proton, Steam Flatpak, containers and other runtimes may need a compatible layer inside their sandbox. An x86-64 AppImage cannot support every architecture, distribution, driver or compositor universally.
 
@@ -30,6 +30,6 @@ PipeWire and WirePlumber must be available for audio effects. Choose **Framoryx 
 
 ## Verification
 
-The isolated runner exercises X Present capture, the external HUD with the main window hidden, reversible fullscreen, private PipeWire audio, and real OpenGL/Vulkan scenes. Renderer checks verify a 30 FPS target and live limit changes; package checks run without the Qt build environment. These tests do not certify every commercial game or physical microphone/GPU.
+The isolated runner exercises X Present capture, the external HUD with the main window hidden, reversible fullscreen, private PipeWire audio, and real OpenGL/Vulkan scenes. A second private Weston compositor runs with no X11 display and checks native Wayland UI/scaling plus the OpenGL/Vulkan game layer and its live controls, including the packaged AppImage. Renderer checks verify a 30 FPS target and live limit changes; package checks run without the Qt build environment. These tests do not certify every commercial game, compositor or physical microphone/GPU.
 
 In-game layers remain subject to each game's anti-cheat rules. Use at your own risk; a clear indicator scan is not permission or a ban-free guarantee. See [compatibility](COMPATIBILITY.md), [building](BUILDING.md), [MangoHud](https://github.com/flightlessmango/MangoHud) and [Gamescope](https://github.com/ValveSoftware/gamescope).

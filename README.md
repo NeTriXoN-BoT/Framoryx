@@ -75,7 +75,7 @@ Preferences, presets and captures stay local. Microphone recording is an opt-in 
 
 Windows Vulkan/OpenGL/DX9 use external monitoring; the Windows injected limiter supports DX11/DX12. Exclusive fullscreen can cover external overlays. The game's own borderless mode is a useful starting point.
 
-Linux packages target **glibc 2.35 or newer**, compatible graphics drivers and a working desktop session. Native Wayland limits external positioning and passive capture. Gamescope is optional for launch sizing and pacing and is currently an alternative to the Framoryx game layer. The bundled layer supports 64-bit games; 32-bit and sandboxed runtimes have additional limits. See [Linux support](docs/LINUX.md).
+Linux packages target **glibc 2.35 or newer**, compatible graphics drivers and a working desktop session. The native interface supports X11 and Wayland. Wayland uses the explicitly enabled Vulkan/OpenGL game layer for its in-game HUD; external positioning and passive capture are restricted. Gamescope is optional for launch sizing and pacing and is currently an alternative to the Framoryx game layer. The bundled layer supports 64-bit games; 32-bit and sandboxed runtimes have additional limits. See [Linux support](docs/LINUX.md).
 
 A frame limiter cannot remove every engine hard cap. **Beyond the game's cap** uses a supported game launch option where one exists; other caps remain in force. Higher FPS can affect physics, animations or timing.
 
