@@ -155,7 +155,7 @@ void Platform::flushOptions(){
     if(style==2)config+="horizontal\ntable_columns=10\n";
     if(style==3)config+="round_corners=0\nfont_size="+QByteArray::number(qRound(18*scale*o["fontScale"].toInt()/100.))+"\n";
     if(style==4)config+="table_columns=4\nwidth=390\n";
-    const QStringList values{"fps","fps_metrics=avg","fps_metrics=0.01","frametime","frame_timing","cpu_stats","ram","show_fps_limit","engine_version","custom_text=FRAMORYX"};
+    const QStringList values{"fps","fps_metrics=avg","fps_metrics=0.01","frametime","frame_timing","cpu_stats","ram","show_fps_limit","engine_version","custom_text=FRAMORYX","gpu_stats","vram","gpu_temp","cpu_temp","gpu_power","gpu_core_clock"};
     bool metricsWritten=false;
     for(const auto& index:o["order"].toList()){const int i=index.toInt();if(!(fields&(1<<i)))continue;if(i==1||i==2){if(!metricsWritten){QStringList metrics;if(fields&2)metrics<<"avg";if(fields&4)metrics<<"0.01";config+="fps_metrics="+metrics.join(',').toUtf8()+'\n';metricsWritten=true;}}else config+=values.value(i).toUtf8()+'\n';}
     if(!writeFile(c->root()+"/MangoHud.conf",config))c->notify("The overlay configuration could not be written.","warning");
@@ -370,6 +370,12 @@ void Platform::updateNoise(bool force){
 #endif
 }
 void Platform::action(const QString& name,const QVariantMap& args){
+    if(name=="telemetry"){
+#ifdef Q_OS_WIN
+        auto request=QJsonObject::fromVariantMap(args);request["action"]="telemetry";send(request);
+#endif
+        return;
+    }
     if(name=="safetyFallback"){
 #ifdef Q_OS_WIN
         send({{"action","safetyFallback"},{"enabled",args["enabled"].toBool()}});

@@ -24,6 +24,7 @@ Rectangle {
             if(index===6)return Number(app.state.ram||0).toFixed(1)+" GB";
             if(index===7)return app.options.cap===0?"Uncapped":app.options.cap;
             if(index===8)return live?app.state.renderer:hud.sample?"Renderer":"Waiting";
+            if(index>=10){const keys=["gpu","vramPercent","gpuTemp","cpuTemp","gpuPower","gpuClock"];const units=["%","%"," °C"," °C"," W"," MHz"];const value=app.state[keys[index-10]];return typeof value==="number"&&isFinite(value)?Number(value).toFixed(index===14?1:0)+units[index-10]:"—";}
             return "FRAMORYX";
         }
         Repeater {

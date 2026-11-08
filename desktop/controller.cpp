@@ -4,6 +4,7 @@
 #include "lifecycle.hpp"
 #include "process_catalog.hpp"
 #include "game_safety.hpp"
+#include "telemetry.hpp"
 #include "unlock.hpp"
 #include "presentation.hpp"
 #include <QtConcurrent>
@@ -27,8 +28,8 @@
 #include <cmath>
 
 namespace {
-const QStringList labels{"Live FPS","Average FPS","1% low","Frame time","Frame graph","System CPU","System RAM","FPS limit","Renderer","Framoryx label"};
-const QVariantList defaultOrder{0,1,2,3,4,5,6,7,8,9};
+const QStringList labels{"Live FPS","Average FPS","1% low","Frame time","Frame graph","System CPU","System RAM","FPS limit","Renderer","Framoryx label","GPU usage","VRAM usage","GPU temperature","CPU temperature","GPU power","GPU clock"};
+const QVariantList defaultOrder{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 QVariantMap defaults(){return {{"motion",true},{"startWithSystem",false},{"startHidden",false},{"minimizeToTray",false},{"closeToTray",false},{"autoCapture",false},{"uiScale",0},{"overlayScale",0},{"opacity",90},{"style",0},{"accent",0},{"fields",1023},{"order",defaultOrder},{"hudX",.03},{"hudY",.03},{"fontScale",100},{"cap",60},{"mode",0},{"volume",100},{"bass",3},{"noise",false},{"eq",false},{"low",6},{"mid",-3},{"high",0},{"voicePreset",4},{"noisePreset",1},{"autoNoise",true},{"micId",""},{"selectedGame","auto"},{"autoBorderless",false},{"gamescope",false},{"linuxOverlayMode",0},{"allow",QStringList{"FramoryxTest.exe","FramoryxScene"}},{"deny",QStringList{"RiotClientServices.exe"}}};}
 bool boundedJson(const QString& path,QJsonObject* object){
     const QFileInfo info(path);
@@ -54,6 +55,8 @@ Controller::Controller(QString root,bool testing,QObject* parent):QObject(parent
     load();if(!m_test)m_options["startWithSystem"]=lifecycle::startupEnabled();m_clock.start();
     m_audio=std::make_unique<AudioMonitor>(this);
     m_platform=std::make_unique<Platform>(this);
+    m_telemetry=std::make_unique<Telemetry>(this);
+    connect(m_telemetry.get(),&Telemetry::sampled,this,[this](const QVariantMap& values){for(auto it=values.begin();it!=values.end();++it)m_state[it.key()]=it.value();emit stateChanged();m_platform->action("telemetry",values);});
     m_saveTimer.setSingleShot(true);m_saveTimer.setInterval(220);
     connect(&m_saveTimer,&QTimer::timeout,this,[this]{save();});
     connect(&m_poll,&QTimer::timeout,this,&Controller::poll);
@@ -61,7 +64,7 @@ Controller::Controller(QString root,bool testing,QObject* parent):QObject(parent
     connect(&m_media,&QMediaDevices::audioOutputsChanged,this,&Controller::refreshDevices);
     m_state["antiCheatStatus"]="unknown";m_state["antiCheatDetail"]="Select a game to check for known indicators. Inspection cannot establish anti-cheat approval.";
     m_safetyTimer.setInterval(10000);connect(&m_safetyTimer,&QTimer::timeout,this,[this]{assessCurrentGame(true);});
-    if(!m_test){refreshDevices();m_platform->start();m_poll.start(250);m_safetyTimer.start();}
+    if(!m_test){refreshDevices();m_platform->start();m_poll.start(250);m_safetyTimer.start();m_telemetry->start();}
 }
 Controller::~Controller(){m_poll.stop();m_audio->stop();m_platform->shutdown();save();}
 QString Controller::platformName()const{
@@ -84,11 +87,11 @@ QVariantMap Controller::cleanOptions(const QVariantMap& input)const{
             out[it.key()]=value;
         }else if(it.key()=="hudX"||it.key()=="hudY"){
             bool ok=false;const double n=it->toDouble(&ok);if(ok&&std::isfinite(n))out[it.key()]=qBound(0.,n,1.);
-        }else if(it.key()=="fields")out[it.key()]=it->toUInt()&1023u;
+        }else if(it.key()=="fields")out[it.key()]=it->toUInt()&65535u;
         else if(it.key()=="order"){
             const auto list=it->toList();QSet<int> seen;QVariantList order;
-            for(const auto& item:list){const int n=item.toInt();if(n>=0&&n<10&&!seen.contains(n)){seen.insert(n);order<<n;}}
-            for(int n=0;n<10;++n)if(!seen.contains(n))order<<n;
+            for(const auto& item:list){const int n=item.toInt();if(n>=0&&n<16&&!seen.contains(n)){seen.insert(n);order<<n;}}
+            for(int n=0;n<16;++n)if(!seen.contains(n))order<<n;
             out[it.key()]=order;
         }else if(it.key()=="allow"||it.key()=="deny")out[it.key()]=cleanRules(*it);
         else if(it.key()=="micId"||it.key()=="selectedGame")out[it.key()]=it->toString().left(4096);
@@ -149,12 +152,12 @@ QVariantList Controller::readouts()const{
 }
 QVariantMap Controller::overlayLayout()const{
     fg::HudOptions options;options.fields=m_options["fields"].toUInt();options.style=m_options["style"].toInt();options.order=0;
-    const auto order=m_options["order"].toList();for(int i=0;i<order.size()&&i<10;++i)options.order|=uint64_t(order[i].toInt())<<(4*i);
+    const auto order=m_options["order"].toList();for(int i=0;i<order.size()&&i<16;++i)options.order|=uint64_t(order[i].toInt())<<(4*i);
     const auto layout=fg::hudLayout(options);QVariantList cells;
-    for(size_t i=0;i<layout.count;++i){const auto& cell=layout.cells[i];int index=0;while(index<10&&cell.field!=(1u<<index))++index;cells<<QVariantMap{{"index",index},{"name",labels.value(index)},{"x",cell.x},{"y",cell.y},{"width",cell.width},{"height",cell.height},{"column",cell.column}};}
+    for(size_t i=0;i<layout.count;++i){const auto& cell=layout.cells[i];int index=0;while(index<16&&cell.field!=(1u<<index))++index;cells<<QVariantMap{{"index",index},{"name",labels.value(index)},{"x",cell.x},{"y",cell.y},{"width",cell.width},{"height",cell.height},{"column",cell.column}};}
     return {{"width",layout.width},{"height",layout.height},{"cells",cells}};
 }
-void Controller::setReadout(int index,bool visible){if(index<0||index>=10)return;int fields=m_options["fields"].toInt();setOption("fields",visible?fields|(1<<index):fields&~(1<<index));}
+void Controller::setReadout(int index,bool visible){if(index<0||index>=16)return;int fields=m_options["fields"].toInt();setOption("fields",visible?fields|(1<<index):fields&~(1<<index));}
 void Controller::moveReadout(int index,int direction){auto order=m_options["order"].toList();const int at=order.indexOf(index),to=at+(direction<0?-1:1);if(at<0||to<0||to>=order.size())return;order.swapItemsAt(at,to);setOption("order",order);}
 void Controller::selectGame(const QString& id){setOption("selectedGame",id);if(!m_test){m_platform->select(id);assessCurrentGame(true);}}
 void Controller::addGame(const QUrl& url,const QString& label,const QString& arguments){
@@ -308,9 +311,9 @@ bool Controller::selfTest(QString* error){
     setOption("volume",200);if(!check(m_options["volume"]==200,"Allow 200 percent"))return false;
     setOption("voicePreset",4);if(!check(m_options["low"]==6&&m_options["mid"]==-3&&m_options["high"]==0,"Bassy voice"))return false;
     setOption("low",0);if(!check(m_options["voicePreset"]==5,"Custom preset label"))return false;
-    setOption("order",QVariantList{9,9,50,-1,2});if(!check(m_options["order"].toList().size()==10&&m_options["order"].toList().first()==9,"Repair malformed order"))return false;
-    for(int i=0;i<10;++i){setReadout(i,false);if(!check(!(m_options["fields"].toInt()&(1<<i)),"Toggle readouts"))return false;}
-    setReadout(0,true);moveReadout(0,-1);if(!check(readouts().size()==10,"Keep all reorder entries"))return false;
+    setOption("order",QVariantList{9,9,50,-1,2});if(!check(m_options["order"].toList().size()==16&&m_options["order"].toList().first()==9,"Repair malformed order"))return false;
+    for(int i=0;i<16;++i){setReadout(i,false);if(!check(!(m_options["fields"].toInt()&(1<<i)),"Toggle readouts"))return false;}
+    setReadout(0,true);moveReadout(0,-1);if(!check(readouts().size()==16,"Keep all reorder entries"))return false;
     saveProfile("Studio");if(!check(m_profiles.size()==1,"Save named preset"))return false;
     setOption("opacity",40);applyProfile(0);if(!check(m_options["opacity"]==100,"Restore preset"))return false;
     if(!check(save(),"Save configuration"))return false;
@@ -322,6 +325,7 @@ bool Controller::selfTest(QString* error){
     addProcessRule("fixture.exe",false);if(!check(m_options["allow"].toStringList().contains("fixture.exe"),"Add a listed executable to allow rules"))return false;
     addProcessRule("fixture.exe",true);if(!check(processRuleStatus("fixture.exe")=="Blocked","A process block wins over allow rules"))return false;
     const auto allow=m_options["allow"];addProcessRule("dwm.exe",false);addProcessRule("unlisted.exe",false);if(!check(m_options["allow"]==allow,"Protect immutable and absent process names"))return false;
+    if(!check(Telemetry::selfTest(m_root,error),"Read sensor units and reject unavailable or invalid values"))return false;
     if(!check(changelog().size()==5,"Include the full offline release history"))return false;
     sampleFrames(QList<double>(120,16.666666),"Fixture",42);if(!check(m_state["fps"].toDouble()>50&&!m_graph.isEmpty(),"Compute real portable frame statistics"))return false;
     qInfo("PASS: %d desktop model/profile/audio-setting checks; no device changes",count);return true;

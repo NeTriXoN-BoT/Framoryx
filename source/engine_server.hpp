@@ -62,10 +62,10 @@ void engineOptions(const nlohmann::json& request){
     auto integer=[&](const char* name,int fallback,int low,int high){const auto value=options.find(name);if(value==options.end()||!value->is_number_integer())return fallback;const auto n=value->get<int64_t>();return int(std::clamp<int64_t>(n,low,high));};
     auto boolean=[&](const char* name,bool fallback){const auto value=options.find(name);return value!=options.end()&&value->is_boolean()?value->get<bool>():fallback;};
     app.cap=integer("cap",app.cap,0,1000);if(app.cap>0&&app.cap<10)app.cap=10;SetWindowTextW(app.controls[CapValue],std::to_wstring(app.cap).c_str());updateCap(false);
-    app.hudOptions.fields=uint32_t(integer("fields",int(app.hudOptions.fields),0,1023));
+    app.hudOptions.fields=uint32_t(integer("fields",int(app.hudOptions.fields),0,65535));
     app.hudOptions.scale=integer("overlayScale",app.hudOptions.scale,0,300);app.hudOptions.opacity=integer("opacity",app.hudOptions.opacity,0,100);app.hudOptions.style=integer("style",app.hudOptions.style,0,4);app.hudOptions.accent=integer("accent",app.hudOptions.accent,0,9);app.hudMode=integer("mode",app.hudMode,0,2);
     app.hudOptions.fontScale=integer("fontScale",app.hudOptions.fontScale,80,140);
-    if(options.contains("order")&&options["order"].is_array()&&options["order"].size()==10){uint64_t order=0;bool valid=true;for(int i=0;i<10;++i){if(!options["order"][i].is_number_integer()){valid=false;break;}const int n=options["order"][i].get<int>();if(n<0||n>9){valid=false;break;}order|=uint64_t(n)<<(i*4);}if(valid)app.hudOptions.order=order;}
+    if(options.contains("order")&&options["order"].is_array()&&options["order"].size()==16){uint64_t order=0;bool valid=true;for(int i=0;i<16;++i){if(!options["order"][i].is_number_integer()){valid=false;break;}const int n=options["order"][i].get<int>();if(n<0||n>15){valid=false;break;}order|=uint64_t(n)<<(i*4);}if(valid)app.hudOptions.order=order;}
     auto coordinate=[&](const char* name,int fallback){if(!options.contains(name)||!options[name].is_number())return fallback;const double n=options[name].get<double>();return std::isfinite(n)?int(std::clamp(n,0.,1.)*10000):fallback;};
     app.hudOptions.x=coordinate("hudX",app.hudOptions.x);app.hudOptions.y=coordinate("hudY",app.hudOptions.y);
     app.autoBorderless=boolean("autoBorderless",app.autoBorderless);app.autoNoiseUpdates=boolean("autoNoise",app.autoNoiseUpdates);
@@ -88,6 +88,7 @@ void engineCommands(){
     for(const auto& request:enginePipe.take())try{
         const auto action=request.value("action",std::string());
         if(action=="options")engineOptions(request);
+        else if(action=="telemetry"){const std::array<std::string,6> keys{"gpu","vramPercent","gpuTemp","cpuTemp","gpuPower","gpuClock"};for(size_t i=0;i<keys.size();++i){const auto found=request.find(keys[i]);app.sensorValues[i]=found!=request.end()&&found->is_number()?found->get<double>():-1;}app.hook.sensors(app.sensorValues);}
         else if(action=="safetyFallback"){app.safetyFallback=request.value("enabled",true);if(app.safetyFallback&&app.hook.pid()&&app.hook.status()!=2){app.hook.disable();setNotice(L"Switched to the external overlay because anti-cheat inspection is detected or uncertain. Restart the game to remove a previously loaded module completely.");}pushHookPresentation();positionHud();}
         else if(action=="select")engineSelect(request);
         else if(action=="refresh"){refreshTargets();refreshMicrophones();refreshAudioStatus();}

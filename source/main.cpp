@@ -141,6 +141,7 @@ struct App {
     bool overlay = false, autoBorderless = false;
     int corner = 0, cap = 60;
     fg::HudOptions hudOptions;
+    std::array<double,6> sensorValues{-1,-1,-1,-1,-1,-1};
     fg::HudProfile hudBase;
     std::map<std::string, fg::HudProfile> hudProfiles;
     std::string activeProfile, autoExe;
@@ -288,7 +289,7 @@ std::string encodeHud(const fg::HudProfile& profile) {
     out << profile.options.fields << '|' << profile.options.scale << '|' << profile.options.opacity
         << '|' << profile.options.accent << '|' << profile.corner << '|' << profile.mode << '|'
         << profile.options.style << '|' << profile.options.fontScale << '|' << profile.options.x+1 << '|' << profile.options.y+1;
-    for(int i=0;i<10;++i)out << '|' << ((profile.options.order>>(4*i))&15);
+    for(int i=0;i<16;++i)out << '|' << ((profile.options.order>>(4*i))&15);
     return out.str();
 }
 std::optional<fg::HudProfile> decodeHud(const std::string& value) {
@@ -301,13 +302,13 @@ std::optional<fg::HudProfile> decodeHud(const std::string& value) {
             return {};
         numbers.push_back(int(*n));
     }
-    if (numbers.size() != 6 && numbers.size() != 7 && numbers.size() != 20)
+    if (numbers.size() != 6 && numbers.size() != 7 && numbers.size() != 20 && numbers.size() != 26)
         return {};
     fg::HudProfile profile;
     profile.options = {uint32_t(numbers[0]), numbers[1], numbers[2], numbers[3]};
     if (numbers.size() >= 7)
         profile.options.style = numbers[6];
-    if(numbers.size()==20){profile.options.fontScale=numbers[7];profile.options.x=numbers[8]-1;profile.options.y=numbers[9]-1;profile.options.order=0;for(int i=0;i<10;++i){if(numbers[10+i]>9)return {};profile.options.order|=uint64_t(numbers[10+i])<<(4*i);}}
+    if(numbers.size()==20||numbers.size()==26){profile.options.fontScale=numbers[7];profile.options.x=numbers[8]-1;profile.options.y=numbers[9]-1;profile.options.order=0;for(int i=0;i<int(numbers.size())-10;++i){if(numbers[10+i]>15)return {};profile.options.order|=uint64_t(numbers[10+i])<<(4*i);}if(numbers.size()==20)profile.options.order|=0xfedcba0000000000ull;}
     profile.options.validate();
     profile.corner = std::clamp(numbers[4], 0, 3);
     profile.mode = std::clamp(numbers[5], 0, 2);
@@ -1826,6 +1827,7 @@ void update() {
     }
     pushHookPresentation();
     app.hook.systemMetrics(app.cpu, app.ramGB);
+        app.hook.sensors(app.sensorValues);
     app.hook.tick();
     updateAnimationState();
     auto captureMessage = app.capture.status();

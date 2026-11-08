@@ -1,9 +1,9 @@
 // Private presentation implementation, included inside main.cpp's application namespace.
 const uint32_t hudFields[]{fg::HudFps, fg::HudAverage, fg::HudLow, fg::HudTime, fg::HudGraph,
-                           fg::HudCpu, fg::HudRam,     fg::HudCap, fg::HudApi,  fg::HudBrand};
+                           fg::HudCpu, fg::HudRam, fg::HudCap, fg::HudApi, fg::HudBrand, fg::HudGpu, fg::HudVram, fg::HudGpuTemp, fg::HudCpuTemp, fg::HudPower, fg::HudClock};
 const wchar_t* hudTitles[]{L"Live FPS",    L"Average FPS",   L"1% low",     L"Frame time",
                            L"Frame graph", L"System CPU",    L"System RAM", L"FPS limit",
-                           L"Renderer",    L"Framoryx label"};
+                           L"Renderer", L"Framoryx label", L"GPU usage", L"VRAM usage", L"GPU temp", L"CPU temp", L"GPU power", L"GPU clock"};
 Color hudAccent(int index) {
     const auto rgb=fg::accentColors[std::clamp(index,0,9)];
     return Color(255,BYTE(rgb>>16),BYTE(rgb>>8),BYTE(rgb));
@@ -234,7 +234,7 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
         case fg::HudRam:return app.memoryReady?value(app.ramGB,1)+L" GB":L"—";
         case fg::HudCap:return preview?L"144":app.hook.active()&&app.hook.pid()==app.selectedPid?(app.cap?value(app.cap):L"Uncapped"):L"Off";
         case fg::HudApi:return L"Desktop / ETW";
-        default:return L"FRAMORYX";
+        default:if(field>=fg::HudGpu){int sensor=0;while(sensor<6&&field!=(fg::HudGpu<<sensor))++sensor;if(sensor<6){if(app.sensorValues[sensor]<0)return L"—";return value(app.sensorValues[sensor],sensor==4?1:0)+(sensor<2?L"%":sensor<4?L" °C":sensor==4?L" W":L" MHz");}}return L"FRAMORYX";
         }
     };
     for(size_t n=0;n<layout.count;++n){const auto& cell=layout.cells[n];
@@ -246,8 +246,8 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
         }
         if(cell.field==fg::HudFps){label(g,number(cell.field),cell.x,cell.y-3,cell.width,cell.height,compact?28:34,accent,true);continue;}
         if(cell.field==fg::HudBrand){label(g,L"FRAMORYX",cell.x,cell.y,cell.width,18,compact?9:10,muted,true);continue;}
-        int index=0;while(index<10&&hudFields[index]!=cell.field)++index;
-        const auto title=index<10?hudTitles[index]:L"";
+        int index=0;while(index<16&&hudFields[index]!=cell.field)++index;
+        const auto title=index<16?hudTitles[index]:L"";
         if(cell.column){label(g,title,cell.x,cell.y,cell.width-5,17,10,muted);label(g,number(cell.field),cell.x,cell.y+19,cell.width-5,25,cell.field==fg::HudApi?11:17,text,true);}
         else {label(g,title,cell.x,cell.y,cell.width-110,20,compact?11:12,muted);SolidBrush brush(text);StringFormat format;format.SetAlignment(StringAlignmentFar);g.DrawString(number(cell.field).c_str(),-1,uiFont(cell.field==fg::HudApi?10:compact?12:13,true),RectF(cell.x+cell.width-105,cell.y,105,20),&format,&brush);}
     }

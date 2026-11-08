@@ -301,7 +301,10 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                     case fg::HudRam:title="System RAM";number=fg::read32(&control->ramMiB)/1024.;break;
                     case fg::HudCap:title="FPS limit";number=fg::read32(&control->cap);break;
                     case fg::HudApi:snprintf(output,length,"%s",guiIs12?"DX12":"DX11");return "Renderer";
-                    default:snprintf(output,length,"FRAMORYX");return "";
+                    default:
+                        if(field>=fg::HudGpu){int sensor=0;while(sensor<6&&field!=(fg::HudGpu<<sensor))++sensor;static const char* titles[]{"GPU usage","VRAM usage","GPU temp","CPU temp","GPU power","GPU clock"};
+                            if(sensor<6){const auto value=fg::read32(&control->sensors[sensor]);if(value<0)snprintf(output,length,"--");else if(sensor<2)snprintf(output,length,"%.0f%%",value/100.);else if(sensor<4)snprintf(output,length,"%.0f C",value/100.);else if(sensor==4)snprintf(output,length,"%.1f W",value/100.);else snprintf(output,length,"%.0f MHz",value/100.);return titles[sensor];}}
+                        snprintf(output,length,"FRAMORYX");return "";
                     }
                     if(field==fg::HudCap&&!number)snprintf(output,length,"Uncapped");
                     else if(number>0||field==fg::HudCpu||field==fg::HudRam){

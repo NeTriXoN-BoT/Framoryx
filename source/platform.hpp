@@ -145,6 +145,7 @@ class HookClient {
         InterlockedExchange(&ipc->hudX,options.x);InterlockedExchange(&ipc->hudY,options.y);
         InterlockedExchange(&ipc->hudFontScale,options.fontScale);
     }
+    void sensors(const std::array<double,6>& values){if(ipc)for(size_t i=0;i<values.size();++i)InterlockedExchange(&ipc->sensors[i],std::isfinite(values[i])&&values[i]>=0?LONG(std::min(values[i],10000.)*100):-1);}
     void systemMetrics(double cpu, double ramGB) {
         if (ipc) {
             InterlockedExchange(&ipc->cpuHundredths, LONG(cpu * 100));
@@ -291,6 +292,7 @@ class HookClient {
         view->hudOpacity = 90;
         view->hudOrderLo=LONG(HudOptions::defaultOrder&0xffffffffu);view->hudOrderHi=LONG(HudOptions::defaultOrder>>32);
         view->hudX=-1;view->hudY=-1;view->hudFontScale=100;
+        for(auto& sensor:view->sensors)sensor=-1;
         InterlockedExchange64(&view->heartbeat, GetTickCount64());
         std::wstring dll =
             executableDir() + (legacy ? L"\\FramoryxHook32.dll" : L"\\FramoryxHook.dll");

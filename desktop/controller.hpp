@@ -15,6 +15,7 @@
 #include "core.hpp"
 
 class AudioMonitor;
+class Telemetry;
 class Platform;
 class Controller : public QObject {
     Q_OBJECT
@@ -92,6 +93,7 @@ signals:
 private:
     friend class Platform;
     friend class AudioMonitor;
+class Telemetry;
     QString m_root;
     bool m_test = false, m_active = true, m_scanningProcesses = false;
     QVariantMap m_state, m_options;
@@ -108,6 +110,7 @@ private:
     quint32 m_livePid = 0;
     std::unique_ptr<Platform> m_platform;
     std::unique_ptr<AudioMonitor> m_audio;
+    std::unique_ptr<Telemetry> m_telemetry;
     void load();
     void poll();
     void scheduleSave();

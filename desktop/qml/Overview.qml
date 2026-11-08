@@ -38,6 +38,26 @@ ColumnLayout {
     }
     FCard {
         Layout.fillWidth: true
+        RowLayout { Layout.fillWidth: true; Text { text: "Hardware, in view."; color: Theme.text; font.pixelSize: Theme.px(21); font.weight: Font.DemiBold; Layout.fillWidth: true } Text { text: "LIVE · 1 SECOND"; color: Theme.accent; font.family: "monospace"; font.pixelSize: Theme.px(9) } }
+        Text { text: app.state.gpuName||"Checking available GPU sensors…"; color: Theme.muted; font.pixelSize: Theme.px(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        GridLayout {
+            Layout.fillWidth: true; columns: page.width>Theme.px(1050)?4:2; columnSpacing: Theme.px(12); rowSpacing: Theme.px(12)
+            Repeater {
+                model: [{key:"gpu",name:"GPU usage",unit:"%",note:"Device-wide load"},{key:"vramPercent",name:"VRAM usage",unit:"%",note:"Dedicated memory"},{key:"gpuTemp",name:"GPU temperature",unit:" °C",note:"Driver temperature sensor"},{key:"cpuTemp",name:"CPU temperature",unit:" °C",note:"Hottest available CPU sensor"},{key:"gpuPower",name:"GPU power",unit:" W",note:"Reported device power"},{key:"gpuClock",name:"GPU clock",unit:" MHz",note:"Graphics clock"},{key:"gpuFan",name:"GPU fan",unit:"%",note:"Driver-reported fan speed"},{key:"cpuClock",name:"CPU clock",unit:" MHz",note:"Average exposed core clock"}]
+                Metric {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    readonly property var reading: app.state[modelData.key]
+                    label: modelData.name; value: typeof reading==="number"?reading:0; available: typeof reading==="number"&&isFinite(reading); suffix: modelData.unit
+                    note: available?modelData.note:"Unavailable on this device"; highlighted: modelData.key==="gpu"
+                }
+            }
+        }
+        Text { text: typeof app.state.vramUsed==="number"&&typeof app.state.vramTotal==="number"?Number(app.state.vramUsed).toFixed(1)+" / "+Number(app.state.vramTotal).toFixed(1)+" GB dedicated GPU memory":"Dedicated GPU memory capacity is unavailable."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Text { text: app.state.sensorSource||"Sensors are read in the background. Unsupported values remain unavailable."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+    }
+    FCard {
+        Layout.fillWidth: true
         Flow {
             Layout.fillWidth: true; spacing: Theme.px(12)
             FButton { text: app.state.overlay?"Hide overlay":"Show overlay"; primary: true; onClicked: app.action("overlay") }
@@ -45,6 +65,6 @@ ColumnLayout {
             FButton { text: "Export capture"; enabled: app.state.average>0; onClicked: shell.exportCapture() }
             FButton { text: "Open test scene"; onClicked: app.action("fixture") }
         }
-        Text { Layout.fillWidth: true; text: app.platformName==="Linux"?"Launch a library game with MangoHud, or copy Framoryx's Steam launch options in Games.":"Choose a running game or leave Auto selected, then start capture. Your data stays local."; color: Theme.muted; font.pixelSize: Theme.px(12); wrapMode: Text.Wrap }
+        Text { Layout.fillWidth: true; text: app.platformName==="Linux"?"Select a running X11 game for external capture, or choose an explicit game layer in Overlay Studio.":"Choose a running game or leave Auto selected, then start capture. Your data stays local."; color: Theme.muted; font.pixelSize: Theme.px(12); wrapMode: Text.Wrap }
     }
 }

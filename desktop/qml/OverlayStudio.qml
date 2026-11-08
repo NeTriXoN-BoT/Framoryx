@@ -50,7 +50,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     FToggle { text: modelData.name; checked: modelData.enabled; Layout.fillWidth: true; onToggled: app.setReadout(modelData.index,checked) }
                     FButton { text: "↑"; implicitWidth: Theme.px(30); implicitHeight: Theme.px(28); quiet: true; enabled: index>0; hint: "Move "+modelData.name+" up"; onClicked: app.moveReadout(modelData.index,-1) }
-                    FButton { text: "↓"; implicitWidth: Theme.px(30); implicitHeight: Theme.px(28); quiet: true; enabled: index<9; hint: "Move "+modelData.name+" down"; onClicked: app.moveReadout(modelData.index,1) }
+                    FButton { text: "↓"; implicitWidth: Theme.px(30); implicitHeight: Theme.px(28); quiet: true; enabled: index<15; hint: "Move "+modelData.name+" down"; onClicked: app.moveReadout(modelData.index,1) }
                 }
             }
             RowLayout { Layout.fillWidth: true; FButton { text: app.state.overlay?"Hide overlay":"Show overlay"; primary: true; Layout.fillWidth: true; onClicked: app.action("overlay") } FButton { text: "Reset"; onClicked: app.action("resetOverlay") } }

@@ -16,10 +16,11 @@ enum HudField : uint32_t {
     HudCap = 128,
     HudApi = 256,
     HudBrand = 512,
-    HudAll = 1023
+    HudGpu = 1024, HudVram = 2048, HudGpuTemp = 4096, HudCpuTemp = 8192, HudPower = 16384, HudClock = 32768,
+    HudAll = 65535
 };
 struct HudOptions {
-    static constexpr uint64_t defaultOrder = 0x4876532109ull;
+    static constexpr uint64_t defaultOrder = 0xfedcba4876532109ull;
     uint32_t fields = HudFps | HudLow | HudTime | HudGraph | HudBrand;
     int scale = 0, opacity = 90, accent = 0, style = 0;
     uint64_t order = defaultOrder;
@@ -31,10 +32,10 @@ struct HudOptions {
         accent = std::clamp(accent, 0, 9);
         style = std::clamp(style, 0, 4);
         x = std::clamp(x,-1,10000);y = std::clamp(y,-1,10000);fontScale = std::clamp(fontScale,80,140);
-        uint32_t seen=0;for(int i=0;i<10;++i){const auto item=uint32_t((order>>(4*i))&15);if(item>9||(seen&(1u<<item))){order=defaultOrder;break;}seen|=1u<<item;}
+        uint32_t seen=0;for(int i=0;i<16;++i){const auto item=uint32_t((order>>(4*i))&15);if(item>15||(seen&(1u<<item))){order=defaultOrder;break;}seen|=1u<<item;}
     }
 };
-inline std::array<uint32_t,10> orderedFields(const HudOptions& options){auto copy=options;copy.validate();std::array<uint32_t,10> fields{};for(int i=0;i<10;++i)fields[i]=1u<<((copy.order>>(4*i))&15);return fields;}
+inline std::array<uint32_t,16> orderedFields(const HudOptions& options){auto copy=options;copy.validate();std::array<uint32_t,16> fields{};for(int i=0;i<16;++i)fields[i]=1u<<((copy.order>>(4*i))&15);return fields;}
 struct HudProfile {
     HudOptions options;
     int corner = 0, mode = 0;
@@ -75,7 +76,7 @@ inline float hudHeight(uint32_t fields) {
         height += 47;
     return height;
 }
-inline constexpr std::array<uint32_t,10> accentColors{
+inline constexpr std::array<uint32_t,16> accentColors{
     0x7df2c6,0x59cfff,0xc2a3ff,0xf7be6f,0xff8baf,0x63dfdf,0xf4e478,0xa3e56d,0xff9d72,0xd5e4f5};
 inline float hudWidth(const HudOptions& options) {
     if(options.style==1||options.style==3)return 230;
@@ -86,7 +87,7 @@ inline float hudWidth(const HudOptions& options) {
     return std::max(260.f,width);
 }
 struct HudCell {uint32_t field=0;float x=0,y=0,width=0,height=0;bool column=false;};
-struct HudLayout {std::array<HudCell,10> cells{};size_t count=0;float width=0,height=0;};
+struct HudLayout {std::array<HudCell,16> cells{};size_t count=0;float width=0,height=0;};
 inline HudLayout hudLayout(HudOptions options){
     options.validate();HudLayout result;result.width=hudWidth(options);
     const bool compact=options.style==1||options.style==3,bar=options.style==2,dashboard=options.style==4;
