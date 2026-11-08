@@ -361,11 +361,18 @@ int main(int argc, char** argv) {
                         check(hook.hudFresh(),
                               "DX12 HUD survives restoration to its original window");
                     }
+                    // Match the initial baseline's renderer workload for throughput checks.
+                    // HUD rendering/style/lifecycle coverage above runs with the 30 FPS cap.
+                    hook.overlay(false);
+                    wait(500);
                     auto fps60 = rate12(60);
                     check(fps60 > 52 && fps60 < 63, "DX12 60 FPS limit updates live");
                     auto unlimited = rate12(0);
                     check(unlimited > std::min(80.0, baseline * 0.75),
                           "DX12 uncapped mode restores throughput");
+                    hook.overlay(true);
+                    wait(600);
+                    check(hook.hudFresh(),"DX12 HUD resumes after limiter-only throughput checks");
                     hook.disable();
                     wait(500);
                     check(hook.status() == 2, "DX12 hook disables cleanly");
