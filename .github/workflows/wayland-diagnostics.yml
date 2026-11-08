@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - run: sudo apt-get update && sudo apt-get install -y weston mesa-vulkan-drivers libvulkan1 libgl1 libopengl0 libegl1 libxkbcommon0 libpulse0 dbus-x11
+      - run: sudo apt-get update && sudo apt-get install -y weston mesa-vulkan-drivers libvulkan1 libgl1 libopengl0 libegl1 libxkbcommon0 libpulse0 dbus-x11 gdb
       - name: Fetch a previously verified Linux package
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,7 +45,7 @@ jobs:
           binary=appdir/'usr/bin/FramoryxVulkanScene'
           runtime=appdir/'usr/bin/runtime/mangohud/bin/mangohud'
           output=pathlib.Path('work/wayland-pacing')
-          base=dict(os.environ,LD_LIBRARY_PATH=str(appdir/'usr/lib'),QT_PLUGIN_PATH=str(appdir/'usr/plugins'))
+          base=dict(os.environ,LD_LIBRARY_PATH=str(appdir/'usr/lib'),QT_PLUGIN_PATH=str(appdir/'usr/plugins'),QT_LOGGING_RULES='qt.vulkan=true')
           results=[]
           cases=[('bare',0,'late',False,''),('uncapped-layer',0,'late',False,''),('30-late',30,'late',False,''),('60-late',60,'late',False,''),('60-early',60,'early',False,''),('60-late-hud',60,'late',True,''),('60-early-hud',60,'early',True,''),('60-mailbox-hud',60,'late',True,',vulkan_present_mode=mailbox')]
           for name,cap,method,hud,extra in cases:
@@ -72,6 +72,11 @@ jobs:
               data=json.loads(report.read_text()) if report.exists() else {}
               result=dict(case=name,exitCode=code,frames=data.get('frames'),elapsedMs=data.get('elapsedMs'),fps=data.get('frames',0)*1000/max(1,data.get('elapsedMs',1)),valid=data.get('valid'),hudConnected=bool(connection))
               results.append(result);print(json.dumps(result),flush=True)
+              if name=='uncapped-layer' and code<0:
+                  layer=appdir/'usr/bin/runtime/mangohud'
+                  debug=['gdb','--batch','-ex','set environment LD_PRELOAD='+str(layer/'lib/libMangoHud_shim.so'),'-ex','set environment VK_LAYER_PATH='+str(layer/'layers'),'-ex','set environment VK_INSTANCE_LAYERS=VK_LAYER_FRAMORYX_overlay_x86_64','-ex','run','-ex','thread apply all bt','--args',str(binary),'--seconds','3']
+                  with (output/'crash-backtrace.txt').open('w') as trace:
+                      subprocess.run(debug,env=env,stdout=trace,stderr=trace,timeout=30)
           (output/'results.json').write_text(json.dumps(results,indent=2))
           assert all(x['exitCode']==0 and x['valid'] and x['frames']>0 for x in results)
           PY
