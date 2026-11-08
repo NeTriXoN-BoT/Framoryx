@@ -189,7 +189,7 @@ QString Platform::launchCommand()const{
 }
 void Platform::linuxLaunch(){
 #ifndef Q_OS_WIN
-    if(m_game.state()!=QProcess::NotRunning){c->notify("A game launched by Framoryx is already running.");return;}
+    if(m_launchedPid&&QFileInfo::exists(QString("/proc/%1").arg(m_launchedPid))){m_monitoring=true;c->setState("capture",true);c->notify("Monitoring resumed for the running game.");return;}
     QVariantMap game;for(const auto& value:c->m_games)if(value.toMap()["id"]==c->m_options["selectedGame"])game=value.toMap();
     const QFileInfo file(game["executable"].toString());if(game.isEmpty()||!file.isFile()||!file.isExecutable()){c->notify("Add a game executable to your library, then select it.","warning");return;}
     if(denied(c->m_options,file.fileName())){c->notify("This executable is blocked by your process rules.","warning");return;}
@@ -199,12 +199,13 @@ void Platform::linuxLaunch(){
     QProcessEnvironment env=QProcessEnvironment::systemEnvironment();env.insert("MANGOHUD_CONFIGFILE",c->root()+"/MangoHud.conf");env.insert("MANGOHUD_DLSYM","1");m_game.setProcessEnvironment(env);
     QStringList args{"--dlsym"};if(c->m_options["gamescope"].toBool())args<<exe("gamescope")<<"-b"<<"-r"<<QString::number(c->m_options["cap"].toInt())<<"--";
     args<<file.absoluteFilePath();args+=QProcess::splitCommand(game["arguments"].toString());
-    m_game.setWorkingDirectory(file.absolutePath());m_game.start(exe("mangohud"),args);c->m_state["gameRunning"]=true;c->m_state["capture"]=true;c->m_state["game"]=game["name"];c->m_state["renderer"]="MangoHud · Vulkan / OpenGL";c->m_state["launchTime"]=QDateTime::currentMSecsSinceEpoch();
+    m_game.setWorkingDirectory(file.absolutePath());m_game.setProgram(exe("mangohud"));m_game.setArguments(args);m_game.setStandardOutputFile(QProcess::nullDevice());m_game.setStandardErrorFile(c->root()+"/game-launch.log");if(!m_game.startDetached(&m_launchedPid)){c->notify("The game could not start. Check its executable and launch arguments.","error");return;}m_monitoring=true;c->m_state["gameRunning"]=true;c->m_state["capture"]=true;c->m_state["game"]=game["name"];c->m_state["renderer"]="MangoHud · Vulkan / OpenGL";c->m_state["launchTime"]=QDateTime::currentMSecsSinceEpoch();
     c->notify("Launching with your overlay and frame-limit settings.");
 #endif
 }
 void Platform::readLog(){
 #ifndef Q_OS_WIN
+    if(!m_monitoring)return;
     const auto files=QDir(c->root()+"/logs").entryInfoList({"*.csv"},QDir::Files,QDir::Time);
     if(files.isEmpty())return;
     const auto selected=files.first();if(selected.isSymLink())return;
@@ -213,7 +214,7 @@ void Platform::readLog(){
     file.seek(m_logOffset);const auto bytes=file.read(1024*1024);m_logOffset+=bytes.size();m_logPending+=bytes;if(m_logPending.size()>2*1024*1024)m_logPending.clear();
     QList<double> times;int end;
     while((end=m_logPending.indexOf('\n'))>=0){const auto line=m_logPending.left(end).trimmed();m_logPending.remove(0,end+1);const auto cells=QString::fromUtf8(line).split(',');if(cells.contains("fps")&&cells.contains("frametime")){m_logHeaders=cells;continue;}const int index=m_logHeaders.indexOf("frametime");if(index<0||index>=cells.size())continue;bool valid=false;const double ms=cells[index].toDouble(&valid);if(valid&&std::isfinite(ms)&&ms>0&&ms<60000)times<<ms;}
-    if(!times.isEmpty()){c->m_state["capture"]=true;c->sampleFrames(times,c->m_state["game"].toString(),quint32(m_game.processId()?m_game.processId():1));}
+    if(!times.isEmpty()){c->m_state["capture"]=true;c->sampleFrames(times,c->m_state["game"].toString(),quint32(m_launchedPid?m_launchedPid:1));}
     // Keep only a small physical tail: telemetry history lives in the bounded Store.
     if(m_logOffset>8*1024*1024){const qint64 amount=((m_logOffset-4*1024*1024)/(1024*1024))*(1024*1024);if(amount>0)fallocate(file.handle(),FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE,0,amount);}
     for(int i=3;i<files.size();++i)if(!files[i].isSymLink())QFile::remove(files[i].absoluteFilePath());
@@ -274,7 +275,9 @@ void Platform::updateNoise(bool force){
     if(!force&&verified()){c->setState("noiseStatus","RNNoise v1.10 ready · verified official Linux plugin");if(c->m_state["pendingMic"].toBool()){c->setState("pendingMic",false);linuxAudio(true);}return;}
     c->setState("noiseBusy",true);c->setState("noiseStatus","Checking the latest official Linux RNNoise release…");
     auto fetch=std::make_shared<std::function<void(QUrl,int,qint64,std::function<void(QByteArray)>)>>();
-    *fetch=[this,fetch](QUrl url,int redirects,qint64 limit,std::function<void(QByteArray)> done){
+    const std::weak_ptr<std::function<void(QUrl,int,qint64,std::function<void(QByteArray)>)>> weakFetch=fetch;
+    *fetch=[this,weakFetch](QUrl url,int redirects,qint64 limit,std::function<void(QByteArray)> done){
+        const auto fetch=weakFetch.lock();if(!fetch)return;
         const QStringList hosts{"api.github.com","github.com","release-assets.githubusercontent.com","objects.githubusercontent.com"};
         auto fail=[this](const QString& text){c->setState("noiseBusy",false);c->setState("pendingMic",false);c->setState("noiseStatus",text);c->notify(text,"warning");};
         if(url.scheme()!="https"||!hosts.contains(url.host())||!url.userInfo().isEmpty()||redirects>5){fail("RNNoise update refused an unexpected download location. The existing plugin was kept.");return;}
@@ -318,6 +321,7 @@ void Platform::action(const QString& name,const QVariantMap& args){
 #ifdef Q_OS_WIN
     QJsonObject request=QJsonObject::fromVariantMap(args);request["action"]=name;send(request);
 #else
+    if(name=="capture"&&c->m_state["capture"].toBool()){m_monitoring=false;c->setState("capture",false);c->setState("live",false);c->notify("Capture stopped. Your game and its in-game overlay keep running.");return;}
     if(name=="launch"||name=="capture"){linuxLaunch();return;}
     if(name=="overlay"){c->setState("overlay",!c->m_state["overlay"].toBool());applyOptions("fields");c->notify(c->m_state["overlay"].toBool()?"Overlay enabled for monitored launches. Reload it with Shift+F4 in a running game.":"Overlay hidden for monitored launches. Reload it with Shift+F4 in a running game.");return;}
     if(name=="micApply"){linuxAudio(true);return;}
@@ -338,6 +342,6 @@ void Platform::shutdown(){
     for(const auto& id:m_windowRestores.keys())command(exe("wmctrl"),{"-ir",id,"-b","remove,fullscreen"});
     for(auto process:{&m_mic,&m_output}){process->terminate();if(!process->waitForFinished(1000))process->kill();}
     // A user's game keeps running when the control application closes.
-    m_game.setParent(nullptr);m_game.disconnect(this);
+    m_game.disconnect(this);
 #endif
 }

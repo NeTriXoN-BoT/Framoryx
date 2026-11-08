@@ -29,7 +29,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-image0 libxcb-render-util0 libxcb-xfixes0 libegl1 libpulse0 libasound2 xvfb openbox wmctrl mangohud pipewire pipewire-bin wireplumber mesa-utils
-      - uses: jurplel/install-qt-action@8a4de44c56f28df1e7cd6f9df2c9be6811d98fb2
+      - uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # built v4 distribution
         with:
           version: '6.8.3'
           arch: ${{ matrix.arch }}

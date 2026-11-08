@@ -27,6 +27,8 @@ private:
     QProcess m_engine, m_game, m_mic, m_output;
     QByteArray m_incoming;
     QString m_token, m_logFile;
+    qint64 m_launchedPid = 0;
+    bool m_monitoring = true;
     qint64 m_logOffset = 0;
     QByteArray m_logPending;
     QStringList m_logHeaders;
