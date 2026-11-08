@@ -110,7 +110,7 @@ int main(int argc,char** argv){
 #ifdef Q_OS_WIN
         ShowWindow(HWND(window->winId()),SW_SHOWNOACTIVATE);
 #endif
-        window->requestUpdate();
+        window->requestActivate();window->requestUpdate();
         auto timer=new QTimer(&application);timer->setInterval(950);int* step=new int(0);auto frames=std::make_shared<int>(0);auto interactions=std::make_shared<QVariantMap>();
         QObject::connect(window,&QQuickWindow::frameSwapped,&application,[frames]{++*frames;});
         QObject::connect(timer,&QTimer::timeout,&application,[&,timer,step,frames,interactions,destination]{
@@ -136,7 +136,7 @@ int main(int argc,char** argv){
             }
             else if(*step==23){
                 bool pass=true;QVariantList tabResults;QElapsedTimer elapsed;elapsed.start();
-                for(int i=0;i<7;++i){auto item=findVisual(window,QString("navigation-%1").arg(i));if(!item){pass=false;continue;}const auto position=item->mapToScene(QPointF(item->width()/2,item->height()/2));const QPointF global(window->mapToGlobal(position.toPoint()));QMouseEvent press(QEvent::MouseButtonPress,position,global,Qt::LeftButton,Qt::LeftButton,Qt::NoModifier),release(QEvent::MouseButtonRelease,position,global,Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QMouseEvent move(QEvent::MouseMove,position,global,Qt::NoButton,Qt::NoButton,Qt::NoModifier);move.setTimestamp(1000+i*30);press.setTimestamp(1001+i*30);release.setTimestamp(1002+i*30);QCoreApplication::sendEvent(window,&move);QCoreApplication::sendEvent(window,&press);QCoreApplication::sendEvent(window,&release);QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents,5);const bool selected=window->property("page").toInt()==i;tabResults<<QVariantMap{{"tab",i},{"page",window->property("page")},{"visible",item->isVisible()},{"x",position.x()},{"y",position.y()}};pass=pass&&selected;}
+                for(int i=0;i<7;++i){auto item=findVisual(window,QString("navigation-%1").arg(i));if(!item){pass=false;continue;}const auto position=item->mapToScene(QPointF(item->width()/2,item->height()/2));const QPointF global(window->mapToGlobal(position.toPoint()));QMouseEvent press(QEvent::MouseButtonPress,position,global,Qt::LeftButton,Qt::LeftButton,Qt::NoModifier),release(QEvent::MouseButtonRelease,position,global,Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QMouseEvent move(QEvent::MouseMove,position,global,Qt::NoButton,Qt::NoButton,Qt::NoModifier);move.setTimestamp(1000+i*30);press.setTimestamp(1001+i*30);release.setTimestamp(1002+i*30);QCoreApplication::sendEvent(window,&move);QCoreApplication::sendEvent(window,&press);const bool wasPressed=item->property("pressed").toBool();QCoreApplication::sendEvent(window,&release);QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents,5);const bool selected=window->property("page").toInt()==i;tabResults<<QVariantMap{{"tab",i},{"page",window->property("page")},{"visible",item->isVisible()},{"enabled",item->isEnabled()},{"pressed",wasPressed},{"activeWindow",window->isActive()},{"mouseGrabber",window->mouseGrabberItem()?window->mouseGrabberItem()->objectName():QString()},{"x",position.x()},{"y",position.y()}};pass=pass&&selected;}
                 (*interactions)["tabs"]=tabResults;(*interactions)["sevenTabSwitchesMs"]=elapsed.elapsed();(*interactions)["tabNavigationPassed"]=pass;(*interactions)["statePreserved"]=controller.options()["volume"].toInt()==200;
             }
             else if(*step==24){
