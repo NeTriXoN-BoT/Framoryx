@@ -1825,8 +1825,9 @@ void ImTriangulator::Init(const ImVec2* points, int points_count, void* scratch_
     IM_ASSERT(scratch_buffer != NULL && points_count >= 3);
     _TrianglesLeft = EstimateTriangleCount(points_count);
     _Nodes         = (ImTriangulatorNode*)scratch_buffer;                          // points_count x Node
-    _Ears.Data     = (ImTriangulatorNode**)(_Nodes + points_count);                // points_count x Node*
-    _Reflexes.Data = (ImTriangulatorNode**)(_Nodes + points_count) + points_count; // points_count x Node*
+    unsigned char* pointer_storage = (unsigned char*)scratch_buffer + sizeof(ImTriangulatorNode) * (size_t)points_count;
+    _Ears.Data     = (ImTriangulatorNode**)pointer_storage; // points_count x Node*
+    _Reflexes.Data = _Ears.Data + points_count;             // points_count x Node*
     BuildNodes(points, points_count);
     BuildReflexes();
     BuildEars();
@@ -3063,8 +3064,13 @@ static bool ImFontAtlasBuildWithStbTruetype(ImFontAtlas* atlas)
     // 7. Allocate texture
     atlas->TexHeight = (atlas->Flags & ImFontAtlasFlags_NoPowerOfTwoHeight) ? (atlas->TexHeight + 1) : ImUpperPowerOfTwo(atlas->TexHeight);
     atlas->TexUvScale = ImVec2(1.0f / atlas->TexWidth, 1.0f / atlas->TexHeight);
-    atlas->TexPixelsAlpha8 = (unsigned char*)IM_ALLOC(atlas->TexWidth * atlas->TexHeight);
-    memset(atlas->TexPixelsAlpha8, 0, atlas->TexWidth * atlas->TexHeight);
+    if (atlas->TexWidth <= 0 || atlas->TexHeight <= 0 || (size_t)atlas->TexWidth > (size_t)INT_MAX / (size_t)atlas->TexHeight)
+        return false;
+    const size_t pixel_count = (size_t)atlas->TexWidth * (size_t)atlas->TexHeight;
+    atlas->TexPixelsAlpha8 = (unsigned char*)IM_ALLOC(pixel_count);
+    if (atlas->TexPixelsAlpha8 == NULL)
+        return false;
+    memset(atlas->TexPixelsAlpha8, 0, pixel_count);
     spc.pixels = atlas->TexPixelsAlpha8;
     spc.height = atlas->TexHeight;
 

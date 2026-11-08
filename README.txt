@@ -1,5 +1,5 @@
 FRAMORYX — YOUR GAMING TOOLKIT
-Version 0.2.1 | Native C++ | Windows 10/11 x64
+Version 0.2.2 | Native C++ | Windows 10/11 x64
 
 GET STARTED
 

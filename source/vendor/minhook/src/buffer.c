@@ -226,7 +226,9 @@ static PMEMORY_BLOCK GetMemoryBlock(LPVOID pOrigin)
     if (pBlock != NULL)
     {
         // Build a linked list of all the slots.
-        PMEMORY_SLOT pSlot = (PMEMORY_SLOT)pBlock + 1;
+        /* The first complete slot is reserved for the block header. */
+        C_ASSERT(sizeof(MEMORY_BLOCK) <= MEMORY_SLOT_SIZE);
+        PMEMORY_SLOT pSlot = (PMEMORY_SLOT)((LPBYTE)pBlock + MEMORY_SLOT_SIZE);
         pBlock->pFree = NULL;
         pBlock->usedCount = 0;
         do

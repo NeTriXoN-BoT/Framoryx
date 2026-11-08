@@ -52,6 +52,12 @@ jobs:
             if($result.layoutChecks -ne 5){throw "Incomplete layout checks on page $page"}
             Write-Output "Page $page passed all five maximize/percentage/restore checks."
           }
+      - name: Check graphics and capture on the isolated runner
+        timeout-minutes: 8
+        shell: pwsh
+        run: |
+          $toolchain=(Resolve-Path './work/build/toolchain/llvm-mingw-20261104-ucrt-x86_64/bin').Path
+          ./dist/Framoryx/source/validate.ps1 -ToolchainBin $toolchain -BuildDirectory ./work/graphics-validation -IncludeGraphicsTests -SoakSeconds 120
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Framoryx-Windows-x64

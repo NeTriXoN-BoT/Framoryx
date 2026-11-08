@@ -24,6 +24,7 @@ if (!$ToolchainBin) {
     }
 }
 $cxx = Join-Path $ToolchainBin 'x86_64-w64-mingw32-clang++.exe'
+& (Join-Path $sourceDirectory 'toolchain-fixes.ps1') -ToolchainBin $ToolchainBin
 $cc = Join-Path $ToolchainBin 'x86_64-w64-mingw32-clang.exe'
 $rc = Join-Path $ToolchainBin 'x86_64-w64-mingw32-windres.exe'
 function Invoke-Compiler([string]$Executable, [string[]]$Arguments) {
@@ -81,5 +82,12 @@ try {
     Invoke-Compiler $cxx ($flags + @('fuzz_tests.cpp','-o',(Join-Path $BuildDirectory 'fuzz-tests.exe')))
     & (Join-Path $BuildDirectory 'fuzz-tests.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Malformed-input checks failed' }
+    $dependencySources=@('dependency_tests.cpp','vendor/imgui/imgui.cpp','vendor/imgui/imgui_draw.cpp','vendor/imgui/imgui_tables.cpp','vendor/imgui/imgui_widgets.cpp')
+    Invoke-Compiler $cxx ($flags + $dependencySources + @('-o',(Join-Path $BuildDirectory 'dependency-tests.exe'),'-limm32'))
+    & (Join-Path $BuildDirectory 'dependency-tests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Headless dependency checks failed' }
+    Invoke-Compiler $cxx32 ($flags + $dependencySources + @('-o',(Join-Path $BuildDirectory 'dependency-tests32.exe'),'-limm32'))
+    & (Join-Path $BuildDirectory 'dependency-tests32.exe')
+    if ($LASTEXITCODE -ne 0) { throw '32-bit headless dependency checks failed' }
     Write-Output 'Build and core checks passed.'
 } finally { Pop-Location }

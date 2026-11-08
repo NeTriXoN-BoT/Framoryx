@@ -43,6 +43,7 @@ Index of this file:
 #include "imgui.h"
 #ifndef IMGUI_DISABLE
 #include "imgui_internal.h"
+#include "../../scalar_formats.hpp"
 
 // System includes
 #include <stdint.h>     // intptr_t
@@ -1496,7 +1497,23 @@ void ImGui::TextLinkOpenURL(const char* label, const char* url)
     if (TextLink(label))
         if (g.PlatformIO.Platform_OpenInShellFn != NULL)
             g.PlatformIO.Platform_OpenInShellFn(&g, url);
-    SetItemTooltip(LocalizeGetMsg(ImGuiLocKey_OpenLink_s), url); // It is more reassuring for user to _always_ display URL when we same as label
+    // Replace the single localization placeholder as text, never as a printf program.
+    const char* localized = LocalizeGetMsg(ImGuiLocKey_OpenLink_s);
+    const char* placeholder = strstr(localized, "%s");
+    ImGuiTextBuffer tooltip;
+    if (placeholder != NULL)
+    {
+        tooltip.append(localized, placeholder);
+        tooltip.append(url);
+        tooltip.append(placeholder + 2);
+    }
+    else
+    {
+        tooltip.append(localized);
+        tooltip.append("\n");
+        tooltip.append(url);
+    }
+    SetItemTooltip("%s", tooltip.c_str());
     if (BeginPopupContextItem())
     {
         if (MenuItem(LocalizeGetMsg(ImGuiLocKey_CopyLink)))
@@ -2208,6 +2225,14 @@ const ImGuiDataTypeInfo* ImGui::DataTypeGetInfo(ImGuiDataType data_type)
 
 int ImGui::DataTypeFormatString(char* buf, int buf_size, ImGuiDataType data_type, const void* p_data, const char* format)
 {
+    // Framoryx is a read-only HUD: keep numeric formats in typed literal pools.
+    const fg::ScalarFormat kind = data_type == ImGuiDataType_Float ? fg::ScalarFormat::Float
+        : data_type == ImGuiDataType_Double ? fg::ScalarFormat::Double
+        : data_type == ImGuiDataType_S64 ? fg::ScalarFormat::Signed64
+        : data_type == ImGuiDataType_U64 ? fg::ScalarFormat::Unsigned64
+        : (data_type == ImGuiDataType_U8 || data_type == ImGuiDataType_U16 || data_type == ImGuiDataType_U32)
+            ? fg::ScalarFormat::Unsigned32 : fg::ScalarFormat::Signed32;
+    format = fg::scalarFormatLiteral(format, kind);
     // Signedness doesn't matter when pushing integer arguments
     if (data_type == ImGuiDataType_S32 || data_type == ImGuiDataType_U32)
         return ImFormatString(buf, buf_size, format, *(const ImU32*)p_data);
@@ -2996,7 +3021,7 @@ TYPE ImGui::ScaleValueFromRatioT(ImGuiDataType data_type, float t, TYPE v_min, T
             //   This code is carefully tuned to work with large values (e.g. high ranges of U64) while preserving this property..
             // - Not doing a *1.0 multiply at the end of a range as it tends to be lossy. While absolute aiming at a large s64/u64
             //   range is going to be imprecise anyway, with this check we at least make the edge values matches expected limits.
-            FLOATTYPE v_new_off_f = (SIGNEDTYPE)(v_max - v_min) * t;
+            FLOATTYPE v_new_off_f = (FLOATTYPE)(SIGNEDTYPE)(v_max - v_min) * (FLOATTYPE)t;
             result = (TYPE)((SIGNEDTYPE)v_min + (SIGNEDTYPE)(v_new_off_f + (FLOATTYPE)(v_min > v_max ? -0.5 : 0.5)));
         }
     }
@@ -8590,9 +8615,9 @@ void ImGui::Value(const char* prefix, float v, const char* float_format)
 {
     if (float_format)
     {
-        char fmt[64];
-        ImFormatString(fmt, IM_ARRAYSIZE(fmt), "%%s: %s", float_format);
-        Text(fmt, prefix, v);
+        char number[128];
+        DataTypeFormatString(number, IM_ARRAYSIZE(number), ImGuiDataType_Float, &v, float_format);
+        Text("%s: %s", prefix, number);
     }
     else
     {
