@@ -20,7 +20,8 @@ pipewire-pulse > "$XDG_RUNTIME_DIR/pulse.log" 2>&1 & pids+=("$!")
 retry pactl info >/dev/null
 retry pactl load-module module-null-sink sink_name=framoryx_ci_input sink_properties=device.description=Framoryx_CI_Input >/dev/null
 retry pactl load-module module-null-sink sink_name=framoryx_ci_output sink_properties=device.description=Framoryx_CI_Output >/dev/null
-retry pactl load-module module-remap-source master=framoryx_ci_input.monitor source_name=framoryx_ci_mic source_properties=device.description=Framoryx_CI_Microphone >/dev/null
+source scripts/ci-microphone-fixture.sh
+create_ci_microphone
 retry pactl set-default-sink framoryx_ci_output
 retry pactl set-default-source framoryx_ci_mic
 python3 - "$XDG_RUNTIME_DIR/tone.wav" <<'PY'
