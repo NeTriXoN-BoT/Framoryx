@@ -36,6 +36,17 @@ int main() {
         ImU64 unsigned64 = 18446744073709551615ULL;
         ImGui::DataTypeFormatString(buffer, sizeof(buffer), ImGuiDataType_U64, &unsigned64, "%llu");
         check(std::string(buffer) == "18446744073709551615", "retain full unsigned 64-bit range");
+        number = -42;
+        ImGui::DataTypeFormatString(buffer, sizeof(buffer), ImGuiDataType_S32, &number, "%d");
+        check(std::string(buffer) == "-42", "match signed numeric arguments");
+        ImU8 byte = 255;
+        ImGui::DataTypeFormatString(buffer, sizeof(buffer), ImGuiDataType_U8, &byte, "%d");
+        check(std::string(buffer) == "255", "promote unsigned bytes to signed decimal arguments");
+        ImS8 negativeByte = -1;
+        ImGui::DataTypeFormatString(buffer, sizeof(buffer), ImGuiDataType_S8, &negativeByte, "%u");
+        check(std::string(buffer) == "4294967295",
+              "explicitly promote narrow unsigned display arguments");
+        number = 42;
         float fraction = 12.375f;
         ImGui::DataTypeFormatString(buffer, sizeof(buffer), ImGuiDataType_Float, &fraction, "%.2f");
         check(std::string(buffer) == "12.38", "retain decimal precision");

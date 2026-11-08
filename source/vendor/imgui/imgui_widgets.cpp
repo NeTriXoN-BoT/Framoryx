@@ -2233,23 +2233,31 @@ int ImGui::DataTypeFormatString(char* buf, int buf_size, ImGuiDataType data_type
         : (data_type == ImGuiDataType_U8 || data_type == ImGuiDataType_U16 || data_type == ImGuiDataType_U32)
             ? fg::ScalarFormat::Unsigned32 : fg::ScalarFormat::Signed32;
     format = fg::scalarFormatLiteral(format, kind);
-    // Signedness doesn't matter when pushing integer arguments
+    const char conversion = format[strlen(format) - 1];
+    const bool signed_format = conversion == 'd' || conversion == 'i';
+    // Match the actual promoted argument type to the chosen literal's conversion.
     if (data_type == ImGuiDataType_S32 || data_type == ImGuiDataType_U32)
-        return ImFormatString(buf, buf_size, format, *(const ImU32*)p_data);
+        return signed_format ? ImFormatString(buf, buf_size, format, *(const ImS32*)p_data)
+                             : ImFormatString(buf, buf_size, format, *(const ImU32*)p_data);
     if (data_type == ImGuiDataType_S64 || data_type == ImGuiDataType_U64)
-        return ImFormatString(buf, buf_size, format, *(const ImU64*)p_data);
+        return signed_format ? ImFormatString(buf, buf_size, format, *(const ImS64*)p_data)
+                             : ImFormatString(buf, buf_size, format, *(const ImU64*)p_data);
     if (data_type == ImGuiDataType_Float)
         return ImFormatString(buf, buf_size, format, *(const float*)p_data);
     if (data_type == ImGuiDataType_Double)
         return ImFormatString(buf, buf_size, format, *(const double*)p_data);
     if (data_type == ImGuiDataType_S8)
-        return ImFormatString(buf, buf_size, format, *(const ImS8*)p_data);
+        return signed_format ? ImFormatString(buf, buf_size, format, (int)*(const ImS8*)p_data)
+                             : ImFormatString(buf, buf_size, format, (unsigned int)*(const ImS8*)p_data);
     if (data_type == ImGuiDataType_U8)
-        return ImFormatString(buf, buf_size, format, *(const ImU8*)p_data);
+        return signed_format ? ImFormatString(buf, buf_size, format, (int)*(const ImU8*)p_data)
+                             : ImFormatString(buf, buf_size, format, (unsigned int)*(const ImU8*)p_data);
     if (data_type == ImGuiDataType_S16)
-        return ImFormatString(buf, buf_size, format, *(const ImS16*)p_data);
+        return signed_format ? ImFormatString(buf, buf_size, format, (int)*(const ImS16*)p_data)
+                             : ImFormatString(buf, buf_size, format, (unsigned int)*(const ImS16*)p_data);
     if (data_type == ImGuiDataType_U16)
-        return ImFormatString(buf, buf_size, format, *(const ImU16*)p_data);
+        return signed_format ? ImFormatString(buf, buf_size, format, (int)*(const ImU16*)p_data)
+                             : ImFormatString(buf, buf_size, format, (unsigned int)*(const ImU16*)p_data);
     IM_ASSERT(0);
     return 0;
 }

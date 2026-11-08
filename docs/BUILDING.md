@@ -6,6 +6,8 @@ Run `source/build.ps1` from PowerShell. Supply `-ToolchainBin` to reuse LLVM-Min
 
 The toolchain archive is pinned and SHA-256 verified. PresentMon is fetched separately by `scripts/bootstrap-tools.ps1`; its binary is also pinned and verified. No global toolchain installation or account/group change is made.
 
+The pinned compiler's CET/stream header fixes are applied idempotently before compilation with complete before/after checksum verification. See the [dependency patch record](DEPENDENCY-PATCHES.md). An unrecognized toolchain header is rejected; use the supported LLVM-MinGW archive or review the patch contexts before changing compiler versions.
+
 ```powershell
 ./scripts/bootstrap-tools.ps1
 ./source/build.ps1 -BuildDirectory ./work/build
@@ -13,6 +15,8 @@ The toolchain archive is pinned and SHA-256 verified. PresentMon is fetched sepa
 ```
 
 The build runs 110 core, 20 gain, 38 microphone/bass and 49 file-integrity/concurrent-audio checks, plus 20,000 deterministic malformed-input cases. It also builds an isolated VST2 audio-compatibility helper for runtime RNNoise downloads. Audio tests use scratch configuration files and do not change system audio.
+
+The headless ImGui dependency suite additionally runs in both x64 and x86 builds. It creates CPU draw data and font atlases without opening native windows. CI runs actual game-scene and window-layout checks on its isolated Windows runner.
 
 `scripts/check-sanitizers.ps1 -ToolchainBin C:\llvm-mingw\bin` repeats the core, malformed-input and audio suites with address and undefined-behavior sanitizers. LeakSanitizer is disabled because it is not supported by this Windows runtime; handle/GDI stability is measured separately. These checks do not execute game hooks.
 

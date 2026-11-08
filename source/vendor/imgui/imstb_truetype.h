@@ -428,6 +428,7 @@ int main(int arg, char **argv)
 ////   link with the C runtime library.
 
 #ifdef STB_TRUETYPE_IMPLEMENTATION
+#include <limits.h>
    // #define your own (u)stbtt_int8/16/32 before including to override this
    #ifndef stbtt_uint8
    typedef unsigned char   stbtt_uint8;
@@ -3747,7 +3748,7 @@ STBTT_DEF unsigned char *stbtt_GetGlyphBitmapSubpixel(const stbtt_fontinfo *info
    if (yoff  ) *yoff   = iy0;
 
    if (gbm.w && gbm.h) {
-      if (gbm.w < 0 || gbm.h < 0 || (size_t)gbm.w > (size_t)-1 / (size_t)gbm.h) {
+      if (gbm.w < 0 || gbm.h < 0 || (size_t)gbm.w > (size_t)INT_MAX / (size_t)gbm.h) {
          STBTT_free(vertices, info->userdata);
          if (width) *width = 0;
          if (height) *height = 0;
@@ -4622,7 +4623,7 @@ STBTT_DEF unsigned char * stbtt_GetGlyphSDF(const stbtt_fontinfo *info, float sc
       float *precompute;
       stbtt_vertex *verts;
       int num_verts = stbtt_GetGlyphShape(info, glyph, &verts);
-      if (w <= 0 || h <= 0 || (size_t)w > (size_t)-1 / (size_t)h || num_verts <= 0 || (size_t)num_verts > (size_t)-1 / sizeof(float)) {
+      if (w <= 0 || h <= 0 || (size_t)w > (size_t)INT_MAX / (size_t)h || num_verts <= 0 || (size_t)num_verts > (size_t)-1 / sizeof(float)) {
          STBTT_free(verts, info->userdata);
          return NULL;
       }

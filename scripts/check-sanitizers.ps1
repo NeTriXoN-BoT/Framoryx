@@ -19,6 +19,12 @@ try {
         & $exe (Join-Path $BuildDirectory 'scratch-configs')
         if($LASTEXITCODE -ne 0){throw "Sanitizer check failed: $name"}
     }
+    $exe=Join-Path $BuildDirectory 'dependency-tests.exe'
+    $dependencySources=@('dependency_tests.cpp','vendor/imgui/imgui.cpp','vendor/imgui/imgui_draw.cpp','vendor/imgui/imgui_tables.cpp','vendor/imgui/imgui_widgets.cpp') | ForEach-Object {Join-Path $root ('source/'+$_)}
+    & $compiler '-std=c++20' '-O1' '-g' '-DNOMINMAX' '-D_WIN32_WINNT=0x0A00' '-fno-omit-frame-pointer' '-fsanitize=address,undefined' @dependencySources '-o' $exe '-limm32'
+    if($LASTEXITCODE -ne 0){throw 'Dependency sanitizer build failed.'}
+    & $exe
+    if($LASTEXITCODE -ne 0){throw 'Headless dependency sanitizer checks failed.'}
 } finally {
     $env:PATH=$previousPath
     $env:ASAN_OPTIONS=$previousAsan
