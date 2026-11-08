@@ -21,6 +21,7 @@ signals:
     void connectedToGame(quint32 pid);
     void disconnectedFromGame();
     void lostSamples(quint64 count);
+    void limitApplied(int cap);
 private:
     QLocalSocket m_socket;
     QTimer m_timer;

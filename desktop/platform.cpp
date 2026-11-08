@@ -28,6 +28,7 @@
 #include "vendor/miniz/miniz.h"
 #include <unistd.h>
 #include <signal.h>
+#include <sys/prctl.h>
 #include "passive_linux.hpp"
 #include "mango_client.hpp"
 #include "noise_cache.hpp"
@@ -66,6 +67,9 @@ Platform::Platform(Controller* controller):QObject(controller),c(controller){
     m_volumeTimer.setSingleShot(true);m_volumeTimer.setInterval(45);
     connect(&m_volumeTimer,&QTimer::timeout,this,&Platform::flushVolume);
     for(auto* process:{&m_mic,&m_output}){
+#ifndef Q_OS_WIN
+        const auto parentPid=getpid();process->setChildProcessModifier([parentPid]{prctl(PR_SET_PDEATHSIG,SIGTERM);if(getppid()!=parentPid)_exit(125);});
+#endif
         connect(process,&QProcess::started,this,[this,process]{if(m_expectedStops.contains(process)||m_pendingAudio.contains(process))process->terminate();});
         connect(process,&QProcess::readyReadStandardError,this,[this,process]{const QString key=process==&m_mic?"micDiagnostic":"outputDiagnostic";const auto error=(c->m_state[key].toString()+QString::fromUtf8(process->readAllStandardError())).right(16384);c->setState(key,error);});
         connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this,process](int code,QProcess::ExitStatus){c->setState(process==&m_mic?"micConfigured":"bassConfigured",false);const bool expected=m_expectedStops.remove(process);if(code&&!m_closing&&!expected&&!m_pendingAudio.contains(process))c->notify("An audio filter stopped. Open Audio setup to inspect its status.","warning");if(m_pendingAudio.contains(process)&&!m_closing)QTimer::singleShot(0,this,[this,process]{startAudio(process);});});
@@ -115,7 +119,8 @@ void Platform::start(){
     m_passive=std::make_unique<PassiveCapture>(this);
     m_mango=std::make_unique<MangoClient>(this);
     connect(m_mango.get(),&MangoClient::frames,this,[this](const QList<double>& times,quint32 pid){if(m_monitoring&&!c->m_state["externalCapture"].toBool())c->sampleFrames(times,c->m_state["profileExe"].toString(),pid);});
-    connect(m_mango.get(),&MangoClient::connectedToGame,this,[this](quint32 pid){c->setState("profilePid",pid);c->setState("gameRunning",true);m_mango->configure(c->m_options,c->m_state["overlay"].toBool()&&c->m_options["linuxOverlayMode"].toInt()==2);c->setState("overlayHint","Connected to the game. Overlay and frame-limit changes apply live; frame telemetry stays in bounded memory.");});
+    connect(m_mango.get(),&MangoClient::connectedToGame,this,[this](quint32 pid){c->setState("profilePid",pid);c->setState("gameRunning",true);m_mango->configure(c->m_options,c->m_state["overlay"].toBool()&&c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected");c->setState("overlayHint","Connected to the game. Overlay and frame-limit changes apply live; frame telemetry stays in bounded memory.");});
+    connect(m_mango.get(),&MangoClient::limitApplied,this,[this](int cap){c->setState("appliedCap",cap);});
     connect(m_mango.get(),&MangoClient::disconnectedFromGame,this,[this]{c->setState("gameRunning",false);});
     connect(m_mango.get(),&MangoClient::lostSamples,this,[this](quint64 count){c->setState("droppedFrameSamples",count);});
     c->setState("connected",true);linuxScan();
@@ -431,7 +436,7 @@ void Platform::action(const QString& name,const QVariantMap& args){
         send({{"action","safetyFallback"},{"enabled",args["enabled"].toBool()}});
 #else
         const bool enabled=args["enabled"].toBool();c->setState("externalPreferred",enabled);
-        if(enabled){if(m_mango){m_mango->configure(c->m_options,false);m_mango->setLimit(0,mangoFontPixels());m_mango->setCollecting(false);}c->m_state["externalCapture"]=true;c->m_state["live"]=false;if(m_monitoring)attachPassive();c->setState("overlayHint","Known anti-cheat indicators were detected. The running layer has been disabled and external capture is preferred. Restart the game without the layer launch options to remove loaded code.");}
+        if(enabled&&c->m_state["antiCheatStatus"]=="detected"){if(m_mango){m_mango->configure(c->m_options,false);m_mango->setLimit(0,mangoFontPixels());m_mango->setCollecting(false);}c->setOption("linuxOverlayMode",1);c->m_state["externalCapture"]=true;c->m_state["live"]=false;if(m_monitoring)attachPassive();c->setState("overlayHint","Known anti-cheat indicators were detected. The running layer has been disabled and external capture is preferred. Restart the game without the layer launch options to remove loaded code.");}
 #endif
         return;
     }

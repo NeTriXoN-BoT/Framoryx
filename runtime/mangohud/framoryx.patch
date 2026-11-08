@@ -85,14 +85,14 @@ index 1bb509d..8981a79 100644
 +// Framoryx supplies launch parameters and typed live controls, not arbitrary files.
 +void parseConfigFile(overlay_params&) {}
 diff --git a/src/control.cpp b/src/control.cpp
-index 9d99708..4237e8d 100644
+index 9d99708..43ece68 100644
 --- a/src/control.cpp
 +++ b/src/control.cpp
 @@ -9,0 +10,3 @@
 +#include "framoryx_stream.hpp"
 +#include "framoryx_hud.hpp"
 +#include <unistd.h>
-@@ -18 +21,20 @@ static void parse_command(overlay_params &params,
+@@ -18 +21,24 @@ static void parse_command(overlay_params &params,
 -   if (!strncmp(cmd, "hud", cmdlen)) {
 +   if (!strcmp(cmd, "framoryx_hud")) {
 +      framoryx_hud::configure(std::string_view(param, paramlen ? paramlen - 1 : 0));
@@ -111,10 +111,14 @@ index 9d99708..4237e8d 100644
 +      framoryx_stream::reset(false);
 +   } else if (!strcmp(cmd, "framoryx_limit")) {
 +      std::array<int,2> values{};
-+      if (framoryx_hud::numbers(std::string_view(param, paramlen ? paramlen - 1 : 0), values))
++      if (framoryx_hud::numbers(std::string_view(param, paramlen ? paramlen - 1 : 0), values) && values[0] >= 0 && values[0] <= 1000 && values[1] >= 12 && values[1] <= 200) {
 +         framoryx_update_limit(params, values[0], values[1]);
++         const std::string response = ":FramoryxLimit=" + std::to_string(values[0]) + ";";
++         if (os_socket_send(global_control_client, response.data(), response.size(), MSG_NOSIGNAL | MSG_DONTWAIT) != ssize_t(response.size()))
++            shutdown(global_control_client, SHUT_RDWR);
++      }
 +   } else if (!strncmp(cmd, "hud", cmdlen)) {
-@@ -168,0 +191,7 @@ void control_client_check(int control, int& control_client, const std::string& d
+@@ -168,0 +195,7 @@ void control_client_check(int control, int& control_client, const std::string& d
 +      // The application control channel is restricted to this user's session.
 +      struct ucred peer = {};
 +      socklen_t peer_size = sizeof(peer);
@@ -122,9 +126,9 @@ index 9d99708..4237e8d 100644
 +         os_socket_close(socket);
 +         return;
 +      }
-@@ -176,0 +206 @@ static void control_client_disconnected(int& control_client)
+@@ -176,0 +210 @@ static void control_client_disconnected(int& control_client)
 +   framoryx_stream::reset(false);
-@@ -183,0 +214 @@ void process_control_socket(int& control_client, overlay_params &params)
+@@ -183,0 +218 @@ void process_control_socket(int& control_client, overlay_params &params)
 +      global_control_client = control_client;
 diff --git a/src/cpu.cpp b/src/cpu.cpp
 index f46faba..22d3b0f 100644

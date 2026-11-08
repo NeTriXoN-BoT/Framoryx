@@ -30,6 +30,7 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QDateTime>
+#include <QTemporaryDir>
 #include <fstream>
 #include <cmath>
 
@@ -171,7 +172,9 @@ bool Controller::save(){
     QSaveFile file(m_root+"/settings.json");
     const QJsonObject object{{"schema",3},{"activeGameKey",m_activeGameKey},{"baseOverlay",QJsonObject::fromVariantMap(m_baseOverlay)},{"gameOptions",QJsonObject::fromVariantMap(m_gameOptions)},{"options",QJsonObject::fromVariantMap(m_options)},{"games",QJsonArray::fromVariantList(m_games)},{"profiles",QJsonArray::fromVariantList(m_profiles)}};
     const auto bytes=QJsonDocument(object).toJson();if(bytes.size()>1024*1024){notify("Preferences exceed the storage limit. Remove some library entries or presets.","warning");return false;}
-    if(!file.open(QIODevice::WriteOnly)||file.write(bytes)!=bytes.size()||!file.commit()){
+    if(!file.open(QIODevice::WriteOnly)) {notify("Preferences could not be saved. Check the configuration folder.","warning");return false;}
+    file.setPermissions(QFile::ReadOwner|QFile::WriteOwner);
+    if(file.write(bytes)!=bytes.size()||!file.commit()){
         notify("Preferences could not be saved. Check the configuration folder.","warning");return false;
     }return true;
 }
@@ -384,6 +387,15 @@ void Controller::action(const QString& name,const QVariantMap& args){
 bool Controller::selfTest(QString* error){
     int count=0;auto check=[&](bool ok,const char* text){if(!ok){*error=QString::fromUtf8(text);return false;}++count;return true;};
     if(!check(m_test,"Tests must use isolated mode"))return false;
+    QTemporaryDir recovery(m_root+"/preference-recovery-XXXXXX");if(!check(recovery.isValid(),"Create isolated preference fixtures"))return false;
+    const QString damaged=recovery.path()+"/settings.json";const QByteArray damagedBytes("{incomplete settings");
+    {QFile file(damaged);if(!file.open(QIODevice::WriteOnly)||file.write(damagedBytes)!=damagedBytes.size())return false;}
+    {Controller recovered(recovery.path(),true);if(!check(recovered.m_saveAllowed&&recovered.save(),"Save defaults only after preserving damaged preferences"))return false;}
+    const auto backups=QDir(recovery.path()).entryList({"settings.json.recovered-*.bak"},QDir::Files);QFile backup(backups.isEmpty()?QString():recovery.path()+'/'+backups.first());
+    if(!check(backups.size()==1&&backup.open(QIODevice::ReadOnly)&&backup.readAll()==damagedBytes,"Recovery backup retains the exact original bytes"))return false;
+    const QByteArray futureBytes("{\"schema\":999,\"future\":true}");{QFile file(damaged);if(!file.open(QIODevice::WriteOnly|QIODevice::Truncate)||file.write(futureBytes)!=futureBytes.size())return false;}
+    {Controller future(recovery.path(),true);if(!check(!future.m_saveAllowed&&!future.save(),"Preserve settings from unsupported future versions"))return false;}
+    {QFile file(damaged);if(!check(file.open(QIODevice::ReadOnly)&&file.readAll()==futureBytes,"Unsupported preferences remain unchanged after shutdown"))return false;}
     const QString legacyPath=m_root+"/migration-test.ini";{QSaveFile legacy(legacyPath);if(!legacy.open(QIODevice::WriteOnly))return false;legacy.write("cap=144\ndesktop_scale=125\nhud_base=1023|0|0|2|3|2|4\nhud_profile=game.exe|7|125|70|1|0|2|1\nlimit=game.exe|90\nallow=game.exe\ndeny=blocked.exe\nmic_options=1 1 1 6 -3 0\n");if(!legacy.commit())return false;}
     const auto legacy=readLegacySettings(legacyPath,defaults());
     if(!check(legacy.valid&&legacy.options["opacity"]==0&&legacy.options["uiScale"]==125&&legacy.options["mode"]==1&&legacy.options["hudX"]==.97&&legacy.options["hudY"]==.97&&legacy.gameOptions["game.exe"].toMap()["cap"]==90&&legacy.options["allow"].toStringList()==QStringList{"game.exe"},"Migrate legacy layouts, rules and limits without auto-enabling hooks"))return false;
@@ -423,6 +435,7 @@ bool Controller::selfTest(QString* error){
     selectGame("profile-a");setOption("opacity",12);setOption("cap",144);setOption("style",4);selectGame("profile-b");
     if(!check(m_options["opacity"]==base["opacity"]&&m_options["cap"]==base["cap"],"New games inherit the default profile"))return false;
     setOption("opacity",78);setOption("cap",30);selectGame("profile-a");if(!check(m_options["opacity"]==12&&m_options["cap"]==144&&m_options["style"]==4&&m_options["volume"]==audio,"Game switches restore their own layout and limit"))return false;
-    if(!check(save(),"Persist per-game profiles"))return false;Controller profilesRestored(m_root,true);profilesRestored.selectGame("profile-b");if(!check(profilesRestored.m_options["opacity"]==78&&profilesRestored.m_options["cap"]==30,"Per-game profiles survive restart"))return false;
+    if(!check(save(),"Persist per-game profiles"))return false;Controller profilesRestored(m_root,true);if(!check(profilesRestored.m_options["selectedGame"]=="profile-a"&&profilesRestored.m_activeGameKey=="a.exe"&&profilesRestored.m_options["cap"]==144,"Restart retains the selected library game and its own limit"))return false;profilesRestored.selectGame("profile-b");if(!check(profilesRestored.m_options["opacity"]==78&&profilesRestored.m_options["cap"]==30,"Per-game profiles survive restart"))return false;
+    setOption("selectedGame","0x1234");save();{Controller expired(m_root,true);if(!check(expired.m_options["selectedGame"]=="auto"&&expired.m_activeGameKey.isEmpty()&&expired.m_options["cap"]==m_baseOverlay["cap"],"Expired window IDs restart in Auto with the default game profile"))return false;}
     qInfo("PASS: %d desktop model/profile/audio-setting checks; no device changes",count);return true;
 }

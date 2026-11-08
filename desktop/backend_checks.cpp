@@ -50,7 +50,8 @@ class Checks : public QObject {
         QJsonArray microphones;for(const auto& value:c->devices())microphones.append(value.toMap()["name"].toString());
         if(!passed){for(const auto& name:{"output.conf","microphone.conf"})QFile::copy(c->root()+'/'+name,destination+'/'+name);}
         const QJsonObject result{{"passed",passed},{"platform",c->platformName()},{"scope",scope},{"elapsedMs",total.elapsed()},{"maximumEventLoopGapMs",maximumGap},{"maximumInputLevel",maximumInput},{"checks",records},{"notice",state["notice"].toString()},{"audioStatus",state["audioStatus"].toString()},{"microphones",microphones},{"nodes",QJsonArray::fromVariantList(state["audioNodes"].toList())},{"micDiagnostic",state["micDiagnostic"].toString()},{"outputDiagnostic",state["outputDiagnostic"].toString()},{"noiseStatus",state["noiseStatus"].toString()}};
-        if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(result).toJson())<0||!file.commit())passed=false;
+        auto diagnostic=result;diagnostic["fps"]=state["fps"].toDouble();diagnostic["appliedCap"]=state["appliedCap"].toInt();diagnostic["renderer"]=state["renderer"].toString();
+        if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(diagnostic).toJson())<0||!file.commit())passed=false;
         QCoreApplication::exit(passed?0:1);
     }
     void await(bool condition,const QString& name,int timeout=15000){if(condition){record(name,true);next();}else if(phase.elapsed()>timeout){record(name,false);complete();}}
