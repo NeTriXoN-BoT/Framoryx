@@ -82,7 +82,7 @@ See [building and testing](docs/BUILDING.md) for details. The Linux CI job check
 
 Version **0.2.0** adds Overlay Studio, three HUD layouts, per-game presentation profiles, sharp font resizing, desktop scale controls, a refresh-aware animation clock, DX12 HUD support, compatibility inspection and tray access.
 
-Local test scenes establish behavior on the development configuration; they are not a commercial-game compatibility certification. [Release notes](docs/releases/v0.2.0.md) describe the validation and current limits. A native Linux application is [planned separately](docs/LINUX.md).
+Local test scenes establish behavior on the development configuration; they are not a commercial-game compatibility certification. [Validation](docs/VALIDATION.md) and [release notes](docs/releases/v0.2.0.md) describe completed checks and current limits. A native Linux application is [planned separately](docs/LINUX.md).
 
 ## Contribute
 
