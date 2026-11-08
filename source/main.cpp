@@ -298,7 +298,7 @@ std::optional<fg::HudProfile> decodeHud(const std::string& value) {
     std::vector<int> numbers;
     while (std::getline(in, part, '|')) {
         auto n = fg::number(part);
-        if (!n || *n < 0 || *n > 10001 || std::floor(*n) != *n)
+        if (!n || *n < 0 || *n > (numbers.empty()?65535:10001) || std::floor(*n) != *n)
             return {};
         numbers.push_back(int(*n));
     }
@@ -864,8 +864,8 @@ void layout() {
     place(HudOpacity, 388, 338, 127, 240);
     place(HudAccent, 240, 412, 132, 220);
     place(HudPosition, 388, 412, 127, 220);
-    for (int i = 0; i < 10; ++i)
-        place(HudFirstField + i, 240 + (i % 2) * 150, 488 + (i / 2) * 32, 145, 25);
+    for (int i = 0; i < 16; ++i)
+        place(HudFirstField + i, 240 + (i % 2) * 150, 488 + (i / 2) * 22, 145, 21);
     place(HudToggle, 240, 681, 156, 40);
     place(HudReset, 410, 681, 106, 40);
     place(DesktopSize, 768, 687, 220, 230);
@@ -942,7 +942,7 @@ void pageControls(int page) {
         else if (page == 5)
             show = id == Target || (id >= HudSize && id <= HudReset) || id == HudToggle ||
                    id == CreateShortcut || id == HudStyle ||
-                   (id >= HudFirstField && id < HudFirstField + 10);
+                   (id >= HudFirstField && id < HudFirstField + 16);
         else if (page == 6)
             show = id == Target || id == Refresh || id == Capture || id == CompatibilityRefresh ||
                    id == CompatibilityBorderless;
@@ -1619,7 +1619,7 @@ void update() {
                 choose(HudStyle, 2, false);
                 uint32_t fields =
                     fg::HudFps | fg::HudAverage | fg::HudTime | fg::HudCpu | fg::HudGraph;
-                for (int i = 0; i < 10; ++i)
+                for (int i = 0; i < 16; ++i)
                     SendMessageW(app.controls[HudFirstField + i], BM_SETCHECK,
                                  (fields & hudFields[i]) ? BST_CHECKED : BST_UNCHECKED, 0);
                 SendMessageW(app.window, WM_COMMAND, MAKEWPARAM(HudFirstField, BN_CLICKED),
@@ -2296,7 +2296,7 @@ void createControls() {
     for (auto label :
          {L"Auto · fit this screen", L"80%", L"90%", L"100%", L"110%", L"125%", L"150%", L"175%"})
         SendMessageW(app.controls[DesktopSize], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < 16; ++i)
         control(HudFirstField + i, L"BUTTON", hudTitles[i], BS_AUTOCHECKBOX);
     control(HudToggle, L"BUTTON", L"Show overlay", BS_OWNERDRAW);
     control(HudReset, L"BUTTON", L"Reset", BS_OWNERDRAW);
@@ -2666,9 +2666,9 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
             storeHudProfile();
             return 0;
         }
-        if (id >= HudFirstField && id < HudFirstField + 10 && notification == BN_CLICKED) {
+        if (id >= HudFirstField && id < HudFirstField + 16 && notification == BN_CLICKED) {
             app.hudOptions.fields = 0;
-            for (int i = 0; i < 10; ++i)
+            for (int i = 0; i < 16; ++i)
                 if (SendMessageW(app.controls[HudFirstField + i], BM_GETCHECK, 0, 0) == BST_CHECKED)
                     app.hudOptions.fields |= hudFields[i];
             storeHudProfile();
@@ -3066,8 +3066,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     app.diagnosticStart = fg::clockSeconds();
     app.trayRestartMessage = RegisterWindowMessageW(L"TaskbarCreated");
     app.brush = CreateSolidBrush(RGB(20, 28, 36));
+    if(!app.engineMode){
     app.artwork = std::make_unique<Image>((fg::executableDir() + L"\\assets\\artwork.png").c_str());
     app.logo = std::make_unique<Image>((fg::executableDir() + L"\\assets\\icon.png").c_str());
+    }
     HICON icon = LoadIconW(instance, MAKEINTRESOURCEW(1));
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);

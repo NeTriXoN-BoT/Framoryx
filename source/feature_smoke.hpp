@@ -124,17 +124,17 @@ void runFeatureStep() {
         featureCombo(Target, 0);
         featureCheck(featureSelectFixture() && app.cap == 180, "restore selected game's FPS limit");
         featureCommand(OverlayTab);
-        for (int style = 0; style < 3; ++style) {
+        for (int style = 0; style < 5; ++style) {
             featureCombo(HudStyle, style);
             featureCheck(app.hudOptions.style == style, "select each HUD layout");
         }
-        for (int i = 0; i < 10; ++i) {
+        for (int i = 0; i < 16; ++i) {
             SendMessageW(app.controls[HudFirstField + i], BM_SETCHECK, BST_UNCHECKED, 0);
             featureCommand(HudFirstField + i);
             featureCheck(!(app.hudOptions.fields & hudFields[i]), "turn off each HUD readout");
         }
         featureCheck(app.hudOptions.fields == 0, "hide all readouts");
-        for (int i = 0; i < 10; ++i)
+        for (int i = 0; i < 16; ++i)
             SendMessageW(app.controls[HudFirstField + i], BM_SETCHECK, BST_CHECKED, 0);
         featureCommand(HudFirstField);
         featureCheck(app.hudOptions.fields == fg::HudAll, "restore all readouts");

@@ -148,7 +148,7 @@ void syncHudControls() {
     SendMessageW(app.controls[HudMode], CB_SETCURSEL, app.hudMode, 0);
     SendMessageW(app.controls[HudPosition], CB_SETCURSEL, app.corner, 0);
     SendMessageW(app.controls[Corner], CB_SETCURSEL, app.corner, 0);
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < 16; ++i)
         SendMessageW(app.controls[HudFirstField + i], BM_SETCHECK,
                      (app.hudOptions.fields & hudFields[i]) ? BST_CHECKED : BST_UNCHECKED, 0);
     SetWindowTextW(app.controls[HudToggle], app.hudMode == 2 && !app.hook.active()
