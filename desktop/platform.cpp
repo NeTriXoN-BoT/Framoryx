@@ -42,6 +42,7 @@ QString processStart(qint64 pid){QFile file(QString("/proc/%1/stat").arg(pid));i
 QString shellQuote(QString value){return "'"+value.replace("'","'\\''")+"'";}
 QByteArray json(const QVariantMap& value){return QJsonDocument(QJsonObject::fromVariantMap(value)).toJson(QJsonDocument::Compact);}
 bool writeFile(const QString& path,const QByteArray& bytes){QSaveFile file(path);return file.open(QIODevice::WriteOnly)&&file.write(bytes)==bytes.size()&&file.commit();}
+bool waylandSession(){return QGuiApplication::platformName().startsWith("wayland")||qEnvironmentVariable("XDG_SESSION_TYPE").compare("wayland",Qt::CaseInsensitive)==0;}
 bool denied(const QVariantMap& options,const QString& name){
     static const QStringList immutable{"framoryx","framoryx.exe","framoryxengine.exe","gnome-shell","kwin_wayland","kwin_x11","Xorg","Xwayland","pipewire","wireplumber","systemd","steamwebhelper","explorer.exe","dwm.exe","svchost.exe","lsass.exe"};
     if(immutable.contains(name,Qt::CaseInsensitive)||fg::matches(fg::antiCheatNames,name.toStdString()))return true;
@@ -140,6 +141,7 @@ void Platform::start(){
     connect(m_mango.get(),&MangoClient::frames,this,[this](const QList<double>& times,quint32 pid){if(m_monitoring&&!c->m_state["externalCapture"].toBool()&&gameLayerAllowed())c->sampleFrames(times,c->m_state["profileExe"].toString(),pid);});
     connect(m_mango.get(),&MangoClient::connectedToGame,this,[this](quint32 pid){c->setState("profilePid",pid);c->setState("gameRunning",true);const bool layer=gameLayerAllowed();if(layer){if(m_passive)m_passive->stop();c->setState("externalCapture",false);}m_mango->configure(c->m_options,c->m_state["overlay"].toBool()&&layer);c->setState("overlayHint","Connected to the game. Overlay and frame-limit changes apply live; frame telemetry stays in bounded memory.");});
     connect(m_mango.get(),&MangoClient::limitApplied,this,[this](int cap){c->setState("appliedCap",cap);});
+    connect(m_mango.get(),&MangoClient::hudFrames,this,[this](quint64 count){c->m_state["gameHudFrames"]=QVariant::fromValue(count);});
     connect(m_mango.get(),&MangoClient::surfaceSize,this,[this](int width,int height){c->setState("gamePixelWidth",width);c->setState("gamePixelHeight",height);applyOptions("surface");});
     connect(m_mango.get(),&MangoClient::disconnectedFromGame,this,[this]{c->setState("gameRunning",false);});
     connect(m_mango.get(),&MangoClient::lostSamples,this,[this](quint64 count){c->setState("droppedFrameSamples",count);});
@@ -170,7 +172,7 @@ void Platform::refresh(){
     list<<QVariantMap{{"name","Audio processing"},{"ready",c->m_state["apoAvailable"].toBool()},{"detail","Extra gain, bass and mic effects use Equalizer APO device setup."}};
     send({{"action","refresh"}});
 #else
-    const bool wayland=qEnvironmentVariable("XDG_SESSION_TYPE")=="wayland";
+    const bool wayland=waylandSession();
     const bool compositing=wayland||x11::compositing();c->setState("compositing",compositing);
     list<<QVariantMap{{"name","External overlay transparency"},{"ready",compositing},{"detail",compositing?"Desktop compositing is available for a transparent external HUD.":"Desktop compositing is off. The external HUD uses an opaque surface; enable your desktop compositor for transparent backgrounds."}};
     list<<QVariantMap{{"name","Framoryx · Vulkan/OpenGL game runtime"},{"ready",!mangoExecutable().isEmpty()},{"detail","The bundled 64-bit MangoHud integration provides the custom HUD, live limits and local frame telemetry. Keep the complete package together. 32-bit in-game rendering is not bundled; use external monitoring for those games."}};
@@ -216,7 +218,7 @@ void Platform::select(const QString& id){
 #ifdef Q_OS_WIN
     QJsonObject request{{"action","select"},{"id",id}};for(const auto& item:c->m_games)if(item.toMap()["id"]==id)request["exe"]=QFileInfo(item.toMap()["executable"].toString()).fileName();send(request);
 #else
-    if(m_passive)m_passive->stop();if(m_mango)m_mango->stop();c->m_state["gamePixelWidth"]=0;c->m_state["gamePixelHeight"]=0;c->m_livePid=0;c->m_store.clear();c->m_graph.clear();c->m_state["gameForeground"]=false;c->m_state["live"]=false;c->m_state["fps"]=0.;c->m_state["average"]=0.;c->m_state["low"]=0.;c->setState("selectedWindow",id);
+    if(m_passive)m_passive->stop();if(m_mango)m_mango->stop();c->m_state["gamePixelWidth"]=0;c->m_state["gamePixelHeight"]=0;c->m_state["gameHudFrames"]=0;c->m_livePid=0;c->m_store.clear();c->m_graph.clear();c->m_state["gameForeground"]=false;c->m_state["live"]=false;c->m_state["fps"]=0.;c->m_state["average"]=0.;c->m_state["low"]=0.;c->setState("selectedWindow",id);
     for(const auto& value:c->m_games){const auto game=value.toMap();if(game["id"].toString()==id){c->m_state["profileExe"]=QFileInfo(game["executable"].toString()).fileName();c->m_state["profilePid"]=0;c->setState("game",game["name"]);if(c->m_options["linuxOverlayMode"].toInt()==2){if(m_mango)m_mango->start(mangoPrefix(),m_monitoring&&gameLayerAllowed());}else if(m_monitoring)attachPassive();return;}}
     for(const auto& value:c->m_state["windows"].toList()){const auto window=value.toMap();if(window["id"].toString()==id)c->setState("game",window["name"]);}if(m_monitoring)attachPassive();
 #endif
@@ -238,7 +240,7 @@ void Platform::poll(){
 void Platform::linuxScan(){
 #ifndef Q_OS_WIN
     if(m_refreshing)return;m_refreshing=true;
-    if(!exe("wmctrl").isEmpty()&&qEnvironmentVariable("XDG_SESSION_TYPE")!="wayland")command(exe("wmctrl"),{"-lpGx"},[this](int code,QByteArray output){
+    if(!exe("wmctrl").isEmpty()&&!waylandSession())command(exe("wmctrl"),{"-lpGx"},[this](int code,QByteArray output){
         if(code)return;QVariantList windows;
         for(const auto& line:QString::fromUtf8(output).split('\n')){const auto cells=line.split(QRegularExpression("\\s+"),Qt::SkipEmptyParts);if(cells.size()<10)continue;const auto pid=cells[2].toUInt();QFile comm(QString("/proc/%1/comm").arg(pid));QString process=QFileInfo(QFileInfo(QString("/proc/%1/exe").arg(pid)).symLinkTarget()).fileName();if(process.isEmpty()||process.startsWith("wine"))if(comm.open(QIODevice::ReadOnly))process=QString::fromUtf8(comm.read(256)).trimmed();if(denied(c->m_options,process)||pid==QCoreApplication::applicationPid())continue;
             windows<<QVariantMap{{"id",cells[0]},{"pid",pid},{"name",cells.mid(9).join(' ')},{"exe",process},{"x",cells[3].toInt()},{"y",cells[4].toInt()},{"width",cells[5].toInt()},{"height",cells[6].toInt()}};}
@@ -295,7 +297,7 @@ QString Platform::launchCommand()const{
 bool Platform::attachPassive(bool explain){
 #ifndef Q_OS_WIN
     if(!m_passive)return false;
-    if(qEnvironmentVariable("XDG_SESSION_TYPE")=="wayland"){
+    if(waylandSession()){
         c->setState("overlayHint","Native Wayland restricts external overlay positioning and passive presentation capture. Use an X11 session, or explicitly select the MangoHud game layer where permitted.");if(explain)c->notify(c->m_state["overlayHint"].toString(),"warning");return false;
     }
     const auto target=selectedWindow(c->m_options,c->m_games,c->m_state["windows"].toList(),m_passive->foreground());
@@ -342,7 +344,7 @@ void Platform::linuxLaunch(){
 }
 void Platform::borderless(bool restore){
 #ifndef Q_OS_WIN
-    if(qEnvironmentVariable("XDG_SESSION_TYPE")=="wayland"){c->notify("For Wayland, enable Gamescope in the game launch options to control fullscreen sizing.");return;}
+    if(waylandSession()){c->notify("For Wayland, enable Gamescope in the game launch options to control fullscreen sizing.");return;}
     const auto window=selectedWindow(c->m_options,c->m_games,c->m_state["windows"].toList(),m_passive?m_passive->foreground():0);const auto id=window["id"].toString();
     if(window.isEmpty()||!id.startsWith("0x")||denied(c->m_options,window["exe"].toString())){c->notify("Select an allowed running game window first.","warning");return;}
     if(restore){if(!m_windowRestores.contains(id)){c->notify("This window has no saved Framoryx state.");return;}const auto original=m_windowRestores[id];const bool restored=x11::fullscreen(original,original.fullscreen);m_windowRestores.remove(id);c->setState("borderlessActive",false);c->notify(restored?"Original window mode restored.":"The original window identity changed or restoration was refused. Refresh your game selection.",restored?"info":"warning");}

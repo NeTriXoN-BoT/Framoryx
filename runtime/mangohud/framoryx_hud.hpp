@@ -2,6 +2,7 @@
 #pragma once
 #include "presentation.hpp"
 #include <array>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cstdlib>
@@ -24,6 +25,7 @@ struct State {
     size_t count=0,next=0;
 };
 inline State state;
+inline std::atomic<uint64_t> drawnFrames{0};
 inline std::mutex mutex;
 inline void hide(){std::lock_guard<std::mutex> lock(mutex);state.visible=false;}
 inline std::array<int,2> surface(){std::unique_lock<std::mutex> lock(mutex,std::try_to_lock);return lock.owns_lock()?std::array<int,2>{state.surfaceWidth,state.surfaceHeight}:std::array<int,2>{};}
@@ -59,7 +61,7 @@ inline void draw(float fps,float milliseconds,bool vulkan){
     const float scale=std::max(.1f,std::min({requestedScale,(display.x-30)/layout.width,(display.y-30)/layout.height}));
     const float width=layout.width*scale,height=layout.height*scale;
     const ImVec2 origin(std::round(options.x/10000.f*std::max(0.f,display.x-width)),std::round(options.y/10000.f*std::max(0.f,display.y-height)));
-    auto list=ImGui::GetForegroundDrawList();auto font=ImGui::GetFont();const bool compact=options.style==1||options.style==3;
+    auto list=ImGui::GetForegroundDrawList();const int initialVertices=list->VtxBuffer.Size;auto font=ImGui::GetFont();const bool compact=options.style==1||options.style==3;
     const auto rgb=fg::accentColors[size_t(options.accent)];const ImU32 accent=IM_COL32((rgb>>16)&255,(rgb>>8)&255,rgb&255,255),textColor=IM_COL32(237,245,250,255),muted=IM_COL32(150,170,187,255);
     const ImVec2 end(origin.x+width,origin.y+height);
     if(options.opacity){list->AddRectFilled(origin,end,IM_COL32(12,19,26,options.opacity*255/100),(compact?8:13)*scale);if(options.style!=3){list->AddRect(origin,end,IM_COL32(40,74,77,255),13*scale);list->AddLine(ImVec2(origin.x+10*scale,origin.y+scale),ImVec2(end.x-10*scale,origin.y+scale),accent,2*scale);}}
@@ -96,6 +98,7 @@ inline void draw(float fps,float milliseconds,bool vulkan){
         else {label(cell.x,cell.y,cell.column?10:compact?11:12,muted,labels[index]);const float size=cell.column?17:compact?12:13;const float valueWidth=font->CalcTextSizeA(size*scale,100000,0,value).x/scale;label(cell.column?cell.x:cell.x+cell.width-valueWidth,cell.y+(cell.column?19:0),size,textColor,value);}
         list->PopClipRect();
     }
+    if(list->VtxBuffer.Size>initialVertices)drawnFrames.fetch_add(1,std::memory_order_relaxed);
 }
 #endif
 }

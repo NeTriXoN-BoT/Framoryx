@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['desktop/**', 'runtime/**', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
+    paths: ['desktop/**', 'runtime/**', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'scripts/check-wayland.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
   pull_request:
-    paths: ['desktop/**', 'runtime/**', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
+    paths: ['desktop/**', 'runtime/**', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'scripts/check-wayland.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -31,7 +31,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-image0 libxcb-render-util0 libxcb-xfixes0 libegl1 libpulse0 libasound2 xvfb openbox xcompmgr wmctrl mangohud pipewire pipewire-bin wireplumber mesa-utils libxcb-present-dev libva-x11-2 libva-drm2 libva2 pipewire-pulse dbus-x11 desktop-file-utils pulseaudio-utils libvulkan-dev mesa-vulkan-drivers
+          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-image0 libxcb-render-util0 libxcb-xfixes0 libegl1 libpulse0 libasound2 xvfb openbox xcompmgr wmctrl mangohud pipewire pipewire-bin wireplumber mesa-utils libxcb-present-dev libva-x11-2 libva-drm2 libva2 pipewire-pulse dbus-x11 desktop-file-utils pulseaudio-utils libvulkan-dev mesa-vulkan-drivers weston
           sudo apt-get install -y meson ninja-build python3-mako libdrm-dev libx11-dev libwayland-dev wayland-protocols libxkbcommon-dev libsystemd-dev libdbus-1-dev libcap-dev libegl1-mesa-dev glslang-tools libyaml-cpp-dev libgbm-dev
       - uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # built v4 distribution
         with:
@@ -81,6 +81,11 @@ jobs:
           export PATH="/usr/bin:$PATH"
           bash scripts/build-mangohud.sh
           xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- bash scripts/check-desktop-backends.sh
+      - name: Linux native Wayland UI and game layers
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: dbus-run-session -- bash scripts/check-wayland.sh
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         if: runner.os == 'Windows'
         with:
@@ -146,6 +151,7 @@ jobs:
           bash scripts/package-linux.sh
           unset QT_PLUGIN_PATH QML2_IMPORT_PATH QML_IMPORT_PATH LD_LIBRARY_PATH
           APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a -s '-screen 0 1920x1080x24' ./dist/desktop/Framoryx-Linux-x86_64.AppImage --bundle-test --test-root "$RUNNER_TEMP/framoryx-deployed" --snapshot-dir ./work/package-previews
+          dbus-run-session -- bash scripts/check-wayland.sh ./dist/desktop/Framoryx-Linux-x86_64.AppImage ./work/package-previews/wayland
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: success()
         with:

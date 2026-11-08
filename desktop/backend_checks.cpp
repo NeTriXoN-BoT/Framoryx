@@ -34,7 +34,8 @@ class Checks : public QObject {
     void record(const QString& name,bool passed){records.append(QJsonObject{{"name",name},{"passed",passed},{"atMs",total.elapsed()}});}
     void next(){
 #ifndef Q_OS_WIN
-        if(stage==0&&scope=="audio")stage=5;
+        if(stage==0&&scope=="wayland")stage=13;
+        else if(stage==0&&scope=="audio")stage=5;
         else if(stage==4&&scope=="graphics")stage=13;
         else if(stage==10&&scope=="audio")stage=12;
         else if(stage==12&&scope=="audio")stage=24;
@@ -44,7 +45,7 @@ class Checks : public QObject {
 #endif
         entered=false;phase.restart();
     }
-    void screenshot(const QString& name){QDir().mkpath(destination);const auto screen=QGuiApplication::primaryScreen();const auto picture=screen?screen->grabWindow(0):QPixmap();record("Capture "+name,!picture.isNull()&&picture.save(destination+'/'+name));}
+    void screenshot(const QString& name){if(scope=="wayland")return;QDir().mkpath(destination);const auto screen=QGuiApplication::primaryScreen();const auto picture=screen?screen->grabWindow(0):QPixmap();record("Capture "+name,!picture.isNull()&&picture.save(destination+'/'+name));}
     void complete(){
         if(finished)return;finished=true;tick.stop();heartbeat.stop();
         record("QML reports no errors",!*qmlFailure);record("Frontend event loop remains responsive",maximumGap<500);
@@ -53,7 +54,7 @@ class Checks : public QObject {
         const auto state=c->state();
         QJsonArray microphones;for(const auto& value:c->devices())microphones.append(value.toMap()["name"].toString());
         if(!passed){for(const auto& name:{"output.conf","microphone.conf"})QFile::copy(c->root()+'/'+name,destination+'/'+name);}
-        const QJsonObject result{{"passed",passed},{"platform",c->platformName()},{"scope",scope},{"elapsedMs",total.elapsed()},{"maximumEventLoopGapMs",maximumGap},{"maximumInputLevel",maximumInput},{"checks",records},{"notice",state["notice"].toString()},{"audioStatus",state["audioStatus"].toString()},{"microphones",microphones},{"nodes",QJsonArray::fromVariantList(state["audioNodes"].toList())},{"micDiagnostic",state["micDiagnostic"].toString()},{"outputDiagnostic",state["outputDiagnostic"].toString()},{"noiseStatus",state["noiseStatus"].toString()}};
+        const QJsonObject result{{"passed",passed},{"platform",c->platformName()},{"displayBackend",QGuiApplication::platformName()},{"gameHudFrames",state["gameHudFrames"].toLongLong()},{"scope",scope},{"elapsedMs",total.elapsed()},{"maximumEventLoopGapMs",maximumGap},{"maximumInputLevel",maximumInput},{"checks",records},{"notice",state["notice"].toString()},{"audioStatus",state["audioStatus"].toString()},{"microphones",microphones},{"nodes",QJsonArray::fromVariantList(state["audioNodes"].toList())},{"micDiagnostic",state["micDiagnostic"].toString()},{"outputDiagnostic",state["outputDiagnostic"].toString()},{"noiseStatus",state["noiseStatus"].toString()}};
         auto diagnostic=result;diagnostic["fps"]=state["fps"].toDouble();diagnostic["appliedCap"]=state["appliedCap"].toInt();diagnostic["renderer"]=state["renderer"].toString();diagnostic["sampleBytes"]=state["sampleBytes"].toLongLong();diagnostic["sampleReady"]=state["sampleReady"].toBool();
 #ifndef Q_OS_WIN
         if(!passed){QProcess dump;dump.start("pw-dump");if(dump.waitForFinished(1500)){const auto bytes=dump.readAllStandardOutput();if(bytes.size()<=8*1024*1024){QSaveFile graph(destination+"/audio-graph.json");if(graph.open(QIODevice::WriteOnly)){graph.write(bytes);graph.commit();}}}else {dump.kill();dump.waitForFinished(200);}}
@@ -140,7 +141,7 @@ class Checks : public QObject {
             if(first){c->setOption("startWithSystem",true);record("Sign-in entry is registered",lifecycle::startupEnabled());c->setOption("startWithSystem",false);record("Sign-in entry can be removed",!lifecycle::startupEnabled());next();}break;
         case 13:
             if(first){c->action("fixtureClose");c->setOption("linuxOverlayMode",2);c->setOption("cap",30);c->action("fixture");}
-            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34&&phase.elapsed()>2000,"OpenGL game layer streams real frames at 30 FPS",20000);if(stage==14)record("Game rendering resolution reaches automatic HUD sizing",state["gamePixelWidth"].toInt()>0&&state["gamePixelHeight"].toInt()>0);break;
+            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34&&phase.elapsed()>2000,"OpenGL game layer streams real frames at 30 FPS",20000);if(stage==14){record("Game rendering resolution reaches automatic HUD sizing",state["gamePixelWidth"].toInt()>0&&state["gamePixelHeight"].toInt()>0);record("OpenGL HUD generates visible geometry",state["gameHudFrames"].toLongLong()>0);}break;
         case 14:
             if(first){screenshot("hud-opengl-glass.png");c->setOption("cap",60);c->setOption("style",4);c->setOption("fields",65535);c->setOption("opacity",0);}
             await(state["fps"].toDouble()>54&&state["fps"].toDouble()<66&&phase.elapsed()>2500,"OpenGL limiter updates to 60 FPS without relaunch",15000);break;
@@ -150,7 +151,7 @@ class Checks : public QObject {
             if(first)c->action("capture");await(state["capture"].toBool()&&state["live"].toBool()&&phase.elapsed()>1500,"Game-layer telemetry reconnects to the running game");break;
         case 17:
             if(first){c->action("capture");c->action("fixtureClose");c->setOption("linuxOverlayMode",2);c->setOption("cap",30);c->action("fixture",{{"api","vulkan"}});}
-            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34&&phase.elapsed()>2000,"Vulkan game layer streams real frames at 30 FPS",20000);break;
+            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34&&phase.elapsed()>2000,"Vulkan game layer streams real frames at 30 FPS",20000);if(stage==18)record("Vulkan HUD generates visible geometry",state["gameHudFrames"].toLongLong()>0);break;
         case 18:
             if(first){screenshot("hud-vulkan-glass.png");c->setOption("cap",60);c->setOption("style",2);c->setOption("fields",65535);c->setOption("accent",8);c->setOption("opacity",85);}
             await(state["fps"].toDouble()>54&&state["fps"].toDouble()<66&&phase.elapsed()>2500,"Vulkan limiter updates to 60 FPS without relaunch",15000);break;
@@ -176,6 +177,7 @@ public:
 }
 int runBackendChecks(Controller* controller,const QString& destination,bool* qmlFailure,const QString& scope){
     if(qEnvironmentVariable("GITHUB_ACTIONS")!="true")return 2;
-    if(scope!="all"&&scope!="audio"&&scope!="graphics")return 2;
+    if(scope!="all"&&scope!="audio"&&scope!="graphics"&&scope!="wayland")return 2;
+    if(scope=="wayland"&&!QGuiApplication::platformName().startsWith("wayland"))return 2;
     Checks checks(controller,destination,qmlFailure,scope);return QCoreApplication::exec();
 }

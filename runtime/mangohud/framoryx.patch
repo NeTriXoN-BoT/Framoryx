@@ -85,7 +85,7 @@ index 1bb509d..8981a79 100644
 +// Framoryx supplies launch parameters and typed live controls, not arbitrary files.
 +void parseConfigFile(overlay_params&) {}
 diff --git a/src/control.cpp b/src/control.cpp
-index 9d99708..0bb9c05 100644
+index 9d99708..6248794 100644
 --- a/src/control.cpp
 +++ b/src/control.cpp
 @@ -9,0 +10,3 @@
@@ -102,7 +102,7 @@ index 9d99708..0bb9c05 100644
 +      const auto packet = framoryx_stream::take();
 +      if (!packet.empty()) {
 +         const auto size = framoryx_hud::surface();
-+         const std::string response = ":FramoryxFrames=" + packet + ";:FramoryxSurface=" + std::to_string(size[0]) + "|" + std::to_string(size[1]) + ";";
++         const std::string response = ":FramoryxFrames=" + packet + ";:FramoryxSurface=" + std::to_string(size[0]) + "|" + std::to_string(size[1]) + "|" + std::to_string(framoryx_hud::drawnFrames.load(std::memory_order_relaxed)) + ";";
 +         if (os_socket_send(global_control_client, response.data(), response.size(), MSG_NOSIGNAL | MSG_DONTWAIT) != ssize_t(response.size())) {
 +            framoryx_stream::reset(false);
 +            shutdown(global_control_client, SHUT_RDWR);
@@ -115,7 +115,7 @@ index 9d99708..0bb9c05 100644
 +      if (framoryx_hud::numbers(std::string_view(param, paramlen ? paramlen - 1 : 0), values) && values[0] >= 0 && values[0] <= 1000 && values[1] >= 12 && values[1] <= 200) {
 +         framoryx_update_limit(params, values[0], values[1]);
 +         const auto size = framoryx_hud::surface();
-+         const std::string response = ":FramoryxLimit=" + std::to_string(values[0]) + ";:FramoryxSurface=" + std::to_string(size[0]) + "|" + std::to_string(size[1]) + ";";
++         const std::string response = ":FramoryxLimit=" + std::to_string(values[0]) + ";:FramoryxSurface=" + std::to_string(size[0]) + "|" + std::to_string(size[1]) + "|" + std::to_string(framoryx_hud::drawnFrames.load(std::memory_order_relaxed)) + ";";
 +         if (os_socket_send(global_control_client, response.data(), response.size(), MSG_NOSIGNAL | MSG_DONTWAIT) != ssize_t(response.size()))
 +            shutdown(global_control_client, SHUT_RDWR);
 +      }

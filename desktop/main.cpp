@@ -65,7 +65,7 @@ int main(int argc,char** argv){
     parser.addOption({"test-root","Use an isolated configuration directory.","path"});
     parser.addOption({"self-test","Run headless model checks without audio or game changes."});
     parser.addOption({"backend-test","Run live integrations on an isolated CI runner."});
-    parser.addOption({"backend-scope","Choose all, graphics or audio live integrations.","scope","all"});
+    parser.addOption({"backend-scope","Choose all, graphics, wayland or audio live integrations.","scope","all"});
     parser.addOption({"ui-smoke","Run bounded UI checks on the isolated CI runner."});
     parser.addOption({"bundle-test","Verify packaged QML and rendering without the optional input driver."});
     parser.addOption({"snapshot-dir","Write CI UI captures and results here.","path"});

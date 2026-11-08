@@ -23,6 +23,7 @@ signals:
     void lostSamples(quint64 count);
     void limitApplied(int cap);
     void surfaceSize(int width,int height);
+    void hudFrames(quint64 count);
 private:
     QLocalSocket m_socket;
     QTimer m_timer;
