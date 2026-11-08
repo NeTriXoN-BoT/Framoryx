@@ -25,7 +25,8 @@ with tempfile.TemporaryDirectory(prefix='framoryx-apis-') as folder:
         config.write_text(f'fps_limit=30\nautostart_log=1\nlog_interval=0\nlog_duration=6\noutput_folder={logs}\nfps\nframetime\n', encoding='utf-8')
         env = dict(os.environ, MANGOHUD_CONFIGFILE=str(config), MANGOHUD_DLSYM='1')
         report = logs / 'scene.json'
-        process = subprocess.run(['mangohud', '--dlsym', str(args.bin.resolve() / executable), '--seconds', '8', '--report', str(report)], env=env, capture_output=True, text=True, timeout=25)
+        runtime = args.bin.resolve() / 'runtime/mangohud/bin/mangohud'
+        process = subprocess.run([str(runtime), '--dlsym', str(args.bin.resolve() / executable), '--seconds', '8', '--report', str(report)], env=env, capture_output=True, text=True, timeout=25)
         durations = []
         for log in logs.glob('*.csv'):
             with log.open(encoding='utf-8') as source:

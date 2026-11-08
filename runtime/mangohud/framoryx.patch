@@ -1,0 +1,130 @@
+diff --git a/src/control.cpp b/src/control.cpp
+index 9d99708..13fd11e 100644
+--- a/src/control.cpp
++++ b/src/control.cpp
+@@ -7,6 +7,8 @@
+ #include "overlay.h"
+ #include "version.h"
+ #include "app/mangoapp.h"
++#include "framoryx_stream.hpp"
++#include <unistd.h>
+ 
+ int global_control_client;
+ 
+@@ -15,7 +17,20 @@ static void parse_command(overlay_params &params,
+                           const char *cmd, unsigned cmdlen,
+                           const char *param, unsigned paramlen)
+ {
+-   if (!strncmp(cmd, "hud", cmdlen)) {
++   if (!strcmp(cmd, "framoryx_frames")) {
++      const auto packet = framoryx_stream::take();
++      if (!packet.empty()) {
++         const std::string response = ":FramoryxFrames=" + packet + ";";
++         if (os_socket_send(global_control_client, response.data(), response.size(), MSG_NOSIGNAL | MSG_DONTWAIT) != ssize_t(response.size())) {
++            framoryx_stream::reset(false);
++            shutdown(global_control_client, SHUT_RDWR);
++         }
++      }
++   } else if (!strcmp(cmd, "framoryx_stop")) {
++      framoryx_stream::reset(false);
++   } else if (!strcmp(cmd, "framoryx_reload")) {
++      parse_overlay_config(&params, getenv("MANGOHUD_CONFIG"), false);
++   } else if (!strncmp(cmd, "hud", cmdlen)) {
+       get_params()->no_display = !get_params()->no_display;
+    } else if (!strncmp(cmd, "logging", cmdlen)) {
+       if (param && param[0])
+@@ -166,6 +181,13 @@ void control_client_check(int control, int& control_client, const std::string& d
+    }
+ 
+    if (socket >= 0) {
++      // The application control channel is restricted to this user's session.
++      struct ucred peer = {};
++      socklen_t peer_size = sizeof(peer);
++      if (getsockopt(socket, SOL_SOCKET, SO_PEERCRED, &peer, &peer_size) || peer.uid != getuid()) {
++         os_socket_close(socket);
++         return;
++      }
+       os_socket_block(socket, false);
+       control_client = socket;
+       control_send_connection_string(control_client, deviceName);
+@@ -174,6 +196,7 @@ void control_client_check(int control, int& control_client, const std::string& d
+ 
+ static void control_client_disconnected(int& control_client)
+ {
++   framoryx_stream::reset(false);
+    os_socket_close(control_client);
+    control_client = -1;
+ }
+@@ -181,6 +204,7 @@ static void control_client_disconnected(int& control_client)
+ void process_control_socket(int& control_client, overlay_params &params)
+ {
+    if (control_client >= 0) {
++      global_control_client = control_client;
+       char buf[BUFSIZE];
+ 
+       while (true) {
+diff --git a/src/overlay.cpp b/src/overlay.cpp
+index 2196953..fc9f620 100644
+--- a/src/overlay.cpp
++++ b/src/overlay.cpp
+@@ -28,6 +28,7 @@
+ #include "net.h"
+ #include "fex.h"
+ #include "ftrace.h"
++#include "framoryx_stream.hpp"
+ 
+ #ifdef __linux__
+ #include <libgen.h>
+@@ -234,6 +235,8 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
+    uint64_t now = os_time_get_nano(); /* ns */
+    auto elapsed = now - sw_stats.last_fps_update; /* ns */
+    float frametime_ms = frametime_ns / 1000000.f;
++   if (sw_stats.last_present_time)
++      framoryx_stream::record(frametime_ms);
+ 
+    if (sw_stats.last_present_time) {
+         sw_stats.frames_stats[f_idx].stats[OVERLAY_PLOTS_frame_timing] =
+@@ -312,7 +315,7 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
+ void update_hud_info(struct swapchain_stats& sw_stats, const struct overlay_params& params, uint32_t vendorID){
+    uint64_t now = os_time_get_nano(); /* ns */
+    uint64_t frametime_ns = now - sw_stats.last_present_time;
+-   if (!get_params()->no_display || logger->is_active())
++   if (!get_params()->no_display || logger->is_active() || framoryx_stream::enabled.load(std::memory_order_relaxed))
+       update_hud_info_with_frametime(sw_stats, params, vendorID, frametime_ns);
+ }
+ 
+diff --git a/src/overlay_params.cpp b/src/overlay_params.cpp
+index b10a0ce..4c8e401 100644
+--- a/src/overlay_params.cpp
++++ b/src/overlay_params.cpp
+@@ -140,12 +140,18 @@ parse_position(const char *str)
+ static int
+ parse_control(const char *str)
+ {
++   static std::string previous_path;
++   static int previous_socket = -1;
+    std::string path(str);
+    size_t npos = path.find("%p");
+    if (npos != std::string::npos)
+       path.replace(npos, 2, std::to_string(getpid()));
+    SPDLOG_DEBUG("Socket: {}", path);
+ 
++   // Reuse the listener during an explicit live configuration reload.
++   if (path == previous_path && previous_socket >= 0)
++      return previous_socket;
++
+    int ret = os_socket_listen_abstract(path.c_str(), 1);
+    if (ret < 0) {
+       SPDLOG_DEBUG("Couldn't create socket pipe at '{}'", path);
+@@ -155,6 +161,11 @@ parse_control(const char *str)
+ 
+    os_socket_block(ret, false);
+ 
++   if (previous_socket >= 0)
++      os_socket_close(previous_socket);
++   previous_path = path;
++   previous_socket = ret;
++
+    return ret;
+ }
+ 

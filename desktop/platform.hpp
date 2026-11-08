@@ -14,6 +14,7 @@
 #endif
 class Controller;
 class PassiveCapture;
+class MangoClient;
 class Platform : public QObject {
     Q_OBJECT
 public:
@@ -31,6 +32,7 @@ public:
 private:
     Controller* c;
     std::unique_ptr<PassiveCapture> m_passive;
+    std::unique_ptr<MangoClient> m_mango;
     bool attachPassive(bool explain=false);
     QString m_passiveName;quint32 m_passivePid=0;
     QSet<QProcess*> m_expectedStops;
@@ -40,15 +42,12 @@ private:
     void startAudio(QProcess* process);
     QProcess m_engine, m_game, m_mic, m_output;
     QByteArray m_incoming;
-    QString m_token, m_logFile;
+    QString m_token;
     qint64 m_launchedPid = 0;
     QString m_lastLaunchId,m_launchStart;
     QMap<qint64,QString> m_fixtures;
     void stopFixtures();
     bool m_monitoring = false;
-    qint64 m_logOffset = 0;
-    QByteArray m_logPending;
-    QStringList m_logHeaders;
     QTimer m_scanTimer, m_volumeTimer, m_optionTimer;
     QSet<QString> m_pendingOptions;
     void flushOptions();
@@ -64,7 +63,8 @@ private:
     void send(const QJsonObject& request);
     void linuxScan();
     void linuxLaunch();
-    void readLog();
+    QString mangoPrefix() const;
+    QString mangoExecutable() const;
     void linuxAudio(bool mic,bool verified=false);
     void updateNoise(bool force);
     void beginNoiseDownload(const QVariantMap& cached);

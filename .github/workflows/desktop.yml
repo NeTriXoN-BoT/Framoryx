@@ -29,6 +29,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-image0 libxcb-render-util0 libxcb-xfixes0 libegl1 libpulse0 libasound2 xvfb openbox xcompmgr wmctrl mangohud pipewire pipewire-bin wireplumber mesa-utils libxcb-present-dev libva-x11-2 libva-drm2 libva2 pipewire-pulse dbus-x11 desktop-file-utils pulseaudio-utils libvulkan-dev mesa-vulkan-drivers
+          sudo apt-get install -y meson ninja-build python3-mako libdrm-dev libx11-dev libwayland-dev wayland-protocols libxkbcommon-dev libsystemd-dev libdbus-1-dev libcap-dev libegl1-mesa-dev glslang-tools libyaml-cpp-dev libgbm-dev
       - uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # built v4 distribution
         with:
           version: '6.8.3'
@@ -66,7 +67,10 @@ jobs:
         if: runner.os == 'Linux'
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
-        run: xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- bash scripts/check-desktop-backends.sh
+        run: |
+          export PATH="/usr/bin:$PATH"
+          bash scripts/build-mangohud.sh
+          xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- bash scripts/check-desktop-backends.sh
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         if: runner.os == 'Windows'
         with:

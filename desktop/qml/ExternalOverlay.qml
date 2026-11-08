@@ -13,6 +13,6 @@ Window {
     height: Math.ceil(readouts.implicitHeight*fittedScale)
     x: Math.round(display.x+app.options.hudX*Math.max(0,display.width-width))
     y: Math.round(display.y+app.options.hudY*Math.max(0,display.height-height))
-    visible: app.platformName==="Linux"&&!app.testMode&&app.state.externalCapture&&app.state.capture&&app.state.overlay&&app.state.gameForeground&&app.options.fields!==0
+    visible: app.platformName==="Linux"&&!app.testMode&&!!app.state.externalCapture&&!!app.state.capture&&!!app.state.overlay&&!!app.state.gameForeground&&app.options.fields!==0
     OverlayReadouts { id: readouts; sample: false; density: 1; scale: overlay.fittedScale; transformOrigin: Item.TopLeft }
 }

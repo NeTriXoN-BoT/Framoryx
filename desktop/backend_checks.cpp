@@ -32,7 +32,8 @@ class Checks : public QObject {
         record("QML reports no errors",!*qmlFailure);record("Frontend event loop remains responsive",maximumGap<500);
         bool passed=true;for(const auto& value:records)passed=passed&&value.toObject()["passed"].toBool();
         QDir().mkpath(destination);QSaveFile file(destination+"/backend-result.json");
-        const QJsonObject result{{"passed",passed},{"platform",c->platformName()},{"elapsedMs",total.elapsed()},{"maximumEventLoopGapMs",maximumGap},{"maximumInputLevel",maximumInput},{"checks",records}};
+        const auto state=c->state();
+        const QJsonObject result{{"passed",passed},{"platform",c->platformName()},{"elapsedMs",total.elapsed()},{"maximumEventLoopGapMs",maximumGap},{"maximumInputLevel",maximumInput},{"checks",records},{"notice",state["notice"].toString()},{"audioStatus",state["audioStatus"].toString()},{"micDiagnostic",state["micDiagnostic"].toString()},{"outputDiagnostic",state["outputDiagnostic"].toString()},{"noiseStatus",state["noiseStatus"].toString()}};
         if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(result).toJson())<0||!file.commit())passed=false;
         QCoreApplication::exit(passed?0:1);
     }
@@ -83,7 +84,7 @@ class Checks : public QObject {
         case 5:
             if(first)c->action("bassApply");await(state["bassConfigured"].toBool(),"PipeWire output filter starts",20000);break;
         case 6:
-            if(first){c->setOption("noise",false);c->setOption("voicePreset",4);c->action("micApply");}
+            if(first){c->setOption("noise",false);c->setOption("eq",true);c->setOption("voicePreset",4);c->action("micApply");}
             await(state["micConfigured"].toBool(),"Physical microphone routes through the bassy EQ",20000);break;
         case 7:
             if(first)c->action("record");
@@ -101,6 +102,24 @@ class Checks : public QObject {
             if(first)c->action("capture");await(!state["capture"].toBool(),"Passive capture stops");break;
         case 12:
             if(first){c->setOption("startWithSystem",true);record("Sign-in entry is registered",lifecycle::startupEnabled());c->setOption("startWithSystem",false);record("Sign-in entry can be removed",!lifecycle::startupEnabled());next();}break;
+        case 13:
+            if(first){c->action("fixtureClose");c->setOption("linuxOverlayMode",2);c->setOption("cap",30);c->action("fixture");}
+            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34&&phase.elapsed()>2000,"OpenGL game layer streams real frames at 30 FPS",20000);break;
+        case 14:
+            if(first)c->setOption("cap",60);
+            await(state["fps"].toDouble()>54&&state["fps"].toDouble()<66&&phase.elapsed()>2500,"OpenGL limiter updates to 60 FPS without relaunch",15000);break;
+        case 15:
+            if(first)c->action("capture");await(!state["capture"].toBool(),"Game-layer capture stops without closing the game");break;
+        case 16:
+            if(first)c->action("capture");await(state["capture"].toBool()&&state["live"].toBool()&&phase.elapsed()>1500,"Game-layer telemetry reconnects to the running game");break;
+        case 17:
+            if(first){c->action("capture");c->action("fixtureClose");c->setOption("linuxOverlayMode",2);c->setOption("cap",30);c->action("fixture",{{"api","vulkan"}});}
+            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34&&phase.elapsed()>2000,"Vulkan game layer streams real frames at 30 FPS",20000);break;
+        case 18:
+            if(first)c->setOption("cap",60);
+            await(state["fps"].toDouble()>54&&state["fps"].toDouble()<66&&phase.elapsed()>2500,"Vulkan limiter updates to 60 FPS without relaunch",15000);break;
+        case 19:
+            if(first)c->action("capture");await(!state["capture"].toBool(),"Vulkan telemetry stops cleanly");break;
         default:complete();break;
 #endif
         }
