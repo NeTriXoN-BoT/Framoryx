@@ -18,17 +18,24 @@ python3 - "$1" <<'PY'
 import json, pathlib, sys
 config=json.loads(pathlib.Path(sys.argv[1]).read_text())
 root=pathlib.Path('work/pipewire-diagnostics')
-for name, wrapped in [('json',True),('spa',False)]:
+for module in config['context.modules']:
+    if module['name']=='libpipewire-module-filter-chain':
+        graph=module['args']['filter.graph']
+        if isinstance(graph,str): graph=json.loads(graph)
+        module['args']['filter.graph']=json.dumps({key:graph[key] for key in ['nodes','links','inputs','outputs']})
+for name, wrapped in [('ordered-json',True),('ordered-spa',False)]:
     text=json.dumps(config, indent=2)
     if not wrapped: text=text[text.index('{')+1:text.rindex('}')]
     (root/(name+'.conf')).write_text(text)
 PY
-for variant in json spa; do
+for variant in ordered-json ordered-spa; do
     PIPEWIRE_DEBUG=4 pipewire -c "$PWD/work/pipewire-diagnostics/$variant.conf" > "work/pipewire-diagnostics/$variant.log" 2>&1 & probe=$!;pids+=("$probe")
     sleep 2
     ps -p "$probe" -o pid,stat,args || true
-    pw-dump > "work/pipewire-diagnostics/$variant-nodes.json"
+    timeout 5 pw-dump > "work/pipewire-diagnostics/$variant-nodes.json" || true
     kill "$probe" 2>/dev/null || true
+    sleep .2
+    kill -KILL "$probe" 2>/dev/null || true
     wait "$probe" || true
     tail -n 45 "work/pipewire-diagnostics/$variant.log"
 done
