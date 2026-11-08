@@ -1,4 +1,18 @@
-# 0.2.1 audit record
+# 0.2.2 audit record
+
+Reviewed on 8 November 2026. The **20 alerts remaining in 0.2.1 are cleared** by source changes. The fresh full native CodeQL security-extended analysis reported **0 alerts**, without query exclusions, vendor filters, custom suppression models or alert dismissals. The first clean scan is [recorded here](https://github.com/NeTriXoN-BoT/Framoryx/actions/runs/42484741699).
+
+The changes cover ten formatting alerts, three font allocation alerts, three memory-layout alerts, one slider arithmetic alert, two compiler CET initialization alerts and one stream-offset arithmetic alert. See the [dependency patch record](DEPENDENCY-PATCHES.md) for the exact changes, supported format profile, attribution and checksum-guarded toolchain patches.
+
+The headless dependency suite includes **42 checks** for signed/unsigned edge cases, rejected and mismatched formats, literal-pointer selection, truncation, high-precision values, large slider ranges, font atlases at three sizes, concave geometry and CPU draw data. The x64 address/undefined-behavior sanitizer run passed all 42. Native x64/x86 and portable Linux builds include the same suite.
+
+The toolchain patch was applied and reapplied successfully; a deliberately altered header fixture was rejected without changing either test header. Input and output checksums are validated before replacement.
+
+Graphics and window tests run on an isolated GitHub Windows runner. No local application or graphics-scene windows need to open. The initial remote DX12 throughput check compared an unrendered baseline with a customized HUD; its workload comparison was corrected, while the earlier failed runs remain visible in CI history. A failed/incomplete run is not counted as a pass.
+
+This is an engineering audit, not a proof that the program is free of vulnerabilities. Framoryx remains unsigned, and the existing hook, driver/game, audio-device and commercial-game coverage limits still apply. The earlier Defender-blocked injection stress test remains incomplete; no protections or exclusions were changed.
+
+## Earlier 0.2.1 record
 
 Reviewed on 8 November 2026. Scope: Windows application, optional DX11/DX12 and x86 hook paths, broker, capture lifetime, audio configuration/updater, packaging, workflows and public downloads. This is an engineering review with automated checks, not an independent security certification.
 

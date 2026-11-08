@@ -1,4 +1,12 @@
-# Version 0.2.1 validation
+# Version 0.2.2 validation
+
+- The added **42-check headless dependency suite** passes under x64 address/undefined-behavior sanitizers and is part of both x64/x86 native builds and portable Linux CI. It exercises the actual patched ImGui code without creating native windows.
+- Portable toolchain header fixes are checksum-guarded and idempotent; an altered-header fixture was rejected without changing either file.
+- The fresh full native CodeQL security-extended scan reports **zero alerts**, clearing all 20 previously open findings without exclusions or dismissals. [Audit details](AUDIT.md).
+- All seven-page window checks, graphics/limiter checks and the non-injecting capture soak execute on GitHub's isolated Windows runner. The DX12 throughput phase uses the same rendering workload as its baseline; customized HUD rendering and resize/restoration have separate checks.
+- The existing 110 core, 20 gain, 38 microphone/bass, 49 file-integrity/concurrent-audio and 20,000 malformed-input checks remain in the build. Full-history secret scanning remains enabled.
+
+## Earlier 0.2.1 record
 
 The maintenance release completed the following Windows checks:
 
