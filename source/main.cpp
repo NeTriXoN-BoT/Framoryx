@@ -1293,7 +1293,7 @@ void paintMain(HDC destination, const RECT& invalid) {
             line(g, 188, 0, 188, 820, edge);
             line(g, 24, 476, 162, 476);
             label(g, L"YOUR TOOLKIT", 24, 722, 145, 20, 9, muted, true);
-            label(g, L"FRAMORYX 0.2.3 · WINDOWS X64", 24, 747, 146, 40, 9, muted, false, true);
+            label(g, L"FRAMORYX 0.3.0 · WINDOWS X64", 24, 747, 146, 40, 9, muted, false, true);
             rounded(g, RectF(24, 770, 100, 17), Color(255, 43, 36, 29), 4);
             label(g, L"UNSIGNED BUILD", 30, 771, 94, 16, 8, amber, true);
             if (!app.preferencesSaved)
@@ -2969,6 +2969,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     if (diagnosticArgs)
         LocalFree(diagnosticArgs);
     if(engineArgument&&!app.engineMode)return 2;
+    std::wstring executable(32768,L'\0');const auto executableLength=GetModuleFileNameW(nullptr,executable.data(),DWORD(executable.size()));
+    executable.resize(executableLength);
+    if(fg::lower(fg::utf8(fs::path(executable).filename().wstring()))=="framoryxengine.exe"&&!app.engineMode)return 2;
     bool diagnosticInstance = smokeArgument && reportArgument && settingsArgument;
     auto mutexName = diagnosticInstance
                          ? L"Local\\Framoryx.Validation." + std::to_wstring(GetCurrentProcessId())

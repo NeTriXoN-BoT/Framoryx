@@ -1,41 +1,28 @@
-name: Prepare draft release
+name: Prepare verified draft release
 on:
   workflow_dispatch:
     inputs:
       tag:
         description: Release tag matching VERSION
         required: true
-        default: v0.2.3
+        default: v0.3.0
+      desktop_run:
+        description: Successful shared desktop workflow run for the current main commit
+        required: true
 permissions:
   contents: write
+  actions: read
+  security-events: read
 jobs:
   package:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            work/build/toolchain
-            tools/PresentMon.exe
-            tools/PresentMon-2.6.0-x64.exe
-          key: llvm-mingw-20261104-ucrt-windows-x64
-      - name: Fetch verified toolchain and monitor
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/fetch-ci-tools.ps1
-      - name: Verify version and build
-        shell: pwsh
-        env:
-          RELEASE_TAG: ${{ inputs.tag }}
-        run: |
-          $expected='v'+(Get-Content VERSION -Raw).Trim()
-          if($env:RELEASE_TAG -ne $expected){throw 'Release tag must match VERSION.'}
-          ./scripts/package.ps1
-      - name: Create a draft for review
-        shell: pwsh
+          persist-credentials: false
+      - name: Promote verified Windows and Linux packages
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
-        run: gh release create $env:RELEASE_TAG dist/Framoryx-Windows-x64.zip dist/Framoryx-Windows-x64.zip.sha256 --draft --title "Framoryx $((Get-Content VERSION -Raw).Trim())" --notes-file ('docs/releases/'+$env:RELEASE_TAG+'.md')
+          DESKTOP_RUN: ${{ inputs.desktop_run }}
+        run: python3 scripts/prepare-release.py --repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --run "$DESKTOP_RUN"

@@ -1,34 +1,35 @@
-# Linux portability
+# Framoryx on Linux
 
-**A native Linux edition is feasible. It is not implemented in this release, and no Linux application download is offered.**
+The 0.3.0 development branch has a native Linux desktop with the same Qt interface, artwork, motion, scaling controls, profiles and release history as Windows. Downloads will be offered after live integration and portable-package checks pass. The public 0.2.3 release is Windows only.
 
-The shared C++ statistics, parser, rule, layout and motion code can be reused. The present Windows desktop UI, ETW capture, Win32 window controls and Core Audio integration require platform-specific replacements.
+## Implemented paths
 
-## Why one universal build is not a credible promise
+| Feature | Linux implementation |
+| --- | --- |
+| Default capture | Read X Present events from an explicitly selected X11 game window; no game module is loaded |
+| External overlay | The same customizable five-layout HUD used by the shared desktop preview; input passes through to the game |
+| Vulkan/OpenGL in-game overlay and limiter | Explicitly enabled MangoHud layer, pinned and bundled for x86-64 |
+| Live game-layer telemetry | Bounded local memory stream; normal monitoring does not continuously write CSV logs |
+| Borderless | X11 fullscreen requests with saved process/window identity; optional Gamescope at launch |
+| Output audio | PipeWire volume up to 200%, compensated bass and a selectable virtual output |
+| Microphone | PipeWire three-band EQ, Bassy Voice, verified RNNoise and a selectable virtual microphone |
+| Hardware | Read-only DRM/hwmon and driver metrics; missing sensors stay unavailable |
+| Convenience | Tray behavior, sign-in launch, quiet startup, auto capture, game library and process rules |
 
-AppImage improves distribution portability but still requires a suitable runtime baseline and compatible system/graphics components. Its own documentation recommends building on an older supported baseline to run on newer systems. Architecture-specific builds remain necessary. See [AppImage concepts](https://docs.appimage.org/introduction/concepts.html).
+## Runtime and desktop support
 
-Wayland clients do not know their global surface positions and cannot access other clients' surfaces. That prevents directly reproducing unrestricted Win32 window manipulation as a universal desktop feature. Compositor support and launch-time integration matter. See the [Wayland protocol model](https://wayland.freedesktop.org/docs/book/Protocol.html).
+The initial package target is x86-64 desktop Linux built on Ubuntu 22.04, with glibc 2.35 or newer and compatible graphics drivers. AppImage and a portable tar archive carry the Qt interface libraries. A working display session, GPU driver and system audio services remain required.
 
-## Proposed scope
+X11 provides window selection and positioning. A compositor enables transparent external backgrounds; without compositing, Framoryx uses an opaque HUD surface. Some rendering paths do not expose usable X Present events. Unavailable timing is reported instead of inventing FPS or silently loading a layer.
 
-| Area | Linux direction | Status |
-| --- | --- | --- |
-| Shared core | Keep C++ data, profile, layout and motion logic portable | Core test target and Linux CI provided |
-| Desktop UI | Cross-platform, GPU-accelerated presentation layer | Architecture work required |
-| In-game telemetry | Explicit per-game Vulkan/OpenGL integration | Research; no Linux renderer shipped |
-| Window/pacing controls | X11 implementation plus compositor-aware/launch-time Wayland integration | Research |
-| Audio | PipeWire/WirePlumber integration with explicit device controls | Research |
-| Distribution | Test a defined baseline, then evaluate AppImage/Flatpak/native packages | No package built |
+Native Wayland restricts external positioning and monitoring of other applications. Vulkan/OpenGL layers and compositor-supported launches provide the in-game path there. Gamescope remains optional. Its MangoApp integration may be required for a Gamescope session; a normal MangoHud layer is not a universal Gamescope overlay.
 
-[MangoHud](https://github.com/flightlessmango/MangoHud) is a useful primary reference for Vulkan/OpenGL overlays. [Valve's Gamescope](https://github.com/ValveSoftware/gamescope) demonstrates a per-game compositor approach on X11 and Wayland. These are references and potential integration candidates, not bundled Linux dependencies or implemented Framoryx features.
+32-bit games need matching host MangoHud libraries. Proton, Steam Flatpak, containers and other runtimes may need a compatible layer inside their sandbox. An x86-64 AppImage cannot support every architecture, distribution, driver or compositor universally.
 
-## Acceptance criteria before a Linux release
+PipeWire and WirePlumber must be available for audio effects. Choose **Framoryx Microphone** in voice settings or **Framoryx Output** as playback output after applying the corresponding effects. Apply does not silently change the default device.
 
-- Define an explicit distribution, architecture, GPU-driver and display-server support matrix.
-- Validate native Vulkan/OpenGL games and relevant Proton/DXVK/VKD3D paths.
-- Test scaling, multi-monitor behavior, frame timing, audio device changes and clean game exit.
-- Package reproducible builds against the selected runtime baseline.
-- Preserve game/security restrictions and explicit opt-in. Linux does not remove anti-cheat or game-policy constraints.
+## Verification
 
-The initial target should be a clearly tested set of mainstream desktop configurations, followed by broader coverage based on evidence.
+The isolated runner exercises X Present capture, the external HUD with the main window hidden, reversible fullscreen, private PipeWire audio, and real OpenGL/Vulkan scenes. Renderer checks verify a 30 FPS target and live limit changes; package checks run without the Qt build environment. These tests do not certify every commercial game or physical microphone/GPU.
+
+In-game layers remain subject to each game's anti-cheat rules. Use at your own risk; a clear indicator scan is not permission or a ban-free guarantee. See [compatibility](COMPATIBILITY.md), [building](BUILDING.md), [MangoHud](https://github.com/flightlessmango/MangoHud) and [Gamescope](https://github.com/ValveSoftware/gamescope).

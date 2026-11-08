@@ -33,7 +33,8 @@ class Checks : public QObject {
         bool passed=true;for(const auto& value:records)passed=passed&&value.toObject()["passed"].toBool();
         QDir().mkpath(destination);QSaveFile file(destination+"/backend-result.json");
         const auto state=c->state();
-        const QJsonObject result{{"passed",passed},{"platform",c->platformName()},{"elapsedMs",total.elapsed()},{"maximumEventLoopGapMs",maximumGap},{"maximumInputLevel",maximumInput},{"checks",records},{"notice",state["notice"].toString()},{"audioStatus",state["audioStatus"].toString()},{"micDiagnostic",state["micDiagnostic"].toString()},{"outputDiagnostic",state["outputDiagnostic"].toString()},{"noiseStatus",state["noiseStatus"].toString()}};
+        QJsonArray microphones;for(const auto& value:c->devices())microphones.append(value.toMap()["name"].toString());
+        const QJsonObject result{{"passed",passed},{"platform",c->platformName()},{"elapsedMs",total.elapsed()},{"maximumEventLoopGapMs",maximumGap},{"maximumInputLevel",maximumInput},{"checks",records},{"notice",state["notice"].toString()},{"audioStatus",state["audioStatus"].toString()},{"microphones",microphones},{"micDiagnostic",state["micDiagnostic"].toString()},{"outputDiagnostic",state["outputDiagnostic"].toString()},{"noiseStatus",state["noiseStatus"].toString()}};
         if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(result).toJson())<0||!file.commit())passed=false;
         QCoreApplication::exit(passed?0:1);
     }

@@ -53,3 +53,22 @@ RNNoise noise-suppression-for-voice (optional runtime download)
   SHA-256: e4dcc186102850f8dcebeb766ad1bf34c24f6280bd614ef84b72dae4783fc517
   Equalizer APO hosts the separately downloaded plugin. Framoryx's isolated
   compatibility probe links no plugin or SDK implementation code.
+
+Qt 6.8.3 and its FFmpeg runtime
+  Shared Qt libraries provide the Windows/Linux desktop interface and audio I/O.
+  Original LGPL/GPL and component license texts are included in licenses.
+  Corresponding source archives and upstream build information:
+  docs/RUNTIME-SOURCES.md
+
+MangoHud v0.8.4, Linux x86-64 game layer
+  https://github.com/flightlessmango/MangoHud
+  Revision: 992103e4fb744897826de04ea00a2f71e7018214
+  License: MIT. A bounded local telemetry/reload patch is supplied in
+  runtime/mangohud with exact source retrieval and build instructions.
+  The runtime includes upstream and bundled dependency license notices.
+  It is used only for explicitly enabled Vulkan/OpenGL layer launches.
+
+RNNoise Linux plugin (optional runtime download)
+  Official linux-rnnoise.zip v1.10:
+  SHA-256: 811390b6eb6e28dde023c70590c74d26e74ebb2e595bcf4b95af2341db160e99
+  A separate PipeWire process hosts the verified GPL-3.0 plugin.

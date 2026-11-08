@@ -2,9 +2,9 @@ name: CodeQL security analysis
 on:
   push:
     branches: [main]
-    paths: ['source/**', 'desktop/**', 'scripts/**', '.github/workflows/security.yml']
+    paths: ['source/**', 'desktop/**', 'runtime/**', 'scripts/**', '.github/workflows/security.yml']
   pull_request:
-    paths: ['source/**', 'desktop/**', 'scripts/**', '.github/workflows/security.yml']
+    paths: ['source/**', 'desktop/**', 'runtime/**', 'scripts/**', '.github/workflows/security.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -50,7 +50,7 @@ jobs:
           - os: windows-latest
             arch: win64_msvc2022_64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -60,6 +60,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev libxcb-present-dev libpulse-dev libxkbcommon-x11-0 libxcb-cursor0
+          sudo apt-get install -y meson ninja-build python3-mako libvulkan-dev libdrm-dev libx11-dev libwayland-dev wayland-protocols libxkbcommon-dev libsystemd-dev libdbus-1-dev libcap-dev libegl1-mesa-dev glslang-tools libyaml-cpp-dev libgbm-dev
       - uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06
         with:
           version: '6.8.3'
@@ -76,6 +77,11 @@ jobs:
         run: |
           cmake -S . -B build/desktop-security -DFRAMORYX_BUILD_DESKTOP=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build build/desktop-security --config Release --parallel 3
+      - name: Analyze the actual Linux game runtime
+        if: runner.os == 'Linux'
+        run: |
+          export PATH="/usr/bin:$PATH"
+          bash scripts/build-mangohud.sh work/security-runtime
       - uses: github/codeql-action/analyze@5895b2c9be147bc7f1c75ce72c5cb577febb1907
         with:
           category: /language:cpp/shared-desktop-${{ runner.os }}

@@ -13,8 +13,16 @@ if ! git -C "$source" apply --reverse --check "$project/runtime/mangohud/framory
     git -C "$source" apply --check "$project/runtime/mangohud/framoryx.patch"
     git -C "$source" apply "$project/runtime/mangohud/framoryx.patch"
 fi
-cp runtime/mangohud/framoryx_stream.hpp "$source/src/framoryx_stream.hpp"
-meson setup "$build" "$source" --buildtype release --prefix /usr --libdir lib -Dwith_xnvctrl=disabled -Dwith_dbus=disabled -Dwith_wayland=enabled -Dmangoplot=disabled -Dtests=disabled -Dinclude_doc=false
+cmp -s runtime/mangohud/framoryx_stream.hpp "$source/src/framoryx_stream.hpp" || cp runtime/mangohud/framoryx_stream.hpp "$source/src/framoryx_stream.hpp"
+cp runtime/mangohud/imgui.wrap "$source/subprojects/imgui.wrap"
+meson subprojects download --sourcedir "$source" imgui
+for file in imgui.cpp imgui_draw.cpp imgui_tables.cpp imgui_widgets.cpp imgui.h imgui_internal.h imconfig.h imstb_rectpack.h imstb_textedit.h imstb_truetype.h; do
+    cmp -s "source/vendor/imgui/$file" "$source/subprojects/imgui-1.91.9b/$file" || cp "source/vendor/imgui/$file" "$source/subprojects/imgui-1.91.9b/$file"
+done
+cp source/scalar_formats.hpp "$source/scalar_formats.hpp"
+sed -i "s/version: '1.91.6'/version: '1.91.9b'/" "$source/subprojects/imgui-1.91.9b/meson.build"
+reconfigure=(); if [[ -f "$build/build.ninja" ]]; then reconfigure=(--reconfigure); fi
+meson setup "${reconfigure[@]}" "$build" "$source" --buildtype release --prefix /usr --libdir lib -Dwith_xnvctrl=disabled -Dwith_dbus=disabled -Dwith_wayland=enabled -Dmangoplot=disabled -Dtests=disabled -Dinclude_doc=false
 meson compile -C "$build" -j 3
 mkdir -p "$destination/lib" "$destination/bin" "$destination/layers" "$destination/licenses"
 find "$build/src" -maxdepth 1 -name 'libMangoHud*.so' -type f -exec cp {} "$destination/lib/" \;

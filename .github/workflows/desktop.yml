@@ -63,6 +63,13 @@ jobs:
           $process=Start-Process -FilePath $app -ArgumentList @('--ui-smoke','--test-root',('"'+$testRoot+'"'),'--snapshot-dir',('"'+$shots+'"')) -WindowStyle Hidden -PassThru
           if(!$process.WaitForExit(45000)){Stop-Process -Id $process.Id -Force;throw 'Desktop UI checks timed out.'}
           if($process.ExitCode -ne 0){throw 'Desktop UI checks failed.'}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        if: runner.os == 'Linux'
+        with:
+          path: |
+            work/mangohud-source
+            work/mangohud-build
+          key: mangohud-0.8.4-linux-${{ hashFiles('runtime/mangohud/**', 'scripts/build-mangohud.sh', 'source/vendor/imgui/**', 'source/scalar_formats.hpp') }}
       - name: Linux isolated live backends and graphics APIs
         if: runner.os == 'Linux'
         env:
