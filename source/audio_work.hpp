@@ -97,7 +97,7 @@ void pollAudioWork() {
     }
     if (!update.running && !update.release && !app.pendingMicrophoneApply.empty()) {
         app.pendingMicrophoneApply.clear();
-        app.audioNotice = app.noiseUpdater.status();
+        app.audioNotice = update.message;
         app.contentDirty = true;
     }
     if (auto result = app.gainWorker.takeResult()) {

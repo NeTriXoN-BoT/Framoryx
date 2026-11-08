@@ -42,6 +42,18 @@ void syncMicrophoneControls() {
                       {MicHigh, app.microphoneOptions.high}})
         SendMessageW(app.controls[pair.first], CB_SETCURSEL, (pair.second + 12) / 3, 0);
 }
+std::wstring audioFooter() {
+    if (!app.audioNotice.empty())
+        return app.audioNotice;
+    if (app.audioSetup)
+        return L"Choose playback devices for output effects and capture devices for microphone "
+               L"effects.";
+    if (app.audioTab)
+        return L"Mic processing needs Equalizer APO enabled on your recording device. RNNoise "
+               L"requires 48 kHz.";
+    return L"Normal volume works immediately. Boost above 100% requires Equalizer APO configured "
+           L"for your output device.";
+}
 void paintAudio(Graphics& g) {
     rounded(g, RectF(212, 190, 940, 562), card, 16, true);
     if (app.audioSetup) {
@@ -72,7 +84,7 @@ void paintAudio(Graphics& g) {
               L"Bass and EQ include headroom reduction. Amplifying above 100% can still clip. "
               L"Effects remain configured after exit.",
               244, 605, 860, 22, 10, muted);
-        label(g, app.audioNotice, 214, 777, 938, 38, 12, muted, false, true);
+        label(g, audioFooter(), 214, 777, 938, 38, 12, muted, false, true);
         return;
     }
     if (app.audioTab == 0) {
@@ -109,7 +121,8 @@ void paintAudio(Graphics& g) {
         auto mic = selectedMicrophone();
         label(g, L"MICROPHONE", 244, 316, 830, 20, 10, muted, true);
         std::wstring format = mic ? std::to_wstring(mic->rate) + L" Hz · " +
-                                        std::to_wstring(mic->channels) + L" channels"
+                                        std::to_wstring(mic->channels) +
+                                        (mic->channels == 1 ? L" channel" : L" channels")
                                   : L"Connect a microphone, then Refresh.";
         bool noise = app.cachedNoise;
         bool eq = app.cachedEqualizer;
@@ -141,7 +154,7 @@ void paintAudio(Graphics& g) {
               L"until disabled.",
               244, 727, 860, 20, 11, muted);
     }
-    label(g, app.audioNotice, 214, 777, 938, 38, 12, muted, false, true);
+    label(g, audioFooter(), 214, 777, 938, 38, 12, muted, false, true);
 }
 bool audioCommand(int id, int notification) {
     if (id == MicRefresh || id == MicDevice || id == MicNoise || id == MicEQ ||
@@ -149,6 +162,9 @@ bool audioCommand(int id, int notification) {
         id == MicHigh || id == MicChoosePlugin || id == MicDownload)
         cancelPendingMicrophoneEdit();
     if (id == AudioOutputView || id == AudioMicView) {
+        if (!app.gainWorker.busy() && !app.effectWorker.busy() &&
+            app.pendingMicrophoneApply.empty())
+            app.audioNotice.clear();
         app.audioSetup = false;
         app.audioTab = id == AudioMicView ? 1 : 0;
         if (app.audioTab)

@@ -1,4 +1,16 @@
-# Version 0.2.2 validation
+# Version 0.2.3 verification
+
+The [feature matrix](FEATURE-CHECKS.md) maps each feature to its checks and practical limits. Native GUI/game tests run on an isolated Windows runner; local compilation and console tests open no app windows and change no system audio.
+
+The expanded suite includes **84 control-flow assertions**, **8 audio UI checks**, **2 rule-editor checks**, **4 saved-profile/percentage checks**, **35 native layout checks**, **68 graphics/lifecycle checks**, a **180-second passive ETW/borderless soak**, **8 official RNNoise download/probe/staging checks**, and actual single-instance/shortcut validation. Twelve native page/rule previews support visual review. The [Windows CI job](https://github.com/NeTriXoN-BoT/Framoryx/actions/workflows/ci.yml) is the release gate; an incomplete or failed job is not a passing validation run.
+
+The new **146 headless flow checks** cover CSV round trips, shutdown draining, rapid-edit coalescing, worker errors, updater completion snapshots and modified-cache rejection. The standard build includes them alongside the existing core/audio/dependency and 20,000 malformed-input cases. All these headless suites passed locally with address and undefined-behavior sanitizers. A stricter compiler review of the app, updater and new test translation units produced no diagnostics; Clang static analysis of the app/updater also produced none.
+
+The first expanded run passed all 84 controls, profiles, layout, graphics, RNNoise and soak checks, then exposed a PowerShell null-string binding error in the new single-instance harness. That failed job remains in history and is not counted as an overall pass. The harness now supplies a native null value explicitly. The final gate must pass the actual two-process activation and shortcut checks as well.
+
+Audio diagnostics use fake endpoints and isolated APO configuration. The official plugin test processes real offline audio through mono/stereo VST2 plugins; it does not record a microphone or reconfigure playback/capture devices. Hardware listening quality, commercial games, physical multi-monitor changes, HDR and every driver remain outside fixture coverage. The app remains unsigned. See [compatibility](COMPATIBILITY.md).
+
+## Earlier 0.2.2 record
 
 - The added **42-check headless dependency suite** passes under x64 address/undefined-behavior sanitizers and is part of both x64/x86 native builds and portable Linux CI. It exercises the actual patched ImGui code without creating native windows.
 - Portable toolchain header fixes are checksum-guarded and idempotent; an altered-header fixture was rejected without changing either file.

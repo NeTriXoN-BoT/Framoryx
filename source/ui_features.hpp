@@ -354,14 +354,19 @@ void paintStudio(Graphics& g) {
     g.ResetClip();
     rounded(g, RectF(562, 628, 590, 124), card, 14, true);
     label(g, L"DESKTOP APP SIZE", 588, 647, 520, 23, 11, mint, true);
-    label(g, L"Effective size: " + value(app.scale * 100) + L"%\nAuto follows your display.", 588,
-          684, 174, 48, 12, muted, false, true);
+    label(g,
+          L"Effective size: " + value(app.scale * 100) + L"%\n" +
+              (app.desktopPercent == 0 ? L"Auto follows your display."
+                                       : L"Fitted to your work area."),
+          588, 684, 174, 48, 12, muted, false, true);
     auto profile = app.activeProfile.empty()
                        ? L"Default style · used for games without a saved profile"
                        : L"Style for " + fg::wide(app.activeProfile);
     label(g, profile, 214, 777, 938, 35, 12, muted);
 }
 void paintCompatibility(Graphics& g) {
+    rounded(g, RectF(212, 190, 940, 94), card, 14, true);
+    label(g, L"YOUR GAME", 232, 206, 500, 20, 11, muted, true);
     rounded(g, RectF(212, 300, 940, 448), card, 16, true);
     auto& state = app.compatibility;
     bool valid = app.selectedPid != 0;

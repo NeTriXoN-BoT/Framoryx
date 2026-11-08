@@ -1,4 +1,14 @@
-# 0.2.2 audit record
+# 0.2.3 feature audit
+
+Reviewed on 8 November 2026. Scope: capture and overlay state, optional renderer/limiter paths, UI/profile/scaling controls, borderless/rules, audio workers and updater, CSV export, lifecycle, packaging and public downloads. The [feature verification matrix](FEATURE-CHECKS.md) records the scope and limits.
+
+Fixes include accepted audio requests lost on shutdown, stale deferred mic Apply, rapid-edit queue saturation, inconsistent updater completion reads, interrupted slider commits, stale percentage/FPS-limit state, misleading capture/attach success state, and ambiguous CSV formatting. Content-only page snapshots reduce temporary bitmap storage. Visual review also corrected the compatibility selector card, contextual audio guidance and sizing explanation. The unused split-result updater API was removed so consumers use a synchronized completion snapshot.
+
+The fresh native security-extended [0.2.3 scan](https://github.com/NeTriXoN-BoT/Framoryx/actions/runs/42489818861) reported **0 alerts across 95 rules**, without exclusions or dismissals. Scanning remains a release gate for the final changes. Local ASan/UBSan runs passed all headless suites, including 146 new flow checks; compiler warning and static-analyzer checks of the reviewed app/updater code were clean. Full-history secret scanning remains enabled.
+
+All app/game UI execution for this audit takes place on isolated CI Windows machines. No local app windows, system audio writes, driver installation or security-setting changes are needed. This remains an engineering audit, not universal game, acoustic or security certification. The unsigned distribution and earlier incomplete Defender-blocked injection soak are disclosed in the compatibility/validation records.
+
+## Earlier 0.2.2 audit record
 
 Reviewed on 8 November 2026. The **20 alerts remaining in 0.2.1 are cleared** by source changes. The fresh full native CodeQL security-extended analysis reported **0 alerts**, without query exclusions, vendor filters, custom suppression models or alert dismissals. The first clean scan is [recorded here](https://github.com/NeTriXoN-BoT/Framoryx/actions/runs/42484741699).
 

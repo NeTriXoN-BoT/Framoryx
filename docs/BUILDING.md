@@ -14,11 +14,11 @@ The pinned compiler's CET/stream header fixes are applied idempotently before co
 ./scripts/package.ps1 -ToolchainBin C:\llvm-mingw\bin
 ```
 
-The build runs 110 core, 20 gain, 38 microphone/bass and 49 file-integrity/concurrent-audio checks, plus 20,000 deterministic malformed-input cases. It also builds an isolated VST2 audio-compatibility helper for runtime RNNoise downloads. Audio tests use scratch configuration files and do not change system audio.
+The build runs 110 core, 20 gain, 38 microphone/bass and 49 file-integrity/concurrent-audio checks, plus 20,000 deterministic malformed-input cases and 146 export/worker/updater flow checks. It also builds an isolated VST2 audio-compatibility helper for runtime RNNoise downloads. Audio tests use scratch configuration files and do not change system audio.
 
 The headless ImGui dependency suite additionally runs in both x64 and x86 builds. It creates CPU draw data and font atlases without opening native windows. CI runs actual game-scene and window-layout checks on its isolated Windows runner.
 
-`scripts/check-sanitizers.ps1 -ToolchainBin C:\llvm-mingw\bin` repeats the core, malformed-input and audio suites with address and undefined-behavior sanitizers. LeakSanitizer is disabled because it is not supported by this Windows runtime; handle/GDI stability is measured separately. These checks do not execute game hooks.
+`scripts/check-sanitizers.ps1 -ToolchainBin C:\llvm-mingw\bin` repeats the core, malformed-input, audio, dependency and flow suites with address and undefined-behavior sanitizers. LeakSanitizer is disabled because it is not supported by this Windows runtime; handle/GDI stability is measured separately. These checks do not execute game hooks.
 
 ## Runtime checks
 
@@ -38,6 +38,8 @@ The bounded `--smoke-audio-controls` app flag can be combined with `--smoke-seco
 `--smoke-layout` runs five native maximize/percentage/restore checks in a diagnostic instance (allow at least 14 seconds). `--smoke-maximized` starts that instance maximized. Both retain the normal DPI-aware canvas and real native controls.
 
 The old injection soak is a separate `-IncludeHookSoak` opt-in and was blocked by Defender on the development host. A blocked or incomplete run is not counted as a pass. See [compatibility](COMPATIBILITY.md).
+
+`scripts/check-features.ps1` is guarded to run only in GitHub Actions. It exercises the actual controls with a managed scene, isolated settings and fake audio endpoints; checks profiles, missing-runtime errors and single-instance activation; and exports twelve native UI previews. See the [coverage matrix](FEATURE-CHECKS.md). `-IncludeAudioNetworkTests` on the validator additionally downloads/probes the official plugin and tests verified staging in an isolated config, without installing APO or touching device settings.
 
 ## Shared-core tests on Linux
 

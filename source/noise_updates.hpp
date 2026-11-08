@@ -24,7 +24,6 @@ class NoiseUpdater {
     void start(const std::wstring& directory, bool force = false);
     bool running() const;
     std::wstring status() const;
-    std::optional<NoiseRelease> takeResult();
     NoiseUpdateSnapshot poll();
 };
 } // namespace fg

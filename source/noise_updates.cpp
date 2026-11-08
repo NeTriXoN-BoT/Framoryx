@@ -62,7 +62,10 @@ NoiseRelease cachedRelease(const fs::path& base, const Json& data) {
         throw std::runtime_error("Invalid cached RNNoise version.");
     auto folder = base / wide("rnnoise-" + version);
     NoiseRelease release{(folder / L"rnnoise_mono.dll").wstring(),
-                         (folder / L"rnnoise_stereo.dll").wstring(), wide(version)};
+                         (folder / L"rnnoise_stereo.dll").wstring(),
+                         wide(version),
+                         {},
+                         {}};
     if (version == "v1.10") {
         release.monoDigest = "7debdfc4843461c47b23ac7a736b4663fe581643563ae764cde395e006004080";
         release.stereoDigest = "b2cd23b388bd95cc7a1a3a084b0bd9873992c54f379eed8935e1dc1c3ad07bfe";
@@ -415,12 +418,6 @@ bool NoiseUpdater::running() const {
 std::wstring NoiseUpdater::status() const {
     std::lock_guard lock(state->mutex);
     return state->message;
-}
-std::optional<NoiseRelease> NoiseUpdater::takeResult() {
-    std::lock_guard lock(state->mutex);
-    auto result = state->result;
-    state->result.reset();
-    return result;
 }
 NoiseUpdateSnapshot NoiseUpdater::poll() {
     std::lock_guard lock(state->mutex);

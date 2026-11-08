@@ -258,7 +258,8 @@ LRESULT CALLBACK rulesProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_DPICHANGED:
         if (data) {
             auto rect = reinterpret_cast<RECT*>(lp);
-            MONITORINFO monitor{sizeof(monitor)};
+            MONITORINFO monitor{};
+            monitor.cbSize = sizeof(monitor);
             GetMonitorInfoW(MonitorFromRect(rect, MONITOR_DEFAULTTONEAREST), &monitor);
             int availableW = monitor.rcWork.right - monitor.rcWork.left;
             int availableH = monitor.rcWork.bottom - monitor.rcWork.top;

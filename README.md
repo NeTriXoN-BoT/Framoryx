@@ -92,7 +92,7 @@ See [building and testing](docs/BUILDING.md) for details. The Linux CI job check
 
 Version **0.2.3** improves audio request handling, slider commits, capture error reporting, CSV exports and page-transition memory use. Full control flows, native UI previews and graphics/window checks run on an isolated CI runner. The toolkit includes Bassy voice, microphone processing, Overlay Studio, three HUD layouts, per-game profiles, DPI/percentage scaling, frame limiting, borderless play and tray access.
 
-Bundled test scenes establish behavior on the tested configuration; they are not a commercial-game compatibility certification. [Validation](docs/VALIDATION.md), the [audit record](docs/AUDIT.md) and [release notes](docs/releases/v0.2.3.md) describe completed checks and current limits. A native Linux application is [planned separately](docs/LINUX.md).
+Bundled test scenes establish behavior on the tested configuration; they are not a commercial-game compatibility certification. [Feature checks](docs/FEATURE-CHECKS.md), [validation](docs/VALIDATION.md), the [audit record](docs/AUDIT.md) and [release notes](docs/releases/v0.2.3.md) describe completed checks and current limits. A native Linux application is [planned separately](docs/LINUX.md).
 
 ## Contribute
 

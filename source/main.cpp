@@ -155,8 +155,8 @@ struct App {
     double transitionStart = 0;
     RECT transitionRegion{};
     ULONGLONG peakTransitionBytes = 0;
-    ULONGLONG matchingFullTransitionBytes=0;
-    bool hotkeysRegistered=false;
+    ULONGLONG matchingFullTransitionBytes = 0;
+    bool hotkeysRegistered = false;
     ULONGLONG transitionsCompleted = 0;
 
     std::wstring notice = L"Choose a game, or leave Auto selected. Press Start capture to begin.";
@@ -218,7 +218,8 @@ struct App {
     std::map<std::string, int> gameLimits;
     std::wstring diagnosticPath;
     std::wstring snapshotPath, rulesSnapshotPath;
-    bool snapshotSaved = false, diagnosticMic = false, diagnosticMaximized = false, diagnosticShown=false;
+    bool snapshotSaved = false, diagnosticMic = false, diagnosticMaximized = false,
+         diagnosticShown = false;
     std::wstring settingsOverride;
     bool smokeAudio = false;
     bool smokeAudioControls = false;
@@ -242,15 +243,14 @@ struct App {
     int fixedSmokePage = -1;
     std::vector<double> cpuSamples;
     ULONGLONG lastVolumeWrite = 0;
-    bool volumeDragging=false;
+    bool volumeDragging = false;
     fg::Handle demoProcess, demoJob;
     DWORD demoPid = 0, pendingDemoPid = 0;
     bool smokeDemo = false;
     ULONGLONG demoLiveSamples = 0;
     bool smokeResize = false, smokeDialogOpened = false;
     int smokeResizeStep = -1, smokeOuterWidth = 0, smokeOuterHeight = 0;
-    std::wstring audioNotice = L"Normal volume works immediately. Boost above 100% requires "
-                               L"Equalizer APO configured for your output device.";
+    std::wstring audioNotice;
 } app;
 struct PerfMeter {
     double* total;
@@ -682,7 +682,7 @@ void attachHook() {
     }
     std::wstring prompt =
         L"Enable the experimental hook in " + fg::wide(t->exe) +
-        L"?\n\nThis loads a DLL into that process to limit DX11/DX12 frames and draw a DX11 "
+        L"?\n\nThis loads a DLL into that process to limit DX11/DX12 frames and draw an in-game "
         L"overlay. It can cause crashes or anti-cheat bans. A clear scan does not mean a game is "
         L"safe. Use only in games that permit it.\n\n";
     prompt += L"Windows security can also flag or quarantine injection components. If blocked, use "
@@ -714,9 +714,7 @@ void attachHook() {
     app.hookFps = 0;
     app.hookHistory.clear();
     app.hookCursor = 0;
-    setNotice(err.empty()
-                  ? L"Hook requested for the selected process. Waiting for DXGI presentation."
-                  : err);
+    setNotice(L"Hook requested for the selected process. Waiting for DXGI presentation.");
 }
 void exportCSV() {
     if (app.stats.frames.empty()) {
@@ -968,7 +966,11 @@ void switchPage(int page) {
             auto bytes =
                 4ull * (ULONGLONG(app.transitionOld->GetWidth()) * app.transitionOld->GetHeight() +
                         ULONGLONG(app.transitionNew->GetWidth()) * app.transitionNew->GetHeight());
-            if(bytes>=app.peakTransitionBytes){app.peakTransitionBytes=bytes;app.matchingFullTransitionBytes=8ull*ULONGLONG(app.bufferWidth)*app.bufferHeight;}
+            if (bytes >= app.peakTransitionBytes) {
+                app.peakTransitionBytes = bytes;
+                app.matchingFullTransitionBytes =
+                    8ull * ULONGLONG(app.bufferWidth) * app.bufferHeight;
+            }
             app.transitionStart = animationClock();
             for (auto& control : app.controls) {
                 RECT rect{};
@@ -2026,7 +2028,7 @@ LRESULT CALLBACK volumeProc(HWND w, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DW
     if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK) {
         SetFocus(w);
         SetCapture(w);
-        app.volumeDragging=true;
+        app.volumeDragging = true;
         setFromMouse(short(LOWORD(lp)), TB_THUMBTRACK);
         return 0;
     }
@@ -2036,17 +2038,20 @@ LRESULT CALLBACK volumeProc(HWND w, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DW
         return 0;
     }
     if (msg == WM_LBUTTONUP && GetCapture() == w) {
-        app.volumeDragging=false;
+        app.volumeDragging = false;
         setFromMouse(short(LOWORD(lp)), TB_THUMBPOSITION);
         ReleaseCapture();
         InvalidateRect(w, nullptr, FALSE);
         return 0;
     }
-    if(msg==WM_CAPTURECHANGED && app.volumeDragging) {
-        app.volumeDragging=false;
-        SendMessageW(GetParent(w),WM_HSCROLL,TB_THUMBPOSITION,reinterpret_cast<LPARAM>(w));
+    if (msg == WM_CAPTURECHANGED && app.volumeDragging) {
+        app.volumeDragging = false;
+        SendMessageW(GetParent(w), WM_HSCROLL, TB_THUMBPOSITION, reinterpret_cast<LPARAM>(w));
     }
-    if(msg==WM_CANCELMODE && GetCapture()==w){ReleaseCapture();return 0;}
+    if (msg == WM_CANCELMODE && GetCapture() == w) {
+        ReleaseCapture();
+        return 0;
+    }
     if (msg == WM_KEYDOWN) {
         int value = int(SendMessageW(w, TBM_GETPOS, 0, 0)), next = value;
         if (wp == VK_LEFT || wp == VK_DOWN)
@@ -2964,8 +2969,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             app.rulesSnapshotPath = arguments[++i];
         else if (argument == L"--smoke-maximized" && diagnosticInstance)
             app.diagnosticMaximized = true;
-        else if(argument==L"--smoke-shown" && diagnosticInstance)
-            app.diagnosticShown=true;
+        else if (argument == L"--smoke-shown" && diagnosticInstance)
+            app.diagnosticShown = true;
         else if (argument == L"--audio-mic")
             app.diagnosticMic = true;
         else if (argument == L"--audio-setup" && diagnosticInstance) {
@@ -3074,10 +3079,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
                               L"Framoryx.HUD", L"Framoryx overlay", WS_POPUP, 0, 0, 270, 134,
                               nullptr, nullptr, instance, nullptr);
 
-    bool hotkeys = RegisterHotKey(window, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'O');
-    hotkeys &= RegisterHotKey(window, 2, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'B');
-    hotkeys &= RegisterHotKey(window, 3, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'L');
-    app.hotkeysRegistered=hotkeys;
+    bool hotkeys = RegisterHotKey(window, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'O') != 0;
+    hotkeys &= RegisterHotKey(window, 2, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'B') != 0;
+    hotkeys &= RegisterHotKey(window, 3, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'L') != 0;
+    app.hotkeysRegistered = hotkeys;
     if (!hotkeys)
         app.notice = L"Some hotkeys are already used by another app. All features remain available "
                      L"through the buttons.";

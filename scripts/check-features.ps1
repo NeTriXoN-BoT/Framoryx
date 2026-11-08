@@ -68,12 +68,12 @@ $first=Start-Process -FilePath $app -ArgumentList @('--settings-file',('"'+$sett
 try {
     $handle=[IntPtr]::Zero
     foreach($attempt in 1..60){
-        $candidate=[FramoryxCiWindow]::FindWindow('Framoryx.Desktop',$null)
+        $candidate=[FramoryxCiWindow]::FindWindow('Framoryx.Desktop',[NullString]::Value)
         [uint32]$owner=0;$null=[FramoryxCiWindow]::GetWindowThreadProcessId($candidate,[ref]$owner)
         if($candidate -ne [IntPtr]::Zero -and $owner -eq $first.Id){$handle=$candidate;break}
         Start-Sleep -Milliseconds 100
     }
-    if($handle -eq [IntPtr]::Zero){throw 'First instance did not initialize.'}
+    if($handle -eq [IntPtr]::Zero){throw "First instance did not initialize (exited=$($first.HasExited), exit=$($first.ExitCode))."}
     $second=Start-Process -FilePath $app -ArgumentList @('--settings-file',('"'+$settings+'"')) -WindowStyle Hidden -PassThru
     if(!$second.WaitForExit(10000) -or $second.ExitCode -ne 0 -or $first.HasExited){throw 'Single-instance activation failed.'}
     foreach($attempt in 1..20){if([FramoryxCiWindow]::IsWindowVisible($handle)){break};Start-Sleep -Milliseconds 100}
