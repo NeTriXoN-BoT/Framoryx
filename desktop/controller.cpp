@@ -325,7 +325,7 @@ void Controller::action(const QString& name,const QVariantMap& args){
     if(name=="refresh"){refreshDevices();refreshCapabilities();return;}
     if(name=="record"){if(m_test)return;auto device=QByteArray::fromBase64(m_options["micId"].toByteArray());
 #ifndef Q_OS_WIN
-        if(m_state["micConfigured"].toBool())for(const auto& input:QMediaDevices::audioInputs())if(input.id()=="framoryx_mic"||input.description()=="Framoryx Microphone"){device=input.id();break;}
+        if(m_state["micConfigured"].toBool()){bool found=false;for(const auto& input:QMediaDevices::audioInputs())if(input.id()=="framoryx_mic"||input.description()=="Framoryx Microphone"){device=input.id();found=true;break;}if(!found){notify("The processed microphone is not ready yet. Refresh devices and try the test again.","warning");return;}}
 #endif
         m_audio->record(device);return;}
     if(name=="playSample"){if(!m_test)m_audio->play();return;}

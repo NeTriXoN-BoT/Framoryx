@@ -45,10 +45,10 @@ try {
     $zipObjects=@()
     foreach($file in @('miniz.c','miniz_zip.c','miniz_tinfl.c')){
         $obj=Join-Path $BuildDirectory ($file+'.o')
-        Invoke-Compiler $cc @('-O2','-DMINIZ_NO_DEFLATE_APIS','-c',('vendor/miniz/'+$file),'-o',$obj)
+        Invoke-Compiler $cc @('-O2','-DMINIZ_NO_DEFLATE_APIS','-DMINIZ_NO_STDIO','-c',('vendor/miniz/'+$file),'-o',$obj)
         $zipObjects+=$obj
     }
-    Invoke-Compiler $cxx ($flags + @('-DMINIZ_NO_DEFLATE_APIS','-municode','-mwindows','main.cpp','noise_updates.cpp',(Join-Path $BuildDirectory 'app.o')) + $zipObjects + @('-o',(Join-Path $packageDirectory 'Framoryx.exe'),'-lwininet','-lbcrypt','-lgdiplus','-lgdi32','-luser32','-lshell32','-lole32','-luuid','-lcomctl32','-lcomdlg32','-ldwmapi','-luxtheme','-ladvapi32','-Wl,--dynamicbase,--nxcompat,--high-entropy-va','-s'))
+    Invoke-Compiler $cxx ($flags + @('-DMINIZ_NO_DEFLATE_APIS','-DMINIZ_NO_STDIO','-municode','-mwindows','main.cpp','noise_updates.cpp',(Join-Path $BuildDirectory 'app.o')) + $zipObjects + @('-o',(Join-Path $packageDirectory 'Framoryx.exe'),'-lwininet','-lbcrypt','-lgdiplus','-lgdi32','-luser32','-lshell32','-lole32','-luuid','-lcomctl32','-lcomdlg32','-ldwmapi','-luxtheme','-ladvapi32','-Wl,--dynamicbase,--nxcompat,--high-entropy-va','-s'))
     Write-Output 'Building opt-in hook module...'
     Invoke-Compiler $cxx ($flags + @('-shared','-Ivendor\minhook\include','-Ivendor\imgui','hook.cpp','vendor\imgui\imgui.cpp','vendor\imgui\imgui_draw.cpp','vendor\imgui\imgui_tables.cpp','vendor\imgui\imgui_widgets.cpp','vendor\imgui\backends\imgui_impl_dx11.cpp') + $objects + @('-o',(Join-Path $packageDirectory 'FramoryxHook.dll'),'-ld3d11','-ld3d12','-ldxgi','-ld3dcompiler','-lgdi32','-luser32','-Wl,--dynamicbase,--nxcompat,--high-entropy-va','-s'))
     Write-Output 'Building graphics test scene and core checks...'
@@ -89,8 +89,14 @@ try {
     Invoke-Compiler $cxx32 ($flags + $dependencySources + @('-o',(Join-Path $BuildDirectory 'dependency-tests32.exe'),'-limm32'))
     & (Join-Path $BuildDirectory 'dependency-tests32.exe')
     if ($LASTEXITCODE -ne 0) { throw '32-bit headless dependency checks failed' }
-    Invoke-Compiler $cxx ($flags + @('-DMINIZ_NO_DEFLATE_APIS','flow_tests.cpp','noise_updates.cpp') + $zipObjects + @('-o',(Join-Path $BuildDirectory 'flow-tests.exe'),'-lwininet','-lbcrypt','-ladvapi32','-lole32','-luuid','-lshell32'))
+    Invoke-Compiler $cxx ($flags + @('-DMINIZ_NO_DEFLATE_APIS','-DMINIZ_NO_STDIO','flow_tests.cpp','noise_updates.cpp') + $zipObjects + @('-o',(Join-Path $BuildDirectory 'flow-tests.exe'),'-lwininet','-lbcrypt','-ladvapi32','-lole32','-luuid','-lshell32'))
     & (Join-Path $BuildDirectory 'flow-tests.exe') (Join-Path $BuildDirectory 'flow-test-data')
     if ($LASTEXITCODE -ne 0) { throw 'Export/worker/updater flow checks failed' }
     Write-Output 'Build and core checks passed.'
+    Invoke-Compiler $cxx ($flags + @('font_bitmap_tests.cpp','-o',(Join-Path $BuildDirectory 'font-bitmap-tests.exe')))
+    & (Join-Path $BuildDirectory 'font-bitmap-tests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Font bitmap bounds checks failed' }
+    Invoke-Compiler $cxx32 ($flags + @('font_bitmap_tests.cpp','-o',(Join-Path $BuildDirectory 'font-bitmap-tests32.exe')))
+    & (Join-Path $BuildDirectory 'font-bitmap-tests32.exe')
+    if ($LASTEXITCODE -ne 0) { throw '32-bit font bitmap bounds checks failed' }
 } finally { Pop-Location }

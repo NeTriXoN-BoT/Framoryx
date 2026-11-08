@@ -1,6 +1,8 @@
-# Dependency hardening in 0.2.2
+# Dependency hardening
 
 These are small, maintained changes to the pinned dependencies. Their original licenses and attribution are retained. CodeQL continues to analyze the real Windows application, x64/x86 hooks, helpers, tests and dependency code with the security-extended suite. No alert exclusions, query removals or bulk dismissals were added.
+
+The 0.3.0 Linux build also compiles miniz with `MINIZ_NO_STDIO`: archive verification uses only bounded in-memory extraction and has no need for miniz's generic filesystem extraction API. STB bitmap baking/packing now rejects invalid dimensions, padding and strides before allocation or pixel access, and widens clearing lengths before multiplication. `font_bitmap_tests.cpp` exercises rejected bounds with sentinel buffers and a valid bitmap in x64/x86 builds.
 
 | Previous alerts | Component | Source change |
 | --- | --- | --- |

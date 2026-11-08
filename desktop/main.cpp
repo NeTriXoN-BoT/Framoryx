@@ -1,4 +1,5 @@
 #include "controller.hpp"
+#include "backend_checks.hpp"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
@@ -63,25 +64,26 @@ int main(int argc,char** argv){
     parser.addOption({"startup","Sign-in launch; do not activate an existing window."});
     parser.addOption({"test-root","Use an isolated configuration directory.","path"});
     parser.addOption({"self-test","Run headless model checks without audio or game changes."});
+    parser.addOption({"backend-test","Run live integrations on an isolated CI runner."});
     parser.addOption({"ui-smoke","Run bounded UI checks on the isolated CI runner."});
     parser.addOption({"snapshot-dir","Write CI UI captures and results here.","path"});
     parser.process(application);
-    const bool modelTest=parser.isSet("self-test"),smoke=parser.isSet("ui-smoke");
-    if((modelTest||smoke)&&!parser.isSet("test-root")){qCritical("Diagnostics require --test-root.");return 2;}
-    if(smoke&&qEnvironmentVariable("GITHUB_ACTIONS")!="true"){qCritical("UI diagnostics are restricted to the isolated CI runner.");return 2;}
+    const bool modelTest=parser.isSet("self-test"),smoke=parser.isSet("ui-smoke"),backendTest=parser.isSet("backend-test");
+    if((modelTest||smoke||backendTest)&&!parser.isSet("test-root")){qCritical("Diagnostics require --test-root.");return 2;}
+    if((smoke||backendTest)&&qEnvironmentVariable("GITHUB_ACTIONS")!="true"){qCritical("UI diagnostics are restricted to the isolated CI runner.");return 2;}
     const QString root=parser.isSet("test-root")?QFileInfo(parser.value("test-root")).absoluteFilePath():QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
     for(const auto character:root)if(character.unicode()<32){qCritical("Configuration paths cannot contain control characters.");return 2;}
     QDir().mkpath(root);
     QLockFile lock(root+"/desktop.lock");lock.setStaleLockTime(0);
     const auto key=QCryptographicHash::hash(root.toUtf8(),QCryptographicHash::Sha256).toHex().left(24);
     const QString serverName="Framoryx.Desktop."+QString::fromLatin1(key);
-    if(!modelTest&&!smoke&&!lock.tryLock()){
+    if(!modelTest&&!smoke&&!backendTest&&!lock.tryLock()){
         QLocalSocket other;other.connectToServer(serverName);if(!parser.isSet("startup")&&other.waitForConnected(800)){other.write("show\n");other.waitForBytesWritten(200);}return 0;
     }
     Controller controller(root,modelTest||smoke);
     if(modelTest){QString error;if(!controller.selfTest(&error)){qCritical("FAIL: %s",qPrintable(error));return 1;}return 0;}
     QLocalServer server;server.setSocketOptions(QLocalServer::UserAccessOption);
-    if(!smoke){QLocalServer::removeServer(serverName);server.listen(serverName);QObject::connect(&server,&QLocalServer::newConnection,&controller,[&]{while(auto socket=server.nextPendingConnection()){QObject::connect(socket,&QLocalSocket::readyRead,socket,[&,socket]{if(socket->readAll().startsWith("show"))emit controller.showRequested();socket->disconnectFromServer();});QObject::connect(socket,&QLocalSocket::disconnected,socket,&QObject::deleteLater);}});}
+    if(!smoke&&!backendTest){QLocalServer::removeServer(serverName);server.listen(serverName);QObject::connect(&server,&QLocalServer::newConnection,&controller,[&]{while(auto socket=server.nextPendingConnection()){QObject::connect(socket,&QLocalSocket::readyRead,socket,[&,socket]{if(socket->readAll().startsWith("show"))emit controller.showRequested();socket->disconnectFromServer();});QObject::connect(socket,&QLocalSocket::disconnected,socket,&QObject::deleteLater);}});}
     QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("app",&controller);
     bool qmlFailure=false;QStringList qmlWarnings;
     QObject::connect(&engine,&QQmlEngine::warnings,&application,[&](const QList<QQmlError>& warnings){for(const auto& warning:warnings){qWarning().noquote()<<warning.toString();qmlWarnings<<warning.toString();}qmlFailure=true;});
@@ -95,6 +97,7 @@ int main(int argc,char** argv){
 #ifdef Q_OS_WIN
     BOOL dark=TRUE;DwmSetWindowAttribute(HWND(window->winId()),20,&dark,sizeof(dark));
 #endif
+    if(backendTest){window->hide();return runBackendChecks(&controller,parser.value("snapshot-dir"),&qmlFailure);}
     QObject::connect(&controller,&Controller::quitRequested,&application,&QApplication::quit);
     QSystemTrayIcon tray(QIcon(":/art/icon.png"));QMenu menu;
     auto show=menu.addAction("Open Framoryx");QObject::connect(show,&QAction::triggered,&controller,[&]{emit controller.showRequested();});

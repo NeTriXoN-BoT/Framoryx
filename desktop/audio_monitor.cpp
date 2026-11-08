@@ -59,9 +59,11 @@ void AudioMonitor::play(){
     if(!device.isFormatSupported(m_format)){m_controller->notify("Your output does not support this recording format.","warning");return;}
     m_output=std::make_unique<QAudioSink>(device,m_format);
     m_playback.setData(m_recording);m_playback.open(QIODevice::ReadOnly);
+    m_controller->setState("playbackFinished",false);
     m_output->start(&m_playback);
+    if(m_output->error()!=QAudio::NoError){stop();m_controller->notify("The output device could not play this sample.","warning");return;}
     const auto generation=m_generation;
-    connect(m_output.get(),&QAudioSink::stateChanged,this,[this,generation](QAudio::State state){if(state==QAudio::IdleState&&generation==m_generation)QTimer::singleShot(0,this,[this,generation]{if(generation==m_generation)stop();});});
+    connect(m_output.get(),&QAudioSink::stateChanged,this,[this,generation](QAudio::State state){if(state==QAudio::IdleState&&generation==m_generation)QTimer::singleShot(0,this,[this,generation]{if(generation==m_generation){m_controller->setState("playbackFinished",true);stop();}});});
     m_controller->setState("playing",true);
     m_stop.start(6500);
 }

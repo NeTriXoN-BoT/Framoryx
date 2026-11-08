@@ -21,14 +21,14 @@ jobs:
             arch: win64_msvc2022_64
             label: Windows-x64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install Linux graphics and audio test dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-image0 libxcb-render-util0 libxcb-xfixes0 libegl1 libpulse0 libasound2 xvfb openbox wmctrl mangohud pipewire pipewire-bin wireplumber mesa-utils libxcb-present-dev libva-x11-2 libva-drm2 libva2 pipewire-pulse dbus-x11 desktop-file-utils
+          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-image0 libxcb-render-util0 libxcb-xfixes0 libegl1 libpulse0 libasound2 xvfb openbox xcompmgr wmctrl mangohud pipewire pipewire-bin wireplumber mesa-utils libxcb-present-dev libva-x11-2 libva-drm2 libva2 pipewire-pulse dbus-x11 desktop-file-utils pulseaudio-utils libvulkan-dev mesa-vulkan-drivers
       - uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # built v4 distribution
         with:
           version: '6.8.3'
@@ -62,10 +62,49 @@ jobs:
           $process=Start-Process -FilePath $app -ArgumentList @('--ui-smoke','--test-root',('"'+$testRoot+'"'),'--snapshot-dir',('"'+$shots+'"')) -WindowStyle Hidden -PassThru
           if(!$process.WaitForExit(45000)){Stop-Process -Id $process.Id -Force;throw 'Desktop UI checks timed out.'}
           if($process.ExitCode -ne 0){throw 'Desktop UI checks failed.'}
+      - name: Linux isolated live backends and graphics APIs
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- bash scripts/check-desktop-backends.sh
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        if: runner.os == 'Windows'
+        with:
+          path: |
+            work/build/toolchain
+            tools/PresentMon.exe
+            tools/PresentMon-2.6.0-x64.exe
+          key: llvm-mingw-20261104-ucrt-windows-x64
+      - name: Stage Windows private engine
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/fetch-ci-tools.ps1
+          $toolchain=(Resolve-Path './work/build/toolchain/llvm-mingw-20261104-ucrt-x86_64/bin').Path
+          ./source/build.ps1 -ToolchainBin $toolchain -BuildDirectory ./work/qt-engine-build -OutputDirectory ./work/qt-engine
+          $destination='./build/desktop/desktop/Release'
+          Copy-Item ./work/qt-engine/Framoryx.exe "$destination/FramoryxEngine.exe"
+          Copy-Item ./work/qt-engine/FramoryxHook*.dll $destination
+          Copy-Item ./work/qt-engine/tools "$destination/tools" -Recurse -Force
+          Copy-Item ./tools/PresentMon.exe "$destination/tools/PresentMon.exe" -Force
+      - name: Windows isolated live backend
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $app=(Resolve-Path './build/desktop/desktop/Release/Framoryx.exe').Path
+          $testRoot=Join-Path $env:RUNNER_TEMP 'framoryx-qt-backend'
+          $report=Join-Path (Get-Location) 'work/desktop-backends'
+          $process=Start-Process -FilePath $app -ArgumentList @('--backend-test','--test-root',('"'+$testRoot+'"'),'--snapshot-dir',('"'+$report+'"')) -WindowStyle Hidden -PassThru
+          if(!$process.WaitForExit(230000)){Stop-Process -Id $process.Id -Force;throw 'Live backend checks timed out.'}
+          if($process.ExitCode -ne 0){throw 'Live backend checks failed.'}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: Framoryx-Shared-UI-${{ matrix.label }}
-          path: work/desktop-previews
+          path: |
+            work/desktop-previews
+            work/desktop-backends
           if-no-files-found: ignore
           retention-days: 7

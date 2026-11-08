@@ -3834,10 +3834,14 @@ static int stbtt_BakeFontBitmap_internal(unsigned char *data, int offset,  // fo
    float scale;
    int x,y,bottom_y, i;
    stbtt_fontinfo f;
+   // Framoryx: validate dimensions before multiplication and pointer arithmetic.
+   if (pw <= 0 || ph <= 0 || pw > 65535 || ph > 65535 ||
+       (size_t) pw > 0x7fffffffU / (size_t) ph)
+      return -1;
    f.userdata = NULL;
    if (!stbtt_InitFont(&f, data, offset))
       return -1;
-   STBTT_memset(pixels, 0, pw*ph); // background of 0 around pixels
+   STBTT_memset(pixels, 0, (size_t) pw * (size_t) ph); // background of 0 around pixels
    x=y=1;
    bottom_y = 1;
 
@@ -3971,6 +3975,12 @@ static void stbrp_pack_rects(stbrp_context *con, stbrp_rect *rects, int num_rect
 
 STBTT_DEF int stbtt_PackBegin(stbtt_pack_context *spc, unsigned char *pixels, int pw, int ph, int stride_in_bytes, int padding, void *alloc_context)
 {
+   // Framoryx: packed coordinates and internal pixel offsets must remain valid.
+   if (pw <= 0 || ph <= 0 || pw > 65535 || ph > 65535 || padding < 0 ||
+       padding >= pw || padding >= ph ||
+       (stride_in_bytes != 0 && stride_in_bytes < pw) ||
+       (size_t) pw > 0x7fffffffU / (size_t) ph)
+      return 0;
    stbrp_context *context = (stbrp_context *) STBTT_malloc(sizeof(*context)            ,alloc_context);
    int            num_nodes = pw - padding;
    stbrp_node    *nodes   = (stbrp_node    *) STBTT_malloc(sizeof(*nodes  ) * num_nodes,alloc_context);
@@ -3996,7 +4006,7 @@ STBTT_DEF int stbtt_PackBegin(stbtt_pack_context *spc, unsigned char *pixels, in
    stbrp_init_target(context, pw-padding, ph-padding, nodes, num_nodes);
 
    if (pixels)
-      STBTT_memset(pixels, 0, pw*ph); // background of 0 around pixels
+      STBTT_memset(pixels, 0, (size_t) pw * (size_t) ph); // background of 0 around pixels
 
    return 1;
 }
