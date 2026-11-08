@@ -2155,6 +2155,7 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_ERASEBKGND:
         return 1;
     case WM_HSCROLL:
+        app.contentDirty = true;
         if (reinterpret_cast<HWND>(lp) == app.controls[Volume]) {
             float v = float(SendMessageW(app.controls[Volume], TBM_GETPOS, 0, 0)) / 100;
             app.audio.volume = v;
@@ -2306,6 +2307,7 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
         }
         return 0;
     case WM_COMMAND: {
+        app.contentDirty = true;
         int id = LOWORD(wp), notification = HIWORD(wp);
         if (id >= 401 && id <= 406) {
             if (id == 401)

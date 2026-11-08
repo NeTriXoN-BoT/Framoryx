@@ -449,9 +449,10 @@ void paintAnimatedMetrics(Graphics& g) {
 void advanceMotion() {
     double now = animationClock(), dt = app.lastAnimation ? now - app.lastAnimation : 1. / 60;
     app.lastAnimation = now;
-    app.animationTime = now;
     bool foreground =
         (GetForegroundWindow() == app.window || app.diagnosticAnimate) && !IsIconic(app.window);
+    if (foreground)
+        app.animationTime += std::clamp(dt, 0., .05);
     if (app.transitionNew && (!app.motion || now - app.transitionStart >= .22 || !foreground)) {
         app.transitionOld.reset();
         app.transitionNew.reset();
