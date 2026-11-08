@@ -10,6 +10,24 @@ ColumnLayout {
         FCard {
             Layout.fillWidth: true; Layout.preferredWidth: Theme.px(350)
             Text { text: "Make it yours."; color: Theme.text; font.pixelSize: Theme.px(22); font.weight: Font.DemiBold }
+            Text { text: "DISPLAY METHOD"; color: Theme.muted; font.pixelSize: Theme.px(10) }
+            FCombo {
+                id: method
+                Layout.fillWidth: true
+                model: app.platformName==="Windows"?["Auto · external first","External desktop overlay","In-game · manual hook"]:["Auto · external first","External · X Present","MangoHud game layer · opt-in"]
+                currentIndex: app.platformName==="Windows"?app.options.mode:app.options.linuxOverlayMode
+                onActivated: {
+                    if(app.platformName==="Linux"&&currentIndex===2)layerDialog.open();else app.setOption(app.platformName==="Windows"?"mode":"linuxOverlayMode",currentIndex)
+                }
+            }
+            Text { text: app.platformName==="Windows"?"External monitoring does not load code into your game. In-game mode requires a separate, explicit hook approval.":"External capture uses X11 presentation events. Native Wayland and some renderers may not expose them; Framoryx explains when frames are unavailable."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Dialog {
+                id: layerDialog; anchors.centerIn: Overlay.overlay; width: Theme.px(520); height: Theme.px(300); modal: true; title: "Enable the MangoHud game layer?"; standardButtons: Dialog.Yes|Dialog.Cancel
+                background: Rectangle { color: Theme.surface; radius: Theme.px(14); border.color: Theme.border }
+                contentItem: Text { text: "MangoHud loads a graphics layer into games launched with monitoring. It enables the in-game overlay and frame limiting.\n\nGame and anti-cheat rules may prohibit third-party layers. Use at your own risk; Framoryx cannot guarantee approval or prevent bans. Known anti-cheat indicators prevent a monitored layer launch.\n\nEnable this method for your next monitored launch?"; color: Theme.text; font.pixelSize: Theme.px(13); wrapMode: Text.Wrap }
+                onAccepted: {if(app.state.antiCheatStatus==="detected")app.notify("Known anti-cheat indicators are present. The external method remains selected.","warning");else app.setOption("linuxOverlayMode",2);method.currentIndex=Qt.binding(function(){return app.options.linuxOverlayMode})}
+                onRejected: method.currentIndex=Qt.binding(function(){return app.options.linuxOverlayMode})
+            }
             GridLayout {
                 Layout.fillWidth: true; columns: 2; columnSpacing: Theme.px(12); rowSpacing: Theme.px(10)
                 Text { text: "LAYOUT"; color: Theme.muted; font.pixelSize: Theme.px(10) }

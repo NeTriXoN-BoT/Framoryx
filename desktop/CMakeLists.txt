@@ -13,6 +13,7 @@ qt_add_qml_module(FramoryxDesktop URI FramoryxUI VERSION 1.0
     QML_FILES
     qml/Main.qml qml/Theme.qml qml/FButton.qml qml/FCard.qml qml/FCombo.qml qml/FToggle.qml
     qml/FSlider.qml qml/Metric.qml qml/FrameGraph.qml qml/OverlayPreview.qml qml/Backdrop.qml
+    qml/OverlayReadouts.qml qml/ExternalOverlay.qml
     qml/Overview.qml qml/OverlayStudio.qml qml/AudioPage.qml qml/GamesPage.qml qml/RulesPage.qml qml/SettingsPage.qml qml/ChangesPage.qml
     )
 qt_add_resources(FramoryxDesktop framoryx_local_types PREFIX / FILES qml/qmldir)
@@ -25,6 +26,10 @@ if(WIN32)
     target_sources(FramoryxDesktop PRIVATE resources/desktop.rc)
     target_include_directories(FramoryxDesktop PRIVATE ../assets)
 else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(XCB_PRESENT REQUIRED IMPORTED_TARGET xcb-present)
+    target_link_libraries(FramoryxDesktop PRIVATE PkgConfig::XCB_PRESENT)
+    target_sources(FramoryxDesktop PRIVATE passive_linux.cpp)
     target_sources(FramoryxDesktop PRIVATE ../source/vendor/miniz/miniz.c ../source/vendor/miniz/miniz_zip.c ../source/vendor/miniz/miniz_tinfl.c)
     target_compile_definitions(FramoryxDesktop PRIVATE MINIZ_NO_DEFLATE_APIS)
 endif()

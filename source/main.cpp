@@ -2492,6 +2492,7 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
         if(surfaceWidth<=0||surfaceHeight<=0)return TRUE;
         auto& surface=app.buttonSurfaces[int(d->CtlID)];
         if(!surface||int(surface->GetWidth())!=surfaceWidth||int(surface->GetHeight())!=surfaceHeight)surface=std::make_unique<Bitmap>(surfaceWidth,surfaceHeight,PixelFormat32bppPARGB);
+        {
         Graphics g(surface.get());
         g.SetSmoothingMode(SmoothingModeAntiAlias);
         g.SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
@@ -2549,6 +2550,7 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
             g.DrawRectangle(&p, 3.0f, 3.0f, width - 7, height - 7);
         }
         g.Flush(FlushIntentionSync);
+        }
         Graphics destination(d->hDC);
         destination.DrawImage(surface.get(),d->rcItem.left,d->rcItem.top,surfaceWidth,surfaceHeight);
         return TRUE;
@@ -3206,6 +3208,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     app.transitionOld.reset();
     app.transitionNew.reset();
     app.fonts.clear();
+    app.buttonSurfaces.clear();
     app.headerCache.reset();
     app.logoCache.reset();
     app.logo.reset();

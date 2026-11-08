@@ -150,6 +150,7 @@ ApplicationWindow {
             contentHeight: column.implicitHeight+Theme.px(48)
         }
     }
+    ExternalOverlay { }
     Component { id: overview; Overview { property var shell: window } }
     Component { id: studio; OverlayStudio { property var shell: window } }
     Component { id: audio; AudioPage { property var shell: window } }

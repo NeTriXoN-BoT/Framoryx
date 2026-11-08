@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 class Controller;
+class PassiveCapture;
 class Platform : public QObject {
     Q_OBJECT
 public:
@@ -25,6 +26,9 @@ public:
     QString launchCommand() const;
 private:
     Controller* c;
+    std::unique_ptr<PassiveCapture> m_passive;
+    bool attachPassive(bool explain=false);
+    QString m_passiveName;quint32 m_passivePid=0;
     QProcess m_engine, m_game, m_mic, m_output;
     QByteArray m_incoming;
     QString m_token, m_logFile;

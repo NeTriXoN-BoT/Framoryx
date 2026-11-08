@@ -29,7 +29,7 @@
 namespace {
 const QStringList labels{"Live FPS","Average FPS","1% low","Frame time","Frame graph","System CPU","System RAM","FPS limit","Renderer","Framoryx label"};
 const QVariantList defaultOrder{0,1,2,3,4,5,6,7,8,9};
-QVariantMap defaults(){return {{"motion",true},{"startWithSystem",false},{"startHidden",false},{"minimizeToTray",false},{"closeToTray",false},{"autoCapture",false},{"uiScale",0},{"overlayScale",0},{"opacity",90},{"style",0},{"accent",0},{"fields",1023},{"order",defaultOrder},{"hudX",.03},{"hudY",.03},{"fontScale",100},{"cap",60},{"mode",0},{"volume",100},{"bass",3},{"noise",false},{"eq",false},{"low",6},{"mid",-3},{"high",0},{"voicePreset",4},{"noisePreset",1},{"autoNoise",true},{"micId",""},{"selectedGame","auto"},{"autoBorderless",false},{"gamescope",false},{"allow",QStringList{"FramoryxTest.exe","FramoryxScene"}},{"deny",QStringList{"RiotClientServices.exe"}}};}
+QVariantMap defaults(){return {{"motion",true},{"startWithSystem",false},{"startHidden",false},{"minimizeToTray",false},{"closeToTray",false},{"autoCapture",false},{"uiScale",0},{"overlayScale",0},{"opacity",90},{"style",0},{"accent",0},{"fields",1023},{"order",defaultOrder},{"hudX",.03},{"hudY",.03},{"fontScale",100},{"cap",60},{"mode",0},{"volume",100},{"bass",3},{"noise",false},{"eq",false},{"low",6},{"mid",-3},{"high",0},{"voicePreset",4},{"noisePreset",1},{"autoNoise",true},{"micId",""},{"selectedGame","auto"},{"autoBorderless",false},{"gamescope",false},{"linuxOverlayMode",0},{"allow",QStringList{"FramoryxTest.exe","FramoryxScene"}},{"deny",QStringList{"RiotClientServices.exe"}}};}
 bool boundedJson(const QString& path,QJsonObject* object){
     const QFileInfo info(path);
     if(!info.isFile() || info.isSymLink() || info.size()>1024*1024)return false;
@@ -73,7 +73,7 @@ QString Controller::platformName()const{
 }
 QVariantMap Controller::cleanOptions(const QVariantMap& input)const{
     auto out=defaults();
-    const QMap<QString,QPair<int,int>> ranges{{"uiScale",{60,175}},{"overlayScale",{50,300}},{"opacity",{0,100}},{"style",{0,4}},{"accent",{0,9}},{"fontScale",{80,140}},{"cap",{0,1000}},{"mode",{0,2}},{"volume",{0,200}},{"bass",{0,9}},{"low",{-12,12}},{"mid",{-12,12}},{"high",{-12,12}},{"voicePreset",{0,5}},{"noisePreset",{0,2}}};
+    const QMap<QString,QPair<int,int>> ranges{{"uiScale",{60,175}},{"overlayScale",{50,300}},{"opacity",{0,100}},{"style",{0,4}},{"accent",{0,9}},{"fontScale",{80,140}},{"cap",{0,1000}},{"mode",{0,2}},{"linuxOverlayMode",{0,2}},{"volume",{0,200}},{"bass",{0,9}},{"low",{-12,12}},{"mid",{-12,12}},{"high",{-12,12}},{"voicePreset",{0,5}},{"noisePreset",{0,2}}};
     for(auto it=input.begin();it!=input.end();++it){
         if(!out.contains(it.key()))continue;
         if(ranges.contains(it.key())){
