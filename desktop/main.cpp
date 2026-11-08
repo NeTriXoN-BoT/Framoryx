@@ -134,9 +134,12 @@ int main(int argc,char** argv){
             else if(*step==14){controller.setOption("style",1);window->setProperty("page",1);}
             else if(*step==15){window->grabWindow().save(destination+"/studio-compact.png");controller.setOption("style",2);}
             else if(*step==16){window->grabWindow().save(destination+"/studio-telemetry.png");controller.setOption("uiScale",125);window->showMaximized();}
-            else if(*step==17){window->grabWindow().save(destination+"/maximized-125.png");window->showNormal();window->resize(900,700);controller.setOption("uiScale",0);}
-            else if(*step==18){window->grabWindow().save(destination+"/compact-auto.png");controller.setOption("motion",false);}
-            else if(*step==19){window->resize(1440,980);window->setProperty("page",1);controller.setOption("style",3);controller.setOption("opacity",0);}
+            // Wayland restores asynchronously. Finish that configure cycle before
+            // requesting another size, rather than committing a windowed buffer
+            // while the compositor still requires maximized dimensions.
+            else if(*step==17){window->grabWindow().save(destination+"/maximized-125.png");window->showNormal();controller.setOption("uiScale",0);}
+            else if(*step==18){window->resize(900,700);controller.setOption("motion",false);}
+            else if(*step==19){window->grabWindow().save(destination+"/compact-auto.png");window->resize(1440,980);window->setProperty("page",1);controller.setOption("style",3);controller.setOption("opacity",0);}
             else if(*step==20){window->grabWindow().save(destination+"/studio-transparent.png");controller.setOption("style",4);controller.setOption("opacity",90);controller.setOption("accent",4);}
             else if(*step==21){window->grabWindow().save(destination+"/studio-dashboard.png");window->setProperty("page",2);controller.setOption("uiScale",100);}
             else if(*step==22){
