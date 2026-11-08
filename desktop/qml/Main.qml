@@ -21,7 +21,7 @@ ApplicationWindow {
     Binding { target: Theme; property: "accent"; value: window.colors[app.options.accent||0] }
     Binding { target: Theme; property: "scale"; value: app.options.uiScale>0?app.options.uiScale/100:Screen.width<1200?.9:Screen.width>2400?1.1:1 }
     Binding { target: Theme; property: "motion"; value: app.options.motion&&(window.active||window.diagnosticAnimating)&&window.visibility!==Window.Minimized&&window.visible }
-    function requestHook(){if(app.state.antiCheatStatus==="detected")app.notify("Known anti-cheat indicators are present. In-game hooks are blocked; use the external overlay.","warning");else hookDialog.open()}
+    function requestHook(){if(app.state.inGameSupported===false){app.notify("This renderer uses the external overlay. Optional Windows in-game limiting supports DX11/DX12.");return}if(app.state.antiCheatStatus==="detected")app.notify("Known anti-cheat indicators are present. In-game hooks are blocked; use the external overlay.","warning");else hookDialog.open()}
     function chooseGame(){gameFile.open()}
     function chooseApo(){apoFile.open()}
     function exportCapture(){captureFile.open()}

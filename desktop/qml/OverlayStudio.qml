@@ -17,6 +17,7 @@ ColumnLayout {
                 model: app.platformName==="Windows"?["Auto · external first","External desktop overlay","In-game · manual hook"]:["Auto · external first","External · X Present","MangoHud game layer · opt-in"]
                 currentIndex: app.platformName==="Windows"?app.options.mode:app.options.linuxOverlayMode
                 onActivated: {
+                    if(app.platformName==="Windows"&&currentIndex===2&&app.state.inGameSupported===false){app.setOption("mode",1);app.notify("This rendering API uses the external overlay. Optional in-game limiting is available for DX11/DX12.");method.currentIndex=Qt.binding(function(){return app.options.mode});return}
                     if(app.platformName==="Linux"&&currentIndex===2)layerDialog.open();else app.setOption(app.platformName==="Windows"?"mode":"linuxOverlayMode",currentIndex)
                 }
             }

@@ -95,7 +95,10 @@ private:
     friend class AudioMonitor;
     QString m_root;
     bool m_test = false, m_active = true, m_scanningProcesses = false;
-    QVariantMap m_state, m_options;
+    QVariantMap m_state, m_options, m_baseOverlay, m_gameOptions;
+    QString m_activeGameKey;
+    void activateGameProfile(const QString& executable);
+    void rememberOverlay();
     QVariantList m_processes, m_games, m_profiles, m_devices, m_capabilities, m_graph;
     QMediaDevices m_media;
     QTimer m_poll, m_saveTimer, m_safetyTimer;

@@ -24,6 +24,7 @@ public:
     void action(const QString& name, const QVariantMap& args);
     void shutdown();
     QString launchCommand() const;
+    QString overlayConfigPath() const;
 private:
     Controller* c;
     std::unique_ptr<PassiveCapture> m_passive;

@@ -144,7 +144,7 @@ struct App {
     std::array<double,6> sensorValues{-1,-1,-1,-1,-1,-1};
     fg::HudProfile hudBase;
     std::map<std::string, fg::HudProfile> hudProfiles;
-    std::string activeProfile, autoExe;
+    std::string activeProfile, autoExe, engineWantedExe;
     int hudMode = 0, desktopPercent = 0;
     fg::Compatibility compatibility;
     DWORD compatibilityPid = 0;
@@ -670,7 +670,8 @@ bool updateCap(bool persist = true) {
     return true;
 }
 void attachHook(bool confirmed = false) {
-    auto* t = selected();
+    TargetWindow automatic{};auto* t=selected();
+    if(!t&&app.engineMode&&confirmed&&app.autoWindow&&app.autoPid&&!app.autoExe.empty()&&(app.engineWantedExe.empty()||fg::lower(app.autoExe)==app.engineWantedExe)){DWORD current=0;GetWindowThreadProcessId(app.autoWindow,&current);if(current==app.autoPid){automatic={app.autoWindow,app.autoPid,app.autoExe,L""};t=&automatic;}}
     if (!t) {
         setNotice(L"Select a specific game window before enabling the experimental limiter.");
         return;
@@ -1743,6 +1744,8 @@ void update() {
     if (!targetWindow || !IsWindow(targetWindow) || targetWindowPid != app.selectedPid)
         app.selectedPid = 0;
     auto profileName = t ? t->exe : app.autoExe;
+    if(app.engineMode&&!t&&!app.engineWantedExe.empty()&&fg::lower(profileName)!=app.engineWantedExe){app.selectedPid=0;targetWindow=nullptr;profileName=app.engineWantedExe;}
+
     if (app.activeProfile != fg::lower(profileName))
         applyProfile(profileName);
     if (app.selectedPid != app.compatibilityPid || ((app.page == 6 || app.engineMode) && app.tick % 20 == 0)) {

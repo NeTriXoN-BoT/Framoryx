@@ -163,6 +163,7 @@ void applyProfile(const std::string& exe) {
     app.hudOptions = profile.options;
     app.corner = profile.corner;
     app.hudMode = profile.mode;
+    if(app.engineMode){const auto limit=app.gameLimits.find(app.activeProfile);if(limit!=app.gameLimits.end()){app.cap=limit->second;SetWindowTextW(app.controls[CapValue],std::to_wstring(app.cap).c_str());if(app.hook.pid()==app.selectedPid)app.hook.cap(app.cap);}}
     syncHudControls();
 }
 void pushHookPresentation() {

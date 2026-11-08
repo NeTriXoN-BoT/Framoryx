@@ -48,6 +48,7 @@ class EnginePipe {
 } enginePipe;
 void engineSelect(const nlohmann::json& request){
     refreshTargets();std::string id=request.value("id",std::string());
+    const auto wanted=fg::lower(request.value("exe",std::string()));app.engineWantedExe=fg::validRule(wanted)?wanted:std::string();
     int index=0;
     for(size_t i=0;i<app.targets.size();++i){const auto& target=app.targets[i];
         const auto candidate=std::to_string(target.pid)+":"+std::to_string(reinterpret_cast<uintptr_t>(target.hwnd));
@@ -57,11 +58,18 @@ void engineSelect(const nlohmann::json& request){
 }
 void engineOptions(const nlohmann::json& request){
     const auto options=request.value("options",nlohmann::json::object());const auto key=request.value("key",std::string());
+    const auto profileKey=fg::lower(options.value("profileExe",app.activeProfile));if(!profileKey.empty()&&!fg::validRule(profileKey))return;
+    const auto previousOptions=app.hudOptions;const int previousMode=app.hudMode,previousCorner=app.corner;
+    const auto stored=app.hudProfiles.find(profileKey);const auto targetProfile=profileKey.empty()||stored==app.hudProfiles.end()?app.hudBase:stored->second;
+    app.hudOptions=targetProfile.options;app.hudMode=targetProfile.mode;app.corner=targetProfile.corner;
     auto changed=[&](const std::string& name){if(key==name)return true;if(request.contains("keys")&&request["keys"].is_array())for(const auto& item:request["keys"])if(item.is_string()&&item.get<std::string>()==name)return true;return false;};
     const auto previousAllow=app.rules.allow,previousDeny=app.rules.deny;
     auto integer=[&](const char* name,int fallback,int low,int high){const auto value=options.find(name);if(value==options.end()||!value->is_number_integer())return fallback;const auto n=value->get<int64_t>();return int(std::clamp<int64_t>(n,low,high));};
     auto boolean=[&](const char* name,bool fallback){const auto value=options.find(name);return value!=options.end()&&value->is_boolean()?value->get<bool>():fallback;};
-    app.cap=integer("cap",app.cap,0,1000);if(app.cap>0&&app.cap<10)app.cap=10;SetWindowTextW(app.controls[CapValue],std::to_wstring(app.cap).c_str());updateCap(false);
+    int nextCap=integer("cap",app.cap,0,1000);if(nextCap>0&&nextCap<10)nextCap=10;
+    if(!profileKey.empty())app.gameLimits[profileKey]=nextCap;
+    if(profileKey==app.activeProfile){app.cap=nextCap;SetWindowTextW(app.controls[CapValue],std::to_wstring(app.cap).c_str());updateCap(false);}
+    else if(!profileKey.empty()&&fg::lower(app.hook.name())==profileKey)app.hook.cap(nextCap);
     app.hudOptions.fields=uint32_t(integer("fields",int(app.hudOptions.fields),0,65535));
     app.hudOptions.scale=integer("overlayScale",app.hudOptions.scale,0,300);app.hudOptions.opacity=integer("opacity",app.hudOptions.opacity,0,100);app.hudOptions.style=integer("style",app.hudOptions.style,0,4);app.hudOptions.accent=integer("accent",app.hudOptions.accent,0,9);app.hudMode=integer("mode",app.hudMode,0,2);
     app.hudOptions.fontScale=integer("fontScale",app.hudOptions.fontScale,80,140);
@@ -81,7 +89,7 @@ void engineOptions(const nlohmann::json& request){
     syncMicrophoneControls();selectComboValue(BassAmount,integer("bass",3,0,9));
     // The bass combo stores 0/3/6/9 by index rather than its descriptive caption.
     SendMessageW(app.controls[BassAmount],CB_SETCURSEL,integer("bass",3,0,9)/3,0);
-    app.hudOptions.validate();const fg::HudProfile profile{app.hudOptions,app.corner,app.hudMode};if(app.activeProfile.empty())app.hudBase=profile;else app.hudProfiles[app.activeProfile]=profile;pushHookPresentation();positionHud();app.engineDirty=true;
+    app.hudOptions.validate();const fg::HudProfile profile{app.hudOptions,app.corner,app.hudMode};if(profileKey.empty())app.hudBase=profile;else app.hudProfiles[profileKey]=profile;if(profileKey!=app.activeProfile){app.hudOptions=previousOptions;app.hudMode=previousMode;app.corner=previousCorner;}pushHookPresentation();positionHud();app.engineDirty=true;
 }
 void engineCommands(){
     if(!app.engineMode)return;
