@@ -1,12 +1,98 @@
+diff --git a/src/config.cpp b/src/config.cpp
+index 1bb509d..8981a79 100644
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -36,12 +35,0 @@ void parseConfigLine(std::string line, std::unordered_map<std::string, std::stri
+-static std::string get_program_dir() {
+-    const std::string exe_path = get_exe_path();
+-    if (exe_path.empty()) {
+-        return std::string();
+-    }
+-    const auto n = exe_path.find_last_of('/');
+-    if (n != std::string::npos) {
+-        return exe_path.substr(0, n);
+-    }
+-    return std::string();
+-}
+-
+@@ -65,66 +53,2 @@ std::string get_program_name() {
+-static void enumerate_config_files(std::vector<std::string>& paths) {
+-    static const char *mangohud_dir = "/MangoHud/";
+-
+-    const std::string data_dir = get_data_dir();
+-    const std::string config_dir = get_config_dir();
+-
+-    const std::string program_name = get_program_name();
+-
+-    if (config_dir.empty()) {
+-        // If we can't find 'HOME' just abandon hope.
+-        return;
+-    }
+-
+-    paths.push_back(config_dir + mangohud_dir + "MangoHud.conf");
+-    paths.push_back("/etc/MangoHud.conf");
+-
+-    if (is_blacklisted()) {
+-        // Don't bother looking for conf file
+-        return;
+-    }
+-
+-    if (!program_name.empty()) {
+-        paths.push_back(config_dir + mangohud_dir + program_name + ".conf");
+-    }
+-
+-    const std::string program_dir = get_program_dir();
+-    if (!program_dir.empty()) {
+-        paths.push_back(program_dir + "/MangoHud.conf");
+-    }
+-
+-    const std::string wine_program_name = get_wine_exe_name();
+-    if (!wine_program_name.empty()) {
+-        paths.push_back(config_dir + mangohud_dir + "wine-" + wine_program_name + ".conf");
+-     }
+-}
+-
+-void parseConfigFile(overlay_params& params) {
+-    std::vector<std::string> paths;
+-    const char *cfg_file = getenv("MANGOHUD_CONFIGFILE");
+-
+-    if (cfg_file)
+-        paths.push_back(cfg_file);
+-    else
+-        enumerate_config_files(paths);
+-#ifdef _WIN32
+-    paths.push_back("C:\\mangohud\\MangoHud.conf");
+-#endif
+-    std::string line;
+-    for (auto p = paths.rbegin(); p != paths.rend(); p++) {
+-        std::ifstream stream(*p);
+-        if (!stream.good()) {
+-            // printing just so user has an idea of possible configs
+-            SPDLOG_DEBUG("skipping config: '{}' [ not found ]", *p);
+-            continue;
+-        }
+-
+-        stream.imbue(std::locale::classic());
+-        SPDLOG_DEBUG("parsing config: '{}'", *p);
+-        while (std::getline(stream, line))
+-        {
+-            parseConfigLine(line, params.options);
+-        }
+-        params.config_file_path = *p;
+-        return;
+-    }
+-}
++// Framoryx supplies launch parameters and typed live controls, not arbitrary files.
++void parseConfigFile(overlay_params&) {}
 diff --git a/src/control.cpp b/src/control.cpp
-index 9d99708..806de70 100644
+index 9d99708..4237e8d 100644
 --- a/src/control.cpp
 +++ b/src/control.cpp
 @@ -9,0 +10,3 @@
 +#include "framoryx_stream.hpp"
 +#include "framoryx_hud.hpp"
 +#include <unistd.h>
-@@ -18 +21,18 @@ static void parse_command(overlay_params &params,
+@@ -18 +21,20 @@ static void parse_command(overlay_params &params,
 -   if (!strncmp(cmd, "hud", cmdlen)) {
 +   if (!strcmp(cmd, "framoryx_hud")) {
 +      framoryx_hud::configure(std::string_view(param, paramlen ? paramlen - 1 : 0));
@@ -23,10 +109,12 @@ index 9d99708..806de70 100644
 +      }
 +   } else if (!strcmp(cmd, "framoryx_stop")) {
 +      framoryx_stream::reset(false);
-+   } else if (!strcmp(cmd, "framoryx_reload")) {
-+      parse_overlay_config(&params, getenv("MANGOHUD_CONFIG"), false);
++   } else if (!strcmp(cmd, "framoryx_limit")) {
++      std::array<int,2> values{};
++      if (framoryx_hud::numbers(std::string_view(param, paramlen ? paramlen - 1 : 0), values))
++         framoryx_update_limit(params, values[0], values[1]);
 +   } else if (!strncmp(cmd, "hud", cmdlen)) {
-@@ -168,0 +189,7 @@ void control_client_check(int control, int& control_client, const std::string& d
+@@ -168,0 +191,7 @@ void control_client_check(int control, int& control_client, const std::string& d
 +      // The application control channel is restricted to this user's session.
 +      struct ucred peer = {};
 +      socklen_t peer_size = sizeof(peer);
@@ -34,37 +122,261 @@ index 9d99708..806de70 100644
 +         os_socket_close(socket);
 +         return;
 +      }
-@@ -176,0 +204 @@ static void control_client_disconnected(int& control_client)
+@@ -176,0 +206 @@ static void control_client_disconnected(int& control_client)
 +   framoryx_stream::reset(false);
-@@ -183,0 +212 @@ void process_control_socket(int& control_client, overlay_params &params)
+@@ -183,0 +214 @@ void process_control_socket(int& control_client, overlay_params &params)
 +      global_control_client = control_client;
+diff --git a/src/cpu.cpp b/src/cpu.cpp
+index f46faba..22d3b0f 100644
+--- a/src/cpu.cpp
++++ b/src/cpu.cpp
+@@ -250 +250 @@ bool CPUStats::UpdateCoreMhz() {
+-                int64_t temp;
++                int64_t temp = 0;
+diff --git a/src/fps_limiter.h b/src/fps_limiter.h
+index 509d20a..4f4e639 100644
+--- a/src/fps_limiter.h
++++ b/src/fps_limiter.h
+@@ -45 +45,2 @@ class fpsLimiter {
+-            auto& fps_limit = get_params()->fps_limit;
++            const auto params = get_params();
++            auto& fps_limit = params->fps_limit;
+@@ -71 +72,2 @@ class fpsLimiter {
+-            auto& v = get_params()->fps_limit;
++            const auto params = get_params();
++            auto& v = params->fps_limit;
+@@ -82 +84,4 @@ class fpsLimiter {
+-            auto& v = get_params()->fps_limit;
++            const auto params = get_params();
++            auto& v = params->fps_limit;
++            if (v.empty()) return 0;
++            if (fps_limits_idx >= v.size()) fps_limits_idx = 0;
+@@ -84,0 +90,4 @@ class fpsLimiter {
++        void set_limit(float fps) {
++            target = fps <= 0 ? 0 : int64_t(1'000'000'000.0 / fps);
++            active = true; fps_limits_idx = 0; overhead = 0; frame_start = 0; frame_end = 0;
++        }
+diff --git a/src/gl/glad.c b/src/gl/glad.c
+index 0abde08..ef3fb2c 100644
+--- a/src/gl/glad.c
++++ b/src/gl/glad.c
+@@ -2485 +2485 @@ static void find_coreGL(void) {
+-    sscanf_s(version, "%d.%d", &major, &minor);
++    if (sscanf_s(version, "%d.%d", &major, &minor) != 2) return;
+@@ -2487 +2487 @@ static void find_coreGL(void) {
+-    sscanf(version, "%d.%d", &major, &minor);
++    if (sscanf(version, "%d.%d", &major, &minor) != 2) return;
+@@ -2958 +2958 @@ static void find_coreGLES2(void) {
+-    sscanf_s(version, "%d.%d", &major, &minor);
++    if (sscanf_s(version, "%d.%d", &major, &minor) != 2) return;
+@@ -2960 +2960 @@ static void find_coreGLES2(void) {
+-    sscanf(version, "%d.%d", &major, &minor);
++    if (sscanf(version, "%d.%d", &major, &minor) != 2) return;
+diff --git a/src/gl/shim.c b/src/gl/shim.c
+index 3b039ef..a67254c 100644
+--- a/src/gl/shim.c
++++ b/src/gl/shim.c
+@@ -87,25 +87 @@ static void loadMangoHud() {
+-    // allow user to load custom mangohud libs (useful for testing)
+-    char *libs = getenv("MANGOHUD_OPENGL_LIBS");
+-    char *lib = NULL;
+-
+-    if (libs)
+-    {
+-        lib = strtok(libs, ":");
+-
+-        // when user specifies only one path
+-        if (!lib) lib = libs;
+-
+-        while (lib != NULL)
+-        {
+-            handle = dlopen(lib, RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
+-
+-            if (handle)
+-            {
+-                mangoHudLoaded = true;
+-                return;
+-            }
+-            else fprintf(stderr, "shim: Failed to load from \"%s\": %s\n", lib, dlerror());
+-
+-            lib = strtok(NULL, ":");
+-        }
+-    }
++    // Framoryx loads its adjacent, packaged renderer only.
+diff --git a/src/hud_elements.cpp b/src/hud_elements.cpp
+index 8083591..4a69a60 100644
+--- a/src/hud_elements.cpp
++++ b/src/hud_elements.cpp
+@@ -563 +563 @@ void HudElements::core_load(){
+-                HUDElements.TextColored(HUDElements.colors.cpu, cpuData.label.c_str());
++                HUDElements.TextColored(HUDElements.colors.cpu, "%s", cpuData.label.c_str());
+@@ -647 +647 @@ void HudElements::vram(){
+-                HUDElements.TextColored(HUDElements.colors.vram, gpu->vram_text().c_str());
++                HUDElements.TextColored(HUDElements.colors.vram, "%s", gpu->vram_text().c_str());
+@@ -706 +706 @@ void HudElements::proc_vram() {
+-            HUDElements.TextColored(HUDElements.colors.vram, "PVRAM%i", idx++);
++            HUDElements.TextColored(HUDElements.colors.vram, "PVRAM%zu", idx++);
+@@ -745 +745 @@ void HudElements::proc_vram() {
+-            HUDElements.TextColored(HUDElements.colors.text, unit.c_str());
++            HUDElements.TextColored(HUDElements.colors.text, "%s", unit.c_str());
+@@ -1637 +1637 @@ void HudElements::exec_name(){
+-        right_aligned_text(HUDElements.colors.text, text_size.x, global_proc_name.c_str());
++        right_aligned_text(HUDElements.colors.text, text_size.x, "%s", global_proc_name.c_str());
+@@ -2135,20 +2135 @@ void HudElements::legacy_elements(const overlay_params* temp_params){
+-void HudElements::update_exec(){
+-#ifdef __linux__
+-    // TODO: exec needs a rewrite using as using fork() is not safe in multithread.
+-    // We should probably use posix_spawn instead.
+-    // This currently stalls games using feral launcher.
+-    // For now don't init shell unless we have some exec options.
+-    if (exec_list.empty())
+-        return;
+-
+-    if (!HUDElements.shell)
+-        HUDElements.shell = std::make_unique<Shell>();
+-
+-    for(auto& item : exec_list){
+-        std::string ret = HUDElements.shell->exec(item.value + "\n");
+-        // use the previous ret if we get bad system call
+-        if (ret.find("Bad system call") == std::string::npos)
+-            item.ret = ret;
+-    }
+-#endif
+-}
++void HudElements::update_exec() { /* Shell-command readouts are outside the Framoryx runtime profile. */ }
+diff --git a/src/logging.cpp b/src/logging.cpp
+index f542fcf..5ac2fc6 100644
+--- a/src/logging.cpp
++++ b/src/logging.cpp
+@@ -25,37 +25 @@ std::thread log_thread;
+-string exec(string command) {
+-#ifndef _WIN32
+-    command = "unset LD_PRELOAD; " + command;
+-#endif
+-    std::array<char, 128> buffer;
+-    std::string result;
+-    auto deleter = [](FILE* ptr){ pclose(ptr); };
+-    std::unique_ptr<FILE, decltype(deleter)> pipe(popen(command.c_str(), "r"), deleter);
+-    if (!pipe) {
+-      return "popen failed!";
+-    }
+-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+-      result += buffer.data();
+-    }
+-    return result;
+-}
+-
+-static void upload_file(std::string logFile){
+-  std::string command = "curl --include --request POST https://flightlessmango.com/logs -F 'log[game_id]=26506' -F 'log[user_id]=176' -F 'attachment=true' -A 'mangohud' ";
+-  command += " -F 'log[uploads][]=@" + logFile + "'";
+-
+-  command += " | grep Location | cut -c11-";
+-  std::string url = exec(command);
+-  std::cout << "upload url: " << url;
+-  exec("xdg-open " + url);
+-}
+-
+-static void upload_files(const std::vector<std::string>& logFiles){
+-  std::string command = "curl --include --request POST https://flightlessmango.com/logs -F 'log[game_id]=26506' -F 'log[user_id]=176' -F 'attachment=true' -A 'mangohud' ";
+-  for (auto& file : logFiles)
+-    command += " -F 'log[uploads][]=@" + file + "'";
+-
+-  command += " | grep Location | cut -c11-";
+-  std::string url = exec(command);
+-  std::cout << "upload url: " << url;
+-  exec("xdg-open " + url);
+-}
++// Framoryx keeps measurements local; no shell or upload helpers are compiled.
+@@ -239 +203,6 @@ static string get_log_suffix(){
+-  tm *log_time = localtime(&now_log);
++  tm log_time{};
++#ifdef _WIN32
++  if (localtime_s(&log_time, &now_log) != 0) return "unknown.csv";
++#else
++  if (!localtime_r(&now_log, &log_time)) return "unknown.csv";
++#endif
+@@ -241 +210 @@ static string get_log_suffix(){
+-  buffer << std::put_time(log_time, "%Y-%m-%d_%H-%M-%S") << ".csv";
++  buffer << std::put_time(&log_time, "%Y-%m-%d_%H-%M-%S") << ".csv";
+@@ -344,15 +313,2 @@ void Logger::notify_data_valid() {
+-void Logger::upload_last_log() {
+-  if(m_log_files.empty()) return;
+-  std::thread(upload_file, m_log_files.back()).detach();
+-}
+-
+-void Logger::upload_last_logs() {
+-  if(m_log_files.empty()) return;
+-  std::thread(upload_files, m_log_files).detach();
+-}
+-
+-void autostart_log(int sleep) {
+-  // os_time_sleep() causes freezes with zink + autologging :frog_donut:
+-  this_thread::sleep_for(chrono::seconds(sleep));
+-  logger->start_logging();
+-}
++void Logger::upload_last_log() {}
++void Logger::upload_last_logs() {}
+diff --git a/src/logging.h b/src/logging.h
+index 62d34c7..14c2e24 100644
+--- a/src/logging.h
++++ b/src/logging.h
+@@ -87 +87 @@ extern logData currentLogData;
+-std::string exec(std::string command);
++
 diff --git a/src/overlay.cpp b/src/overlay.cpp
-index 2196953..2ec353f 100644
+index 2196953..bfa38fa 100644
 --- a/src/overlay.cpp
 +++ b/src/overlay.cpp
 @@ -30,0 +31,3 @@
 +#include "framoryx_stream.hpp"
 +#define FRAMORYX_HUD_RENDERER
 +#include "framoryx_hud.hpp"
-@@ -236,0 +240,4 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
+@@ -34,0 +38,2 @@
++#include <sys/utsname.h>
++#include <fstream>
+@@ -63,13 +68 @@ void init_spdlog()
+-   if (getenv("MANGOHUD_USE_LOGFILE"))
+-   {
+-      try
+-      {
+-         // Not rotating when opening log as proton/wine create multiple (sub)processes
+-         auto log = std::make_shared<spdlog::sinks::rotating_file_sink_mt> (get_config_dir() + "/MangoHud/MangoHud.log", 10*1024*1024, 5, false);
+-         spdlog::get("MANGOHUD")->sinks().push_back(log);
+-      }
+-      catch (const spdlog::spdlog_ex &ex)
+-      {
+-         SPDLOG_ERROR("{}", ex.what());
+-      }
+-   }
++   // Framoryx uses bounded frontend diagnostics rather than game-process file logs.
+@@ -236,0 +230,4 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
 +   if (sw_stats.last_present_time)
 +      framoryx_stream::record(frametime_ms);
 +   if (sw_stats.last_present_time)
 +      framoryx_hud::frame(frametime_ms);
-@@ -245 +252 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
+@@ -245 +242 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
 -   if (gpus)
 +   if (gpus && !framoryx_hud::requested())
-@@ -260 +267 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
+@@ -260 +257 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
 -   if (fpsmetrics) fpsmetrics->update(frametime_ms);
 +   if (fpsmetrics && !framoryx_hud::requested()) fpsmetrics->update(frametime_ms);
-@@ -262,0 +270 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
+@@ -262,0 +260 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
 +      if (!framoryx_hud::requested()) {
-@@ -270,0 +279 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
+@@ -270,0 +269 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
 +      }
-@@ -315 +324 @@ void update_hud_info(struct swapchain_stats& sw_stats, const struct overlay_para
+@@ -277 +276,7 @@ void update_hud_info_with_frametime(struct swapchain_stats& sw_stats, const stru
+-         time << std::put_time(std::localtime(&t), real_params->time_format.c_str());
++         std::tm calendar{};
++#ifdef _WIN32
++         if (localtime_s(&calendar, &t) == 0)
++#else
++         if (localtime_r(&t, &calendar))
++#endif
++            time << std::put_time(&calendar, real_params->time_format.c_str());
+@@ -315 +320 @@ void update_hud_info(struct swapchain_stats& sw_stats, const struct overlay_para
 -   if (!get_params()->no_display || logger->is_active())
 +   if (!get_params()->no_display || logger->is_active() || framoryx_stream::enabled.load(std::memory_order_relaxed))
-@@ -675,0 +685,9 @@ void render_imgui(swapchain_stats& data, struct overlay_params& params, ImVec2&
+@@ -675,0 +681,9 @@ void render_imgui(swapchain_stats& data, struct overlay_params& params, ImVec2&
 +   if (framoryx_hud::requested()) {
 +      // Consume upstream window positioning without adding an interactive surface.
 +      ImGui::SetNextWindowPos(ImVec2(-10,-10));
@@ -74,8 +386,101 @@ index 2196953..2ec353f 100644
 +      framoryx_hud::draw(data.fps, float(frametime), is_vulkan);
 +      return;
 +   }
+@@ -790,76 +804,16 @@ void init_system_info(){
+-   #ifdef __linux__
+-      const char* ld_preload = getenv("LD_PRELOAD");
+-      if (ld_preload)
+-         unsetenv("LD_PRELOAD");
+-
+-      ram =  exec("sed -n 's/^MemTotal: *\\([0-9]*\\).*/\\1/p' /proc/meminfo");
+-      trim(ram);
+-      cpu =  exec("sed -n 's/^model name.*: \\(.*\\)/\\1/p' /proc/cpuinfo | sed 's/([^)]*)//g' | tail -n1");
+-      trim(cpu);
+-      kernel = exec("uname -r");
+-      trim(kernel);
+-      os = exec("sed -n 's/PRETTY_NAME=\\(.*\\)/\\1/p' /etc/os-release");
+-      os.erase(remove(os.begin(), os.end(), '\"' ), os.end());
+-      trim(os);
+-      cpusched = read_line("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor");
+-
+-      const char* mangohud_recursion = getenv("MANGOHUD_RECURSION");
+-      if (!mangohud_recursion) {
+-         setenv("MANGOHUD_RECURSION", "1", 1);
+-         // driver = exec("glxinfo -B | sed -n 's/^OpenGL version.*: \\(.*\\)/\\1/p' | sed 's/([^)]*)//g;s/  / /g'");
+-         // trim(driver);
+-         unsetenv("MANGOHUD_RECURSION");
+-      } else {
+-         driver = "MangoHud glxinfo recursion detected";
+-      }
+-
+-// Get WINE version
+-
+-      wineProcess = get_exe_path();
+-      auto n = wineProcess.find_last_of('/');
+-      string preloader = wineProcess.substr(n + 1);
+-      if (preloader == "wine-preloader" || preloader == "wine64-preloader") {
+-         // Check if using Proton
+-         if (wineProcess.find("/dist/bin/wine") != std::string::npos
+-            || wineProcess.find("/files/bin/wine") != std::string::npos
+-            || wineProcess.find("/dist/bin-wow64/wine") != std::string::npos
+-            || wineProcess.find("/files/bin-wow64/wine") != std::string::npos)
+-         {
+-            parse_proton_version(wineProcess, "/../../version");
+-         }
+-         else if (wineProcess.find("/files/lib/wine") != std::string::npos)
+-         {
+-            parse_proton_version(wineProcess, "/../../../../version");
+-         }
+-         else {
+-            char *dir = dirname((char*)wineProcess.c_str());
+-            stringstream findVersion;
+-            if (preloader == "wine-preloader")
+-               findVersion << "\"" << dir << "/wine\" --version";
+-            else
+-               findVersion << "\"" << dir << "/wine64\" --version";
+-            const char *wine_env = getenv("WINELOADERNOEXEC");
+-            if (wine_env)
+-               unsetenv("WINELOADERNOEXEC");
+-            wineVersion = exec(findVersion.str());
+-            trim(wineVersion);
+-            SPDLOG_DEBUG("WINE version: {}", wineVersion);
+-            if (wine_env)
+-               setenv("WINELOADERNOEXEC", wine_env, 1);
+-         }
+-      }
+-      else {
+-           wineVersion = "";
+-      }
+-
+-      check_for_vkbasalt_and_gamemode();
+-
+-      if (ld_preload)
+-         setenv("LD_PRELOAD", ld_preload, 1);
+-
+-      SPDLOG_DEBUG("Ram:{}", ram);
+-      SPDLOG_DEBUG("Cpu:{}", cpu);
+-      SPDLOG_DEBUG("Kernel:{}", kernel);
+-      SPDLOG_DEBUG("Os:{}", os);
+-      SPDLOG_DEBUG("Driver:{}", driver);
+-      SPDLOG_DEBUG("CPU Scheduler:{}", cpusched);
++#ifdef __linux__
++   // Read fixed OS interfaces without spawning a shell in the game process.
++   auto field=[](const char* path,const char* prefix){
++      std::ifstream file(path);std::string line;size_t bytes=0;
++      while(std::getline(file,line)&&bytes<1024*1024){bytes+=line.size();if(line.rfind(prefix,0)==0){auto value=line.substr(std::strlen(prefix));trim(value);return value;}}
++      return std::string();
++   };
++   ram=field("/proc/meminfo","MemTotal:");
++   cpu=field("/proc/cpuinfo","model name");
++   if(!cpu.empty()&&cpu[0]==':'){cpu.erase(0,1);trim(cpu);}
++   struct utsname info{};if(uname(&info)==0)kernel=info.release;
++   os=field("/etc/os-release","PRETTY_NAME=");
++   if(os.size()>=2&&os.front()=='"'&&os.back()=='"')os=os.substr(1,os.size()-2);
++   cpusched=read_line("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor");
++   wineVersion.clear();wineProcess=get_exe_path();
++   check_for_vkbasalt_and_gamemode();
 diff --git a/src/overlay_params.cpp b/src/overlay_params.cpp
-index b10a0ce..4c8e401 100644
+index b10a0ce..f9afb4e 100644
 --- a/src/overlay_params.cpp
 +++ b/src/overlay_params.cpp
 @@ -142,0 +143,2 @@ parse_control(const char *str)
@@ -92,3 +497,82 @@ index b10a0ce..4c8e401 100644
 +   previous_path = path;
 +   previous_socket = ret;
 +
+@@ -1246,39 +1257,8 @@ std::shared_ptr<overlay_params> get_params() {
+-bool parse_preset_config(int preset, struct overlay_params *params){
+-   const char *presets_file_env = getenv("MANGOHUD_PRESETSFILE");
+-   const std::string config_dir = get_config_dir();
+-   std::string preset_path = presets_file_env ? presets_file_env : config_dir + "/MangoHud/" + "presets.conf";
+-
+-   char preset_string[20];
+-   snprintf(preset_string, sizeof(preset_string), "[preset %d]", preset);
+-
+-   std::ifstream stream(preset_path);
+-   stream.imbue(std::locale::classic());
+-
+-   if (!stream.good()) {
+-      SPDLOG_DEBUG("Failed to read presets file: '{}'.  Falling back to default presets", preset_path);
+-      return false;
+-   }
+-
+-   std::string line;
+-   bool found_preset = false;
+-
+-   while (std::getline(stream, line)) {
+-      trim(line);
+-
+-      if (line == "")
+-         continue;
+-
+-      if (line == preset_string) {
+-         found_preset = true;
+-         continue;
+-      }
+-
+-      if (found_preset) {
+-         if (line.front() == '[' && line.back() == ']')
+-            break;
+-
+-         if (line == "inherit")
+-            presets(preset, params, true);
+-
+-         parseConfigLine(line, params->options);
+-      }
++void framoryx_update_limit(overlay_params& params, int cap, int fontPixels) {
++   if (cap < 0 || cap > 1000 || fontPixels < 12 || fontPixels > 200) return;
++   const auto current = get_params();
++   if (current->font_size != float(fontPixels)) {
++      static const std::string base = getenv("MANGOHUD_CONFIG") ? getenv("MANGOHUD_CONFIG") : "";
++      const std::string config = base + ",font_size=" + std::to_string(fontPixels) + ",fps_limit=" + std::to_string(cap);
++      parse_overlay_config(&params, config.c_str(), false);
++      return;
+@@ -1286,2 +1266,6 @@ bool parse_preset_config(int preset, struct overlay_params *params){
+-
+-   return found_preset;
++   if (current->fps_limit.size() == 1 && current->fps_limit[0] == float(cap)) return;
++   auto next = std::make_shared<overlay_params>(*current);
++   next->fps_limit = {float(cap)};
++   params.fps_limit = next->fps_limit;
++   std::atomic_store_explicit(&g_params, std::move(next), std::memory_order_release);
++   if (fps_limiter) fps_limiter->set_limit(float(cap));
+@@ -1289,0 +1274,3 @@ bool parse_preset_config(int preset, struct overlay_params *params){
++// Named layouts and per-game presets are owned by the Framoryx controller.
++bool parse_preset_config(int, struct overlay_params*) { return false; }
++
+diff --git a/src/overlay_params.h b/src/overlay_params.h
+index 0ff802c..edce9b7 100644
+--- a/src/overlay_params.h
++++ b/src/overlay_params.h
+@@ -411,0 +412 @@ std::shared_ptr<overlay_params> get_params();
++void framoryx_update_limit(overlay_params& params, int cap, int fontPixels);
+diff --git a/src/vulkan.cpp b/src/vulkan.cpp
+index 7030d29..f33bc7c 100644
+--- a/src/vulkan.cpp
++++ b/src/vulkan.cpp
+@@ -781 +780,0 @@ static void ensure_swapchain_fonts(struct swapchain_data *data,
+-   data->font_uploaded = true;
+@@ -785 +784,4 @@ static void ensure_swapchain_fonts(struct swapchain_data *data,
+-   size_t upload_size = width * height * 1 * sizeof(char);
++   if (!pixels || width <= 0 || height <= 0 || uint32_t(width) > device_data->properties.limits.maxImageDimension2D || uint32_t(height) > device_data->properties.limits.maxImageDimension2D || size_t(width) > SIZE_MAX / size_t(height))
++      return;
++   data->font_uploaded = true;
++   size_t upload_size = size_t(width) * size_t(height);

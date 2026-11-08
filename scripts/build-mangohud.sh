@@ -25,6 +25,7 @@ cp source/scalar_formats.hpp "$source/scalar_formats.hpp"
 sed -i "s/version: '1.91.6'/version: '1.91.9b'/" "$source/subprojects/imgui-1.91.9b/meson.build"
 reconfigure=(); if [[ -f "$build/build.ninja" ]]; then reconfigure=(--reconfigure); fi
 meson setup "${reconfigure[@]}" "$build" "$source" --buildtype release --prefix /usr --libdir lib -Dwith_xnvctrl=disabled -Dwith_dbus=disabled -Dwith_wayland=enabled -Dmangoplot=disabled -Dtests=disabled -Dinclude_doc=false
+python3 runtime/mangohud/harden-dependencies.py "$source"
 meson compile -C "$build" -j 3
 mkdir -p "$destination/lib" "$destination/bin" "$destination/layers" "$destination/licenses"
 find "$build/src" -maxdepth 1 -name 'libMangoHud*.so' -type f -exec cp {} "$destination/lib/" \;

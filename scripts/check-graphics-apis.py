@@ -21,9 +21,8 @@ with tempfile.TemporaryDirectory(prefix='framoryx-apis-') as folder:
     for api, executable in [('OpenGL', 'FramoryxScene'), ('Vulkan', 'FramoryxVulkanScene')]:
         logs = root / api
         logs.mkdir()
-        config = logs / 'MangoHud.conf'
-        config.write_text(f'fps_limit=30\nautostart_log=1\nlog_interval=0\nlog_duration=6\noutput_folder={logs}\nfps\nframetime\n', encoding='utf-8')
-        env = dict(os.environ, MANGOHUD_CONFIGFILE=str(config), MANGOHUD_DLSYM='1')
+        config=f'fps_limit=30,autostart_log=1,log_interval=0,log_duration=6,output_folder={logs},cpu_stats=0,gpu_stats=0,fps,frametime'
+        env = dict(os.environ, MANGOHUD_CONFIG=config, MANGOHUD_DLSYM='1')
         report = logs / 'scene.json'
         runtime = args.bin.resolve() / 'runtime/mangohud/bin/mangohud'
         process = subprocess.run([str(runtime), '--dlsym', str(args.bin.resolve() / executable), '--seconds', '8', '--report', str(report)], env=env, capture_output=True, text=True, timeout=25)

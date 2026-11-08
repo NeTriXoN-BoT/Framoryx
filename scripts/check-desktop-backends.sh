@@ -39,6 +39,13 @@ result=0
 if [[ "$result" != 0 ]]; then
     pactl list sources short
     pw-dump | python3 -c 'import json,sys; nodes=json.load(sys.stdin); print(json.dumps([{"name":x.get("info",{}).get("props",{}).get("node.name"),"media":x.get("info",{}).get("props",{}).get("media.class"),"state":x.get("info",{}).get("state")} for x in nodes if x.get("type")=="PipeWire:Interface:Node"],indent=2))'
+    if [[ -f "$RUNNER_TEMP/framoryx-backend-audio/output.conf" ]]; then
+        pipewire -v -c "$RUNNER_TEMP/framoryx-backend-audio/output.conf" > work/desktop-backends/pipewire-probe.log 2>&1 & probe=$!;pids+=("$probe")
+        sleep 1
+        pw-dump | python3 -c 'import json,sys; print(json.dumps([{k:x.get("info",{}).get("props",{}).get(k) for k in ["node.name","media.class"]} for x in json.load(sys.stdin) if x.get("type")=="PipeWire:Interface:Node"],indent=2))'
+        kill "$probe" 2>/dev/null || true
+        tail -n 40 work/desktop-backends/pipewire-probe.log
+    fi
 fi
 python3 scripts/check-graphics-apis.py --bin ./build/desktop/desktop --output ./work/desktop-backends || result=1
 exit "$result"

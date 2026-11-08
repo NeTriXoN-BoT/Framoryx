@@ -12,7 +12,7 @@ public:
     void start(const QString& prefix,bool collecting=true);
     void stop();
     void setCollecting(bool collecting);
-    void reload();
+    void setLimit(int cap,int fontPixels);
     void configure(const QVariantMap& options,bool visible);
     void metrics(const QVariantMap& state);
     bool connected() const;
@@ -27,7 +27,7 @@ private:
     QElapsedTimer m_clock;
     QString m_prefix;
     QByteArray m_bytes;
-    QByteArray m_hudPacket,m_metricPacket;
+    QByteArray m_hudPacket,m_metricPacket,m_limitPacket;
     unsigned m_pollCount=0;
     quint32 m_pid=0;
     quint64 m_dropped=0;

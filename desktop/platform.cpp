@@ -173,29 +173,11 @@ void Platform::flushOptions(){
     for(const auto& entry:c->m_devices)if(entry.toMap()["id"]==c->m_options["micId"])values["micName"]=entry.toMap()["name"];
     send({{"action","options"},{"key",key},{"keys",QJsonArray::fromStringList(keys)},{"options",QJsonObject::fromVariantMap(values)}});
 #else
-    QDir().mkpath(c->root()+"/overlays");
-    const auto& o=c->m_options;const int fields=o["fields"].toInt(),style=o["style"].toInt();
-    const QStringList colors{"7df2c6","59cfff","c2a3ff","f7be6f","ff8baf","63dfdf","f4e478","a3e56d","ff9d72","d5e4f5"};
-    const double scale=o["overlayScale"].toInt()?o["overlayScale"].toInt()/100.:qBound(.85,QGuiApplication::primaryScreen()?QGuiApplication::primaryScreen()->size().height()/1080.:1.,2.5);
-    QByteArray config="legacy_layout=0\nbackground_color=0c131a\ntext_color=e9f2f6\nround_corners=12\n";
-    config+="background_alpha="+QByteArray::number(o["opacity"].toInt()/100.,'f',2)+"\n";
-    config+="font_size="+QByteArray::number(qRound(34*scale*o["fontScale"].toInt()/100.))+"\n";
-    config+="fps_color="+colors.value(o["accent"].toInt()).toLatin1()+"\nframetime_color="+colors.value(o["accent"].toInt()).toLatin1()+"\n";
-    config+="fps_limit="+QByteArray::number(o["cap"].toInt())+"\nfps_limit_method=late\n";
-    config+="position=top-left\noffset_x="+QByteArray::number(qRound(o["hudX"].toDouble()*std::max(1,QGuiApplication::primaryScreen()?QGuiApplication::primaryScreen()->size().width()-260:1000)))+"\noffset_y="+QByteArray::number(qRound(o["hudY"].toDouble()*std::max(1,QGuiApplication::primaryScreen()?QGuiApplication::primaryScreen()->size().height()-220:800)))+"\n";
-    config+="autostart_log=0\nlog_duration=30\ncontrol="+mangoPrefix().toLatin1()+"%p\n";
-    config+="no_display=0\n";
-    if(style==2)config+="horizontal\ntable_columns=10\n";
-    if(style==3)config+="round_corners=0\n";
-    if(style==4)config+="table_columns=4\nwidth=390\n";
-    const QStringList values{"fps","fps_metrics=avg","fps_metrics=0.01","frametime","frame_timing","cpu_stats","ram","show_fps_limit","engine_version","custom_text=FRAMORYX","gpu_stats","vram","gpu_temp","cpu_temp","gpu_power","gpu_core_clock"};
-    bool metricsWritten=false;
-    for(const auto& index:o["order"].toList()){const int i=index.toInt();if(!(fields&(1<<i)))continue;if(i==1||i==2){if(!metricsWritten){QStringList metrics;if(fields&2)metrics<<"avg";if(fields&4)metrics<<"0.01";config+="fps_metrics="+metrics.join(',').toUtf8()+'\n';metricsWritten=true;}}else config+=values.value(i).toUtf8()+'\n';}
-    if(!writeFile(overlayConfigPath(),config))c->notify("The overlay configuration could not be written.","warning");else QFile::setPermissions(overlayConfigPath(),QFile::ReadOwner|QFile::WriteOwner);
-    if(m_mango)m_mango->configure(o,c->m_state["overlay"].toBool()&&o["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected");
-    if(key.isEmpty()||key=="cap"||key=="style"||key=="fields"||key=="opacity"||key=="overlayScale"||key=="accent"||key=="order"||key=="hudX"||key=="hudY"||key=="fontScale"){
-        if(m_mango&&m_mango->connected()){m_mango->reload();c->setState("overlayHint","Overlay and frame-limit changes sent to the running game.");}
-        else if(c->m_state["gameRunning"].toBool())c->setState("overlayHint","Saved. Connect the bundled game runtime, or use Shift+F4 and relaunch for changes with a host MangoHud installation.");
+    if(m_mango){
+        const bool visible=c->m_state["overlay"].toBool()&&c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected";
+        m_mango->configure(c->m_options,visible);
+        m_mango->setLimit(c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected"?c->m_options["cap"].toInt():0,mangoFontPixels());
+        if(m_mango->connected())c->setState("overlayHint","Overlay and frame-limit changes sent to the running game.");
     }
 #endif
 }
@@ -248,10 +230,16 @@ void Platform::linuxScan(){
     });else m_refreshing=false;
 #endif
 }
-QString Platform::overlayConfigPath()const{
-    const auto key=QCryptographicHash::hash(c->m_activeGameKey.toUtf8(),QCryptographicHash::Sha256).toHex().left(24);return c->root()+"/overlays/"+QString::fromLatin1(key)+".conf";
-}
 QString Platform::mangoPrefix()const{return "framoryx-"+QString::fromLatin1(QCryptographicHash::hash((c->root()+"/"+c->m_activeGameKey).toUtf8(),QCryptographicHash::Sha256).toHex().left(24))+"-";}
+int Platform::mangoFontPixels()const{
+    const auto& options=c->m_options;const auto screen=QGuiApplication::primaryScreen();
+    const double scale=options["overlayScale"].toInt()?options["overlayScale"].toInt()/100.:qBound(.85,screen?screen->size().height()*screen->devicePixelRatio()/1080.:1.,2.5);
+    return qBound(12,qRound(34*scale*options["fontScale"].toInt()/100.),200);
+}
+QString Platform::mangoConfiguration()const{
+    const bool layer=c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected";
+    return "legacy_layout=0,no_display=0,cpu_stats=0,gpu_stats=0,frame_timing=0,fps=0,fps_limit_method=late,font_size="+QString::number(mangoFontPixels())+",fps_limit="+QString::number(layer?c->m_options["cap"].toInt():0)+",control="+mangoPrefix()+"%p";
+}
 QString Platform::mangoExecutable()const{
     const QString bundled=QCoreApplication::applicationDirPath()+"/runtime/mangohud/bin/mangohud";
     if(QFileInfo(bundled).isExecutable())return bundled;return exe("mangohud");
@@ -261,7 +249,7 @@ QString Platform::launchCommand()const{
     return {};
 #else
     if(c->m_options["linuxOverlayMode"].toInt()!=2||c->m_state["antiCheatStatus"]=="detected")return (c->m_options["gamescope"].toBool()?"gamescope -b -r "+QString::number(c->m_options["cap"].toInt())+" -- ":QString())+"%command%";
-    return "env MANGOHUD_CONFIGFILE="+shellQuote(overlayConfigPath())+' '+shellQuote(mangoExecutable().isEmpty()?"mangohud":mangoExecutable())+' '+(c->m_options["gamescope"].toBool()?"gamescope -b -r "+QString::number(c->m_options["cap"].toInt())+" -- ":QString())+"%command%";
+    return "env FRAMORYX_HUD=1 MANGOHUD_CONFIG="+shellQuote(mangoConfiguration())+' '+shellQuote(mangoExecutable().isEmpty()?"mangohud":mangoExecutable())+' '+(c->m_options["gamescope"].toBool()?"gamescope -b -r "+QString::number(c->m_options["cap"].toInt())+" -- ":QString())+"%command%";
 #endif
 }
 bool Platform::attachPassive(bool explain){
@@ -301,7 +289,7 @@ void Platform::linuxLaunch(){
     if(inProcess&&mangoExecutable().isEmpty()){c->notify("The game runtime is missing. Extract the complete package or install MangoHud.","warning");return;}
     if(c->m_options["gamescope"].toBool()&&exe("gamescope").isEmpty()){c->notify("Gamescope is unavailable. Disable its launch option or install it in Setup.","warning");return;}
     applyOptions();flushOptions();c->m_store.clear();c->m_frameTime=0;
-    QProcessEnvironment env=hostEnvironment();env.insert("MANGOHUD_CONFIGFILE",overlayConfigPath());env.insert("MANGOHUD_DLSYM","1");if(inProcess)env.insert("FRAMORYX_HUD","1");m_game.setProcessEnvironment(env);
+    QProcessEnvironment env=hostEnvironment();env.insert("MANGOHUD_CONFIG",mangoConfiguration());env.insert("MANGOHUD_DLSYM","1");if(inProcess)env.insert("FRAMORYX_HUD","1");m_game.setProcessEnvironment(env);
     QStringList args;if(inProcess)args<<"--dlsym";if(c->m_options["gamescope"].toBool())args<<exe("gamescope")<<"-b"<<"-r"<<QString::number(c->m_options["cap"].toInt())<<"--";
     args<<file.absoluteFilePath();args+=unlock::arguments(QProcess::splitCommand(game["arguments"].toString()),game["unlock"].toBool()&&unlock::supported(file.absoluteFilePath()));
     m_game.setWorkingDirectory(file.absolutePath());QString program;if(inProcess)program=mangoExecutable();else {program=args.takeFirst();if(program.isEmpty())program=file.absoluteFilePath();}

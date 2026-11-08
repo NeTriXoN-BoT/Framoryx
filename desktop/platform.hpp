@@ -28,7 +28,6 @@ public:
     void action(const QString& name, const QVariantMap& args);
     void shutdown();
     QString launchCommand() const;
-    QString overlayConfigPath() const;
 private:
     Controller* c;
     std::unique_ptr<PassiveCapture> m_passive;
@@ -64,6 +63,8 @@ private:
     void linuxScan();
     void linuxLaunch();
     QString mangoPrefix() const;
+    QString mangoConfiguration() const;
+    int mangoFontPixels() const;
     QString mangoExecutable() const;
     void linuxAudio(bool mic,bool verified=false);
     void updateNoise(bool force);
