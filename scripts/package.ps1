@@ -11,7 +11,9 @@ foreach($folder in @('assets','licenses','source','docs','scripts')){
     Copy-Item -LiteralPath $from -Destination $package -Recurse -Force
 }
 foreach($file in @('README.md','README.txt','LICENSE','THIRD-PARTY-NOTICES.txt','VERSION','CMakeLists.txt')){Copy-Item -LiteralPath (Join-Path $root $file) -Destination $package -Force}
-& (Join-Path $PSScriptRoot 'bootstrap-tools.ps1') -Destination (Join-Path $package 'tools')
+& (Join-Path $PSScriptRoot 'bootstrap-tools.ps1') -Destination (Join-Path $root 'tools')
+New-Item -ItemType Directory -Force -Path (Join-Path $package 'tools') | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'tools/PresentMon.exe') -Destination (Join-Path $package 'tools/PresentMon.exe')
 & (Join-Path $root 'source/build.ps1') -ToolchainBin $ToolchainBin -BuildDirectory $BuildDirectory -OutputDirectory $package
 if($LASTEXITCODE -ne 0){throw 'Native build failed.'}
 $manifest=Join-Path $package 'SHA256SUMS.txt'

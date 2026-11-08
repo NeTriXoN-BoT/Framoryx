@@ -640,13 +640,13 @@ void exportCSV() {
     double firstTimestamp = app.stats.frames.front().time;
     for (auto& f : app.stats.frames) {
         std::string name;
-        for (char c : f.app) {
+        for (char c : app.stats.app) {
             if (c == '"')
                 name += '"';
             name += c;
         }
-        file << '"' << name << "\"," << f.pid << ',' << f.chain << ',' << f.time - firstTimestamp
-             << ',' << f.ms << '\n';
+        file << '"' << name << "\"," << app.stats.pid << ',' << app.stats.chain << ','
+             << f.time - firstTimestamp << ',' << f.ms << '\n';
     }
     file.close();
     setNotice(file ? L"Saved the selected swapchain’s rolling 30-second capture."

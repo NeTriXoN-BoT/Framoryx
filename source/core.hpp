@@ -153,7 +153,7 @@ struct Stats {
     bool live = false;
     std::string app, chain;
     uint32_t pid = 0;
-    std::vector<Frame> frames;
+    std::vector<Stream::Sample> frames;
 };
 class Store {
     std::map<std::pair<uint32_t, std::string>, Stream> streams;
@@ -234,7 +234,7 @@ class Store {
         out.live = now - best->arrival < 2.0;
         out.frames.reserve(best->frames.size());
         for (auto& sample : best->frames)
-            out.frames.push_back({best->app, best->chain, pid, sample.time, sample.ms});
+            out.frames.push_back(sample);
         double sum = 0, recent = 0;
         size_t n = 0;
         std::vector<double> slow;
