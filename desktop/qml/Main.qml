@@ -41,8 +41,15 @@ ApplicationWindow {
             Layout.preferredWidth: Math.min(Theme.px(205),window.width*.22)
             color: "#0c151e"
             Rectangle { anchors.right: parent.right; height: parent.height; width: 1; color: Theme.border }
-            ColumnLayout {
-                anchors.fill: parent; anchors.margins: Theme.px(18); spacing: Theme.px(7)
+            ScrollView {
+                id: navigationScroll
+                anchors.fill: parent; padding: Theme.px(18); clip: true
+                contentWidth: availableWidth
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ColumnLayout {
+                width: navigationScroll.availableWidth
+                height: Math.max(implicitHeight,navigationScroll.availableHeight)
+                spacing: Theme.px(7)
                 Item {
                     Layout.fillWidth: true; Layout.preferredHeight: Theme.px(142)
                     Image {
@@ -74,6 +81,7 @@ ApplicationWindow {
                 FToggle { text: "Motion effects"; checked: app.options.motion; Layout.fillWidth: true; onToggled: app.setOption("motion",checked) }
                 Text { text: "FRAMORYX 0.3.0 · "+app.platformName.toUpperCase(); color: Theme.muted; font.pixelSize: Theme.px(8); Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.topMargin: Theme.px(12) }
                 Text { text: app.platformName==="Windows"?"UNSIGNED BUILD":"NATIVE LINUX"; color: app.platformName==="Windows"?Theme.amber:Theme.accent; font.pixelSize: Theme.px(8); font.letterSpacing: 1 }
+                }
             }
         }
         ScrollView {

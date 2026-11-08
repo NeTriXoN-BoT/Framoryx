@@ -9,6 +9,9 @@
 #include <QNetworkAccessManager>
 #include <functional>
 #include <memory>
+#ifndef Q_OS_WIN
+#include "x11_window.hpp"
+#endif
 class Controller;
 class PassiveCapture;
 class Platform : public QObject {
@@ -50,7 +53,9 @@ private:
     QSet<QString> m_pendingOptions;
     void flushOptions();
     void flushVolume();
-    QVariantMap m_windowRestores;
+#ifndef Q_OS_WIN
+    QMap<QString,x11::WindowState> m_windowRestores;
+#endif
     QNetworkAccessManager m_network;
     bool m_closing = false, m_refreshing = false;
     quint64 m_oldCpuTotal = 0, m_oldCpuIdle = 0;

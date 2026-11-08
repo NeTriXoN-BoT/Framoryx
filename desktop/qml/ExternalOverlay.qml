@@ -4,7 +4,7 @@ Window {
     id: overlay
     objectName: "FramoryxExternalOverlay"
     transientParent: null
-    color: "transparent"
+    color: app.state.compositing===false?"#0c151e":"transparent"
     flags: Qt.Tool|Qt.FramelessWindowHint|Qt.WindowStaysOnTopHint|Qt.WindowTransparentForInput|Qt.WindowDoesNotAcceptFocus
     readonly property var display: app.state.overlayDisplay||({x:0,y:0,width:1920,height:1080,dpr:1})
     readonly property real desiredScale: (app.options.overlayScale>0?app.options.overlayScale/100:Math.max(.85,Math.min(2.5,display.height*display.dpr/1080)))*app.options.fontScale/100/display.dpr

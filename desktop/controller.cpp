@@ -5,6 +5,7 @@
 #include "process_catalog.hpp"
 #include "game_safety.hpp"
 #include "telemetry.hpp"
+#include "legacy_settings.hpp"
 #ifndef Q_OS_WIN
 #include "noise_cache.hpp"
 #include <QCryptographicHash>
@@ -113,7 +114,20 @@ QVariantMap Controller::cleanOptions(const QVariantMap& input)const{
 }
 void Controller::load(){
     QJsonObject document;
-    if(!boundedJson(m_root+"/settings.json",&document))return;
+    if(!boundedJson(m_root+"/settings.json",&document)){
+        if(QFileInfo::exists(m_root+"/settings.json"))return;
+        QStringList sources{m_root+"/legacy-settings.ini"};
+#ifdef Q_OS_WIN
+        if(!m_test)sources<<QCoreApplication::applicationDirPath()+"/settings.ini";
+#endif
+        for(const auto& source:sources){const auto imported=readLegacySettings(source,m_options);if(!imported.valid)continue;
+            m_options=cleanOptions(imported.options);m_baseOverlay=pick(m_options,gameKeys);
+            for(auto it=imported.gameOptions.begin();it!=imported.gameOptions.end();++it){auto merged=m_options;const auto values=it.value().toMap();for(auto value=values.begin();value!=values.end();++value)merged[value.key()]=value.value();m_gameOptions[gameKey(it.key())]=pick(cleanOptions(merged),gameKeys);}
+            if(!QFileInfo::exists(m_root+"/engine.ini")){QSaveFile native(m_root+"/engine.ini");if(native.open(QIODevice::WriteOnly)){native.setPermissions(QFile::ReadOwner|QFile::WriteOwner);if(native.write(imported.native)==imported.native.size())native.commit();}}
+            m_state["notice"]="Previous Framoryx preferences imported. In-game methods need fresh approval.";
+            return;
+        }return;
+    }
     if(document.value("schema").toInt()!=3)return;
     m_options=cleanOptions(document.value("options").toObject().toVariantMap());
     m_baseOverlay=pick(cleanOptions(document.contains("baseOverlay")?document["baseOverlay"].toObject().toVariantMap():m_options),gameKeys);
@@ -346,6 +360,9 @@ void Controller::action(const QString& name,const QVariantMap& args){
 bool Controller::selfTest(QString* error){
     int count=0;auto check=[&](bool ok,const char* text){if(!ok){*error=QString::fromUtf8(text);return false;}++count;return true;};
     if(!check(m_test,"Tests must use isolated mode"))return false;
+    const QString legacyPath=m_root+"/migration-test.ini";{QSaveFile legacy(legacyPath);if(!legacy.open(QIODevice::WriteOnly))return false;legacy.write("cap=144\ndesktop_scale=125\nhud_base=1023|0|0|2|3|2|4\nhud_profile=game.exe|7|125|70|1|0|2|1\nlimit=game.exe|90\nallow=game.exe\ndeny=blocked.exe\nmic_options=1 1 1 6 -3 0\n");if(!legacy.commit())return false;}
+    const auto legacy=readLegacySettings(legacyPath,defaults());
+    if(!check(legacy.valid&&legacy.options["opacity"]==0&&legacy.options["uiScale"]==125&&legacy.options["mode"]==1&&legacy.options["hudX"]==.97&&legacy.options["hudY"]==.97&&legacy.gameOptions["game.exe"].toMap()["cap"]==90&&legacy.options["allow"].toStringList()==QStringList{"game.exe"},"Migrate legacy layouts, rules and limits without auto-enabling hooks"))return false;
     setOption("opacity",999);if(!check(m_options["opacity"]==100,"Clamp opacity"))return false;
     if(!check(unlock::supported("/games/hl2.exe")&&!unlock::supported("/games/unknown.exe")&&unlock::arguments({"-windowed","+fps_max","60","+map","test"},true)==QStringList{"-windowed","+map","test","+fps_max","0"},"Game-supported cap override preserves unrelated launch arguments"))return false;
     if(!check(lifecycle::selfTest(error),"Startup commands remain escaped without system changes"))return false;

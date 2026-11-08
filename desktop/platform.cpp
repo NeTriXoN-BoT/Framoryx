@@ -129,6 +129,8 @@ void Platform::refresh(){
     send({{"action","refresh"}});
 #else
     const bool wayland=qEnvironmentVariable("XDG_SESSION_TYPE")=="wayland";
+    const bool compositing=wayland||x11::compositing();c->setState("compositing",compositing);
+    list<<QVariantMap{{"name","External overlay transparency"},{"ready",compositing},{"detail",compositing?"Desktop compositing is available for a transparent external HUD.":"Desktop compositing is off. The external HUD uses an opaque surface; enable your desktop compositor for transparent backgrounds."}};
     list<<QVariantMap{{"name","MangoHud · FPS and in-game overlay"},{"ready",!exe("mangohud").isEmpty()},{"detail","Native Vulkan/OpenGL and compatible Proton games. Applied when you launch a game."}};
     list<<QVariantMap{{"name","Gamescope · fullscreen and pacing"},{"ready",!exe("gamescope").isEmpty()},{"detail","Optional game compositor for controlled fullscreen sizing and frame pacing."}};
     list<<QVariantMap{{"name","PipeWire · audio processing"},{"ready",!exe("pipewire").isEmpty()&&!exe("wpctl").isEmpty()},{"detail","Output gain, bass, microphone EQ and the Framoryx noise-suppressed input."}};
@@ -293,8 +295,8 @@ void Platform::borderless(bool restore){
     if(qEnvironmentVariable("XDG_SESSION_TYPE")=="wayland"){c->notify("For Wayland, enable Gamescope in the game launch options to control fullscreen sizing.");return;}
     const QString id=c->m_options["selectedGame"].toString();QVariantMap window;for(const auto& value:c->m_state["windows"].toList())if(value.toMap()["id"]==id)window=value.toMap();
     if(window.isEmpty()||!id.startsWith("0x")||denied(c->m_options,window["exe"].toString())){c->notify("Select an allowed running game window first.","warning");return;}
-    if(restore){if(!m_windowRestores.contains(id)){c->notify("This window has no saved Framoryx state.");return;}command(exe("wmctrl"),{"-ir",id,"-b","remove,fullscreen"},[this,id](int code,QByteArray){if(!code){m_windowRestores.remove(id);c->setState("borderlessActive",false);}c->notify(code?"The window manager could not restore this window.":"Original window mode restored.",code?"warning":"info");});}
-    else {if(!m_windowRestores.contains(id))m_windowRestores[id]=window;command(exe("wmctrl"),{"-ir",id,"-b","add,fullscreen"},[this](int code,QByteArray){if(!code)c->setState("borderlessActive",true);c->notify(code?"The window manager refused fullscreen.":"Borderless fullscreen applied. Restore returns the original mode.",code?"warning":"info");});}
+    if(restore){if(!m_windowRestores.contains(id)){c->notify("This window has no saved Framoryx state.");return;}const auto original=m_windowRestores[id];const bool restored=x11::fullscreen(original,original.fullscreen);m_windowRestores.remove(id);c->setState("borderlessActive",false);c->notify(restored?"Original window mode restored.":"The original window identity changed or restoration was refused. Refresh your game selection.",restored?"info":"warning");}
+    else {const auto current=x11::inspect(id.toUInt(nullptr,16));if(!current.valid||current.pid!=window["pid"].toUInt()){c->notify("The game window identity changed. Refresh before applying borderless mode.","warning");return;}const bool applied=x11::fullscreen(current,true);if(applied){if(!m_windowRestores.contains(id))m_windowRestores[id]=current;c->setState("borderlessActive",true);}c->notify(applied?"Borderless fullscreen requested. Restore returns the original mode.":"The window manager refused fullscreen.",applied?"info":"warning");}
 #else
     send({{"action",restore?"restore":"borderless"}});
 #endif
@@ -455,7 +457,7 @@ void Platform::shutdown(){
 #ifdef Q_OS_WIN
     send({{"action","quit"}});m_engine.closeWriteChannel();if(!m_engine.waitForFinished(2500)){m_engine.terminate();if(!m_engine.waitForFinished(500))m_engine.kill();}
 #else
-    for(const auto& id:m_windowRestores.keys())command(exe("wmctrl"),{"-ir",id,"-b","remove,fullscreen"});
+    for(const auto& original:m_windowRestores)x11::fullscreen(original,original.fullscreen);
     for(auto process:{&m_mic,&m_output}){process->terminate();if(!process->waitForFinished(1000))process->kill();}
     if(m_passive)m_passive->stop();
     stopFixtures();

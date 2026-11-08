@@ -91,7 +91,9 @@ int main(int argc,char** argv){
     if(engine.rootObjects().isEmpty())return 1;
     auto window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());if(!window)return 1;
     auto displayMetrics=[&]{auto screen=window->screen();if(!screen)screen=QGuiApplication::primaryScreen();if(screen){const auto area=screen->availableGeometry();window->setProperty("autoUiScale",qBound(.75,std::min(area.width()/1600.,area.height()/1000.),1.75));}};
-    displayMetrics();QObject::connect(window,&QWindow::screenChanged,window,[&](QScreen*){displayMetrics();});
+    QMetaObject::Connection displayConnection;
+    auto followDisplay=[&]{QObject::disconnect(displayConnection);if(auto screen=window->screen())displayConnection=QObject::connect(screen,&QScreen::availableGeometryChanged,window,[&](const QRect&){displayMetrics();});displayMetrics();};
+    followDisplay();QObject::connect(window,&QWindow::screenChanged,window,[&](QScreen*){followDisplay();});
     if(!smoke){auto screen=window->screen();if(screen){const auto area=screen->availableGeometry();const auto scale=controller.options()["uiScale"].toInt()?controller.options()["uiScale"].toInt()/100.:window->property("autoUiScale").toDouble();const int width=qBound(640,qRound(1360*scale),std::max(640,area.width()-32)),height=qBound(460,qRound(900*scale),std::max(460,area.height()-48));window->resize(width,height);window->setPosition(area.center()-QPoint(width/2,height/2));}}
 
 #ifdef Q_OS_WIN
