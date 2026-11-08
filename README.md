@@ -19,6 +19,21 @@ Keep an eye on real frame data, make the HUD your own, and get back to playing. 
 | System CPU and memory readouts | Per-game style, accent, opacity and corner | Windows output volume and optional APO gain |
 | Automatic desktop HUD fallback | Automatic sizing and percentage overrides | Tray controls, hotkeys and desktop shortcuts |
 
+<img src="docs/images/studio-glass.png" alt="Overlay Studio with the Glass layout and clearly labelled sample preview values" width="100%">
+
+<details>
+<summary>Compare Compact and Telemetry Bar</summary>
+
+**Compact** keeps the same selectable information in a smaller footprint.
+
+![Compact layout in Overlay Studio](docs/images/studio-compact.png)
+
+**Telemetry Bar** arranges the selected readouts horizontally.
+
+![Telemetry Bar in Overlay Studio](docs/images/studio-telemetry.png)
+
+</details>
+
 ## Get started
 
 1. Download the Windows ZIP and extract the whole folder.

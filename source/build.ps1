@@ -15,7 +15,10 @@ if (!$ToolchainBin) {
     if (!(Test-Path (Join-Path $ToolchainBin 'x86_64-w64-mingw32-clang++.exe'))) {
         $archive = Join-Path $BuildDirectory 'llvm.zip'
         Write-Output 'Downloading portable LLVM-MinGW (no system installation)...'
-        Invoke-WebRequest 'https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-x86_64.zip' -OutFile $archive
+        for($attempt=0;$attempt -lt 4;$attempt++){
+            try{Invoke-WebRequest 'https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-x86_64.zip' -OutFile $archive -UseBasicParsing -TimeoutSec 600;break}
+            catch{if($attempt -eq 3){throw};Start-Sleep -Seconds (2*($attempt+1))}
+        }
         if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne '552191b5754c49a5a20723276a6fc56541ea1922c4c50b7b669022333fc1b40f') { throw 'Toolchain SHA-256 mismatch' }
         Expand-Archive -LiteralPath $archive -DestinationPath $toolchainDirectory -Force
     }

@@ -19,6 +19,8 @@ toolkit running; Exit and the window's close button shut it down.
 OVERLAY STUDIO
 
 Choose a game in the Studio's picker, then make the overlay your own.
+Choose Glass for a spacious card, Compact for a smaller footprint or
+Telemetry Bar for horizontal readouts. All layouts keep the same choices.
 Select live FPS, average FPS, 1% low, frame time, frame graph, system CPU,
 system RAM, FPS limit, renderer and the Framoryx label independently.
 An empty selection hides the HUD. The preview uses clearly labelled
@@ -51,12 +53,17 @@ Overlay Studio > Desktop app size offers Auto plus 80–175% overrides.
 Auto uses Windows DPI and the available work area. Manual percentages
 are also constrained to fit the current screen. The app updates when
 the display/DPI changes; text is drawn at the effective pixel size.
+Create shortcut adds a desktop link to this extracted copy. Opening that
+shortcut again brings the existing Framoryx window forward.
 
 Motion effects include eased navigation transitions, hover highlights,
 switch movement, animated metric changes, a live graph pulse and the
 glass-ribbon header. Animation pauses when the app is backgrounded or
 minimized. The initial preference follows Windows' animation setting;
 the Motion effects switch saves your explicit choice.
+The process-local animation clock adapts to the current display up to
+144 Hz. Header particles and light traces move continuously rather than
+stepping between points. No global Windows timer setting is changed.
 
 COMPATIBILITY
 
