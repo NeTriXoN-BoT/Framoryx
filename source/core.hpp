@@ -238,6 +238,7 @@ class Store {
         double sum = 0, recent = 0;
         size_t n = 0;
         std::vector<double> slow;
+        slow.reserve(out.frames.size());
         for (auto& f : out.frames) {
             sum += f.ms;
             slow.push_back(f.ms);

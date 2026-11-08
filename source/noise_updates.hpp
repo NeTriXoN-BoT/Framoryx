@@ -5,6 +5,7 @@
 namespace fg {
 struct NoiseRelease {
     std::wstring mono, stereo, version;
+    std::string monoDigest, stereoDigest;
 };
 class NoiseUpdater {
     struct State;

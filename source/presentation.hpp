@@ -39,7 +39,21 @@ inline float overlayScale(int percent, int renderHeight) {
 inline float desktopScale(int percent, float dpi, int availableWidth, int availableHeight) {
     float fit =
         std::max(.35f, std::min((availableWidth - 48) / 1180.f, (availableHeight - 80) / 820.f));
-    return std::min(fit, std::max(.5f, dpi / 96.f) * (percent ? percent / 100.f : 1.f));
+    float density = std::max(.5f, dpi / 96.f);
+    float requested =
+        percent ? density * percent / 100.f
+                : std::max(density, std::min(availableWidth / 1440.f, availableHeight / 1000.f));
+    return std::min(fit, requested);
+}
+struct DesktopViewport {
+    float scale = 1, x = 0, y = 0;
+};
+inline DesktopViewport desktopViewport(int percent, float dpi, int displayWidth, int displayHeight,
+                                       int clientWidth, int clientHeight) {
+    float fit = std::max(.01f, std::min(clientWidth / 1180.f, clientHeight / 820.f));
+    float scale = std::min(fit, desktopScale(percent, dpi, displayWidth, displayHeight));
+    return {scale, std::max(0.f, std::floor((clientWidth - 1180 * scale) / 2)),
+            std::max(0.f, std::floor((clientHeight - 820 * scale) / 2))};
 }
 inline float hudHeight(uint32_t fields) {
     float height = 26;

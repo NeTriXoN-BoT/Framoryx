@@ -4,6 +4,7 @@
 #include <atomic>
 #include <mutex>
 #include <thread>
+#include <array>
 
 namespace fg {
 inline double clockSeconds() {
@@ -74,6 +75,18 @@ class Capture {
     Handle process, job, pipe;
     std::wstring session;
     std::atomic<bool> running_{false}, stopping{false};
+    void stopCollector() {
+        // Session ownership survives collector exit; always clean up this unique session.
+        if (!session.empty()) {
+            std::array<BYTE, sizeof(EVENT_TRACE_PROPERTIES) + 1024> memory{};
+            auto p = reinterpret_cast<EVENT_TRACE_PROPERTIES*>(memory.data());
+            p->Wnode.BufferSize = ULONG(memory.size());
+            p->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
+            ControlTraceW(0, session.c_str(), p, EVENT_TRACE_CONTROL_STOP);
+        }
+        if (process && WaitForSingleObject(process.h, 1200) == WAIT_TIMEOUT)
+            TerminateProcess(process.h, 0);
+    }
 
   public:
     ~Capture() {
@@ -107,23 +120,13 @@ class Capture {
     }
     void stop() {
         stopping = true;
-        if (process) {
-            if (WaitForSingleObject(process.h, 0) == WAIT_TIMEOUT) {
-                // Stop only our unique ETW session; other PresentMon users are not interrupted.
-                std::vector<BYTE> memory(sizeof(EVENT_TRACE_PROPERTIES) + 1024);
-                auto p = reinterpret_cast<EVENT_TRACE_PROPERTIES*>(memory.data());
-                p->Wnode.BufferSize = ULONG(memory.size());
-                p->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
-                ControlTraceW(0, session.c_str(), p, EVENT_TRACE_CONTROL_STOP);
-                if (WaitForSingleObject(process.h, 1200) == WAIT_TIMEOUT)
-                    TerminateProcess(process.h, 0);
-            }
-        }
+        stopCollector();
         if (reader.joinable())
             reader.join();
         pipe.reset();
         process.reset();
         job.reset();
+        session.clear();
         running_ = false;
     }
     std::wstring start(const Rules& r) {
@@ -183,54 +186,71 @@ class Capture {
         running_ = true;
         ResumeThread(thread.h);
         writer.reset();
-        reader = std::thread([this] {
-            Parser parser;
-            std::string pending, diagnostic;
-            char data[16384];
-            DWORD count = 0;
-            bool seenFrame = false;
-            while (ReadFile(pipe.h, data, sizeof(data), &count, nullptr) && count) {
-                pending.append(data, count);
-                size_t offset = 0, newline;
-                while ((newline = pending.find('\n', offset)) != std::string::npos) {
-                    std::string line = pending.substr(offset, newline - offset);
-                    offset = newline + 1;
-                    auto frame = parser.parse(line);
-                    if (frame) {
-                        std::lock_guard lock(mutex);
-                        if (!seenFrame) {
-                            seenFrame = true;
-                            message = L"ETW capture active. Select a game window or focus it to "
-                                      L"view its frames.";
+        try {
+            reader = std::thread([this] {
+                try {
+                    Parser parser;
+                    std::string pending, diagnostic;
+                    char data[16384];
+                    DWORD count = 0;
+                    bool seenFrame = false;
+                    while (ReadFile(pipe.h, data, sizeof(data), &count, nullptr) && count) {
+                        pending.append(data, count);
+                        size_t offset = 0, newline;
+                        while ((newline = pending.find('\n', offset)) != std::string::npos) {
+                            std::string line = pending.substr(offset, newline - offset);
+                            offset = newline + 1;
+                            auto frame = parser.parse(line);
+                            if (frame) {
+                                std::lock_guard lock(mutex);
+                                if (!seenFrame) {
+                                    seenFrame = true;
+                                    message =
+                                        L"ETW capture active. Select a game window or focus it to "
+                                        L"view its frames.";
+                                }
+                                if (!rules.blocked(frame->app))
+                                    store.add(*frame, clockSeconds());
+                            } else if (!line.empty() && line.find(',') == std::string::npos &&
+                                       diagnostic.size() < 3000)
+                                diagnostic += line + " ";
                         }
-                        if (!rules.blocked(frame->app))
-                            store.add(*frame, clockSeconds());
-                    } else if (!line.empty() && line.find(',') == std::string::npos &&
-                               diagnostic.size() < 3000)
-                        diagnostic += line + " ";
+                        pending.erase(0, offset);
+                        if (pending.size() > 1024 * 1024)
+                            pending.clear();
+                    }
+                    WaitForSingleObject(process.h, 1000);
+                    DWORD code = 0;
+                    GetExitCodeProcess(process.h, &code);
+                    running_ = false;
+                    std::lock_guard lock(mutex);
+                    diagnosticOutput = L"PresentMon exit code: " + std::to_wstring(code) + L"\n\n" +
+                                       wide(diagnostic.substr(0, 1800));
+                    if (stopping)
+                        message = L"Capture stopped. Rolling data is available for CSV export.";
+                    else if (lower(diagnostic).find("access denied") != std::string::npos)
+                        message = L"ETW access denied. Try Run as administrator or a Performance "
+                                  L"Log Users "
+                                  L"account. Anti-cheat may also restrict capture.";
+                    else if (code || !diagnostic.empty())
+                        message =
+                            L"Capture stopped. Open Capture details for PresentMon’s output and "
+                            L"troubleshooting information.";
+                    else
+                        message = L"Capture ended. Press Start capture to begin another session.";
+                } catch (const std::exception&) {
+                    stopCollector();
+                    running_ = false;
+                    std::lock_guard lock(mutex);
+                    message = L"Capture reader stopped unexpectedly. Restart capture to retry.";
+                    diagnosticOutput = L"A capture parsing or resource error occurred. No game "
+                                       L"process was changed.";
                 }
-                pending.erase(0, offset);
-                if (pending.size() > 1024 * 1024)
-                    pending.clear();
-            }
-            WaitForSingleObject(process.h, 1000);
-            DWORD code = 0;
-            GetExitCodeProcess(process.h, &code);
-            running_ = false;
-            std::lock_guard lock(mutex);
-            diagnosticOutput = L"PresentMon exit code: " + std::to_wstring(code) + L"\n\n" +
-                               wide(diagnostic.substr(0, 1800));
-            if (stopping)
-                message = L"Capture stopped. Rolling data is available for CSV export.";
-            else if (lower(diagnostic).find("access denied") != std::string::npos)
-                message = L"ETW access denied. Try Run as administrator or a Performance Log Users "
-                          L"account. Anti-cheat may also restrict capture.";
-            else if (code || !diagnostic.empty())
-                message = L"Capture stopped. Open Capture details for PresentMon’s output and "
-                          L"troubleshooting information.";
-            else
-                message = L"Capture ended. Press Start capture to begin another session.";
-        });
+            });
+        } catch (const std::exception&) {
+            stop();
+            return L"Windows could not start the capture reader. The collector was stopped.";
+        }
         return {};
     }
 };

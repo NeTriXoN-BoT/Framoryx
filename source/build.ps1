@@ -51,7 +51,7 @@ try {
     Write-Output 'Building opt-in hook module...'
     Invoke-Compiler $cxx ($flags + @('-shared','-Ivendor\minhook\include','-Ivendor\imgui','hook.cpp','vendor\imgui\imgui.cpp','vendor\imgui\imgui_draw.cpp','vendor\imgui\imgui_tables.cpp','vendor\imgui\imgui_widgets.cpp','vendor\imgui\backends\imgui_impl_dx11.cpp') + $objects + @('-o',(Join-Path $packageDirectory 'FramoryxHook.dll'),'-ld3d11','-ld3d12','-ldxgi','-ld3dcompiler','-lgdi32','-luser32','-Wl,--dynamicbase,--nxcompat,--high-entropy-va','-s'))
     Write-Output 'Building graphics test scene and core checks...'
-    Invoke-Compiler $cxx ($flags + @('-municode','audio_probe.cpp','-o',(Join-Path $packageDirectory 'tools\FramoryxAudioProbe.exe'),'-lcrypt32','-ladvapi32','-lole32','-luuid','-s'))
+    Invoke-Compiler $cxx ($flags + @('-municode','audio_probe.cpp','-o',(Join-Path $packageDirectory 'tools\FramoryxAudioProbe.exe'),'-lcrypt32','-ladvapi32','-lole32','-luuid','-lshell32','-lbcrypt','-s'))
     Invoke-Compiler $cxx ($flags + @('-municode','-mwindows','test_scene.cpp','-o',(Join-Path $packageDirectory 'tools\FramoryxTest.exe'),'-ld3d11','-ldxgi','-ld3dcompiler','-lshell32','-luser32','-ladvapi32','-s'))
     Invoke-Compiler $cxx ($flags + @('-municode','-mwindows','test_scene12.cpp','-o',(Join-Path $packageDirectory 'tools\FramoryxTest12.exe'),'-ld3d12','-ldxgi','-lshell32','-luser32','-ladvapi32','-s'))
     Write-Output 'Building 32-bit DX11 compatibility modules...'
@@ -69,11 +69,17 @@ try {
     Invoke-Compiler $cxx ($flags + @('tests.cpp','-o',(Join-Path $BuildDirectory 'core-tests.exe')))
     & (Join-Path $BuildDirectory 'core-tests.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
-    Invoke-Compiler $cxx ($flags + @('audio_tests.cpp','-o',(Join-Path $BuildDirectory 'audio-tests.exe'),'-ladvapi32','-lole32','-luuid'))
+    Invoke-Compiler $cxx ($flags + @('audio_tests.cpp','-o',(Join-Path $BuildDirectory 'audio-tests.exe'),'-ladvapi32','-lole32','-luuid','-lshell32','-lbcrypt'))
     & (Join-Path $BuildDirectory 'audio-tests.exe') (Join-Path $BuildDirectory 'audio-tests-data')
     if ($LASTEXITCODE -ne 0) { throw 'Audio configuration tests failed' }
-    Invoke-Compiler $cxx ($flags + @('microphone_tests.cpp','-o',(Join-Path $BuildDirectory 'microphone-tests.exe'),'-ladvapi32','-lole32','-luuid'))
+    Invoke-Compiler $cxx ($flags + @('microphone_tests.cpp','-o',(Join-Path $BuildDirectory 'microphone-tests.exe'),'-ladvapi32','-lole32','-luuid','-lshell32','-lbcrypt'))
     & (Join-Path $BuildDirectory 'microphone-tests.exe') (Join-Path $BuildDirectory 'audio-tests-data')
     if ($LASTEXITCODE -ne 0) { throw 'Microphone/bass configuration tests failed' }
+    Invoke-Compiler $cxx ($flags + @('safety_tests.cpp','-o',(Join-Path $BuildDirectory 'safety-tests.exe'),'-ladvapi32','-lole32','-luuid','-lshell32','-lbcrypt'))
+    & (Join-Path $BuildDirectory 'safety-tests.exe') (Join-Path $BuildDirectory 'audio-tests-data')
+    if ($LASTEXITCODE -ne 0) { throw 'File integrity and audio transaction checks failed' }
+    Invoke-Compiler $cxx ($flags + @('fuzz_tests.cpp','-o',(Join-Path $BuildDirectory 'fuzz-tests.exe')))
+    & (Join-Path $BuildDirectory 'fuzz-tests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Malformed-input checks failed' }
     Write-Output 'Build and core checks passed.'
 } finally { Pop-Location }

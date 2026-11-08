@@ -1,5 +1,4 @@
-// Audio views use shared-mode endpoint effects. No recording, routing driver or plugin is
-// installed.
+// Audio views configure shared-mode endpoint effects. No recording or routing driver is used.
 const fg::Microphone* selectedMicrophone() {
     int index = int(SendMessageW(app.controls[MicDevice], CB_GETCURSEL, 0, 0));
     return index >= 0 && size_t(index) < app.microphones.size() ? &app.microphones[index] : nullptr;
@@ -25,6 +24,10 @@ void refreshMicrophones() {
     selectAutomaticNoisePlugin();
 }
 void syncMicrophoneControls() {
+    SendMessageW(app.controls[MicEQPreset], CB_SETCURSEL,
+                 fg::voicePresetIndex(app.microphoneOptions.low, app.microphoneOptions.mid,
+                                      app.microphoneOptions.high),
+                 0);
     SendMessageW(app.controls[MicNoise], BM_SETCHECK,
                  app.microphoneOptions.noise ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(app.controls[MicEQ], BM_SETCHECK,
@@ -76,8 +79,8 @@ void paintAudio(Graphics& g) {
               948, 375, 156, 36, 24, text, true);
         rounded(g, RectF(244, 440, 416, 204), Color(255, 17, 25, 32), 12, true);
         rounded(g, RectF(680, 440, 424, 204), Color(255, 17, 25, 32), 12, true);
-        auto gain = app.boost.configuredGain(app.audio.guid);
-        auto bass = fg::OutputBass::configured(app.boost.directory(), app.audio.guid);
+        auto gain = app.cachedGain;
+        auto bass = app.cachedBass;
         label(g, L"Extra volume", 263, 457, 370, 28, 17, text, true);
         label(g, L"Bass enhancement", 699, 457, 380, 28, 17, text, true);
         label(g, gain ? L"Configured: +" + value(*gain, 2) + L" dB" : L"Not configured", 264, 551,
@@ -104,9 +107,8 @@ void paintAudio(Graphics& g) {
         std::wstring format = mic ? std::to_wstring(mic->rate) + L" Hz · " +
                                         std::to_wstring(mic->channels) + L" channels"
                                   : L"Connect a microphone, then Refresh.";
-        bool noise = mic && fg::MicrophoneEffects::configured(app.boost.directory(), mic->guid);
-        bool eq =
-            mic && fg::MicrophoneEffects::equalizerConfigured(app.boost.directory(), mic->guid);
+        bool noise = app.cachedNoise;
+        bool eq = app.cachedEqualizer;
         format += noise || eq ? L" · Effects configured; verify in a recording"
                               : L" · Effects not configured";
         label(g, format, 244, 380, 860, 23, 12, noise || eq ? mint : muted);
@@ -117,8 +119,13 @@ void paintAudio(Graphics& g) {
         label(g, L"LOW · 150 Hz", 700, 539, 116, 19, 10, muted, true);
         label(g, L"MID · 1.2 kHz", 832, 539, 116, 19, 10, muted, true);
         label(g, L"HIGH · 6 kHz", 964, 539, 116, 19, 10, muted, true);
-        label(g, L"EQ gains include automatic headroom reduction.", 700, 613, 380, 22, 11, muted);
-        bool plugin = mic && fg::rnnoisePlugin(app.noisePlugin, mic->channels);
+        label(g,
+              fg::voicePresetIndex(app.microphoneOptions.low, app.microphoneOptions.mid,
+                                   app.microphoneOptions.high) == 4
+                  ? L"Bassy voice · warmer lows, less boxiness. Headroom included."
+                  : L"EQ gains include automatic headroom reduction.",
+              700, 613, 380, 22, 10, muted);
+        bool plugin = app.cachedPlugin;
         label(g,
               app.noiseUpdater.running()
                   ? app.noiseUpdater.status()
@@ -161,11 +168,11 @@ bool audioCommand(int id, int notification) {
         saveSettings();
     } else if (id == MicEQPreset && notification == CBN_SELCHANGE) {
         int index = int(SendMessageW(app.controls[id], CB_GETCURSEL, 0, 0));
-        constexpr int presets[][3]{{0, 0, 0}, {-3, 0, 3}, {3, 0, 0}, {-3, 3, 0}};
-        if (index >= 0 && index < 4) {
-            app.microphoneOptions.low = presets[index][0];
-            app.microphoneOptions.mid = presets[index][1];
-            app.microphoneOptions.high = presets[index][2];
+        if (index >= 0 && size_t(index) < fg::voicePresets.size()) {
+            const auto& preset = fg::voicePresets[index];
+            app.microphoneOptions.low = preset.low;
+            app.microphoneOptions.mid = preset.mid;
+            app.microphoneOptions.high = preset.high;
             app.microphoneOptions.equalizer = true;
             syncMicrophoneControls();
             saveSettings();
@@ -178,7 +185,10 @@ bool audioCommand(int id, int notification) {
             app.microphoneOptions.mid = value;
         if (id == MicHigh)
             app.microphoneOptions.high = value;
-        SendMessageW(app.controls[MicEQPreset], CB_SETCURSEL, -1, 0);
+        SendMessageW(app.controls[MicEQPreset], CB_SETCURSEL,
+                     fg::voicePresetIndex(app.microphoneOptions.low, app.microphoneOptions.mid,
+                                          app.microphoneOptions.high),
+                     0);
         saveSettings();
     } else if (id == MicChoosePlugin) {
         wchar_t path[32768]{};
@@ -214,7 +224,8 @@ bool audioCommand(int id, int notification) {
     } else if (id == MicApply) {
         auto mic = selectedMicrophone();
         if (mic && app.microphoneOptions.noise &&
-            !fg::rnnoisePlugin(app.noisePlugin, mic->channels)) {
+            (!fg::rnnoisePlugin(app.noisePlugin, mic->channels) ||
+             (!app.manualNoisePlugin && selectedNoiseDigest().empty()))) {
             app.manualNoisePlugin = false;
             app.pendingMicrophoneApply = mic->id;
             app.pendingMicrophoneOptions = app.microphoneOptions;
@@ -223,20 +234,21 @@ bool audioCommand(int id, int notification) {
                               L"when it is ready.";
             return true;
         }
-        auto error = mic ? fg::MicrophoneEffects::apply(app.boost.directory(), *mic,
-                                                        app.noisePlugin, app.microphoneOptions)
-                         : L"Select an available microphone first.";
-        app.audioNotice =
-            error.empty() ? L"Mic effects configured for the selected device. Verify in a "
-                            L"recording; raw/exclusive audio may bypass APO. No audio was recorded."
-                          : error;
+        if (mic)
+            queueMicrophoneEffects(*mic, app.microphoneOptions);
+        else
+            app.audioNotice = L"Select an available microphone first.";
     } else if (id == MicDisable) {
         app.pendingMicrophoneApply.clear();
-        auto error = fg::MicrophoneEffects::disable(app.boost.directory());
+        bool queued = app.effectWorker.submit([directory = app.boost.directory()] {
+            auto error = fg::MicrophoneEffects::disable(directory);
+            return error.empty()
+                       ? std::wstring(
+                             L"Framoryx microphone effects disabled. Other effects are unchanged.")
+                       : error;
+        });
         app.audioNotice =
-            error.empty()
-                ? L"Framoryx microphone effects disabled. Other audio effects are unchanged."
-                : error;
+            queued ? L"Disabling microphone effects…" : L"Audio queue is busy. Try again shortly.";
     } else if (id == MicSetup) {
         app.audioSetup = true;
         pageControls(1);
@@ -247,7 +259,9 @@ bool audioCommand(int id, int notification) {
         ShellExecuteW(app.window, L"open", L"https://sourceforge.net/projects/equalizerapo/",
                       nullptr, nullptr, SW_SHOWNORMAL);
     } else if (id == AudioConfigurator) {
-        auto file = (fs::path(app.boost.directory()).parent_path() / L"Configurator.exe").wstring();
+        auto file =
+            (fs::path(fg::AudioBoost::registeredDirectory()).parent_path() / L"Configurator.exe")
+                .wstring();
         if (GetFileAttributesW(file.c_str()) != INVALID_FILE_ATTRIBUTES)
             ShellExecuteW(app.window, L"open", file.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         else
@@ -256,18 +270,22 @@ bool audioCommand(int id, int notification) {
     } else if (id == BassApply || id == BassDisable) {
         app.audio = fg::audioState();
         int db = int(SendMessageW(app.controls[BassAmount], CB_GETCURSEL, 0, 0)) * 3;
-        auto error = id == BassApply
-                         ? fg::OutputBass::apply(app.boost.directory(), app.audio.guid, db)
-                         : fg::OutputBass::disable(app.boost.directory());
+        bool queued = app.effectWorker.submit([directory = app.boost.directory(),
+                                               guid = app.audio.guid, db, id] {
+            auto error = id == BassApply ? fg::OutputBass::apply(directory, guid, db)
+                                         : fg::OutputBass::disable(directory);
+            return error.empty()
+                       ? std::wstring(id == BassApply
+                                          ? L"Bass configured with matching headroom compensation. "
+                                            L"Verify playback with APO enabled."
+                                          : L"Framoryx bass disabled. Other effects are unchanged.")
+                       : error;
+        });
         app.audioNotice =
-            error.empty()
-                ? (id == BassApply
-                       ? L"Bass configured with matching headroom compensation. Verify playback; "
-                         L"requires Equalizer APO on this output."
-                       : L"Framoryx bass enhancement disabled. Other audio effects are unchanged.")
-                : error;
+            queued ? L"Updating bass enhancement…" : L"Audio queue is busy. Try again shortly.";
     } else
         return false;
+    refreshAudioStatus();
     app.contentDirty = true;
     InvalidateRect(app.window, nullptr, FALSE);
     return true;

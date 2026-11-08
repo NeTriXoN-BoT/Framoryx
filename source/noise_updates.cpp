@@ -27,28 +27,16 @@ bool trustedHost(const std::wstring& host) {
            host == L"objects.githubusercontent.com";
 }
 std::string sha256(const std::vector<unsigned char>& data) {
-    unsigned char hash[32]{};
-    if (BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, const_cast<PUCHAR>(data.data()),
-                   ULONG(data.size()), hash, 32) < 0)
+    auto result = sha256Bytes(data);
+    if (result.empty())
         throw std::runtime_error("Could not verify the downloaded archive.");
-    constexpr char hex[] = "0123456789abcdef";
-    std::string result;
-    for (auto c : hash) {
-        result += hex[c >> 4];
-        result += hex[c & 15];
-    }
     return result;
 }
 void save(const fs::path& path, const std::string& value) {
-    auto temp = path;
-    temp += L".download";
-    std::ofstream f(temp, std::ios::binary);
-    f << value;
-    f.close();
-    if (!f || !MoveFileExW(temp.c_str(), path.c_str(),
-                           MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    if (!atomicFileWrite(path, value))
         throw std::runtime_error("Cannot save RNNoise. Move Framoryx to a writable folder.");
 }
+
 bool versionTag(const std::string& tag) {
     if (tag.empty() || tag.size() > 64 || tag.find("..") != std::string::npos)
         return false;
@@ -65,8 +53,23 @@ NoiseRelease cachedRelease(const fs::path& base, const Json& data) {
     auto folder = base / wide("rnnoise-" + version);
     NoiseRelease release{(folder / L"rnnoise_mono.dll").wstring(),
                          (folder / L"rnnoise_stereo.dll").wstring(), wide(version)};
-    if (!rnnoisePlugin(release.mono, 1) || !rnnoisePlugin(release.stereo, 2))
-        throw std::runtime_error("RNNoise files are missing or incompatible.");
+    if (version == "v1.10") {
+        release.monoDigest = "7debdfc4843461c47b23ac7a736b4663fe581643563ae764cde395e006004080";
+        release.stereoDigest = "b2cd23b388bd95cc7a1a3a084b0bd9873992c54f379eed8935e1dc1c3ad07bfe";
+    } else {
+        if (data.contains("mono_sha256") && data["mono_sha256"].is_string())
+            release.monoDigest = data["mono_sha256"];
+        if (data.contains("stereo_sha256") && data["stereo_sha256"].is_string())
+            release.stereoDigest = data["stereo_sha256"];
+    }
+    auto mono = readRegularFile(release.mono, 32u * 1024u * 1024u),
+         stereo = readRegularFile(release.stereo, 32u * 1024u * 1024u);
+    if (release.monoDigest.size() != 64 || release.stereoDigest.size() != 64 || !mono || !stereo ||
+        sha256Bytes(*mono) != release.monoDigest || sha256Bytes(*stereo) != release.stereoDigest ||
+        !rnnoisePlugin(release.mono, 1) || !rnnoisePlugin(release.stereo, 2))
+        throw std::runtime_error(
+            "RNNoise files changed or are missing. The existing mic configuration was kept. Review "
+            "the files, then use Check for updates.");
     return release;
 }
 } // namespace
@@ -179,21 +182,19 @@ struct NoiseUpdater::State {
                            std::chrono::system_clock::now().time_since_epoch())
                            .count();
             Json cache;
-            {
-                std::ifstream file(base / L"latest.json");
-                if (file)
-                    cache = Json::parse(file, nullptr, false);
-            }
-            if (!force && cache.is_object() && cache.value("checked", int64_t(0)) > now - 86400) {
-                try {
-                    auto release = cachedRelease(base, cache);
-                    std::lock_guard lock(mutex);
-                    result = release;
-                    message = L"RNNoise " + release.version + L" ready · checked within 24 hours";
-                    busy = false;
-                    return;
-                } catch (...) {
-                }
+            if (auto bytes = readRegularFile(base / L"latest.json", 65536))
+                cache = Json::parse(bytes->begin(), bytes->end(), nullptr, false);
+            bool fresh = cache.is_object() && cache.contains("checked") &&
+                         cache["checked"].is_number_integer();
+            int64_t checked = fresh ? cache["checked"].get<int64_t>() : 0;
+            fresh = fresh && checked > now - 86400 && checked <= now + 300;
+            if (!force && fresh) {
+                auto release = cachedRelease(base, cache);
+                std::lock_guard lock(mutex);
+                result = release;
+                message = L"RNNoise " + release.version + L" ready · file checksums verified";
+                busy = false;
+                return;
             }
             status(L"Checking the latest official RNNoise release…");
             Json release;
@@ -242,7 +243,10 @@ struct NoiseUpdater::State {
             NoiseRelease installed;
             bool exists = false;
             try {
-                installed = cachedRelease(base, record);
+                installed = cachedRelease(base, cache.is_object() &&
+                                                        cache.value("version", std::string()) == tag
+                                                    ? cache
+                                                    : record);
                 exists = true;
             } catch (...) {
             }
@@ -310,6 +314,10 @@ struct NoiseUpdater::State {
                     if (!data)
                         throw std::runtime_error("RNNoise archive failed its CRC check.");
                     std::string binary(data, length);
+                    std::vector<unsigned char> decoded(binary.begin(), binary.end());
+                    record[std::string(file).find("mono") != std::string::npos ? "mono_sha256"
+                                                                               : "stereo_sha256"] =
+                        sha256Bytes(decoded);
                     mz_free(const_cast<char*>(data));
                     auto path = folder / wide(file);
                     save(path, binary);
@@ -323,6 +331,8 @@ struct NoiseUpdater::State {
                      record["source"].get<std::string>() +
                          "\nRNNoise plugin: GPL-3.0. Downloaded from the upstream release.\n");
             }
+            record["mono_sha256"] = installed.monoDigest;
+            record["stereo_sha256"] = installed.stereoDigest;
             if (cancel)
                 throw std::runtime_error("RNNoise update cancelled.");
             status(L"Checking RNNoise presets in an isolated audio helper…");

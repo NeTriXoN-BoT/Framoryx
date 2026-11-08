@@ -1,5 +1,6 @@
 #pragma once
 #include "audio.hpp"
+#include "audio_presets.hpp"
 #include <audioclient.h>
 #include <cstdint>
 
@@ -88,7 +89,7 @@ inline bool endpointGuid(const std::wstring& guid) {
 }
 // File-format validation only: the app never loads a selected audio plugin.
 inline bool rnnoisePlugin(const std::filesystem::path& path, unsigned channels) {
-    if (channels < 1 || channels > 2)
+    if (channels < 1 || channels > 2 || !localFilePath(path.wstring()))
         return false;
     auto name = lower(utf8(path.filename().wstring()));
     if (name != (channels == 1 ? "rnnoise_mono.dll" : "rnnoise_stereo.dll"))
@@ -137,24 +138,15 @@ inline std::string noiseChunk(int preset) {
 class MicrophoneEffects {
     friend class OutputBass;
     static constexpr const char* marker = "# Framoryx microphone noise suppression";
-    static bool read(const std::filesystem::path& p, std::string& out) {
-        std::ifstream f(p, std::ios::binary);
-        if (!f)
+    static bool read(const std::filesystem::path& path, std::string& out) {
+        auto bytes = readRegularFile(path, 4u * 1024u * 1024u);
+        if (!bytes)
             return false;
-        out.assign(std::istreambuf_iterator<char>(f), {});
-        return f.good() || f.eof();
+        out.assign(bytes->begin(), bytes->end());
+        return true;
     }
-    static bool write(const std::filesystem::path& p, const std::string& value) {
-        auto temp = p;
-        temp += L".framoryx.tmp";
-        std::ofstream f(temp, std::ios::binary);
-        f << value;
-        f.close();
-        bool ok = bool(f) && MoveFileExW(temp.c_str(), p.c_str(),
-                                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
-        if (!ok)
-            DeleteFileW(temp.c_str());
-        return ok;
+    static bool write(const std::filesystem::path& path, const std::string& text) {
+        return atomicFileWrite(path, text);
     }
     static std::string trim(const std::string& s) {
         auto a = s.find_first_not_of(" \t\r"), b = s.find_last_not_of(" \t\r");
@@ -186,6 +178,9 @@ class MicrophoneEffects {
 
   public:
     static bool equalizerConfigured(const std::wstring& directory, const std::wstring& guid) {
+        std::lock_guard transaction(audioConfigMutex);
+        if (!localFilePath(directory))
+            return {};
         std::string root, filter;
         std::filesystem::path base(directory);
         return endpointGuid(guid) && read(base / L"config.txt", root) && included(base, root) &&
@@ -194,6 +189,9 @@ class MicrophoneEffects {
                filter.find("Filter: ON LS Fc 150 Hz") != std::string::npos;
     }
     static bool configured(const std::wstring& directory, const std::wstring& guid) {
+        std::lock_guard transaction(audioConfigMutex);
+        if (!localFilePath(directory))
+            return {};
         std::string root, filter;
         std::filesystem::path base(directory);
         return endpointGuid(guid) && read(base / L"config.txt", root) && included(base, root) &&
@@ -202,7 +200,11 @@ class MicrophoneEffects {
                filter.find("\r\nVSTPlugin: ") != std::string::npos;
     }
     static std::wstring apply(const std::wstring& directory, const Microphone& mic,
-                              const std::wstring& plugin, const MicrophoneOptions& options) {
+                              const std::wstring& plugin, const MicrophoneOptions& options,
+                              const std::string& expectedDigest = {}) {
+        std::lock_guard transaction(audioConfigMutex);
+        if (!localFilePath(directory))
+            return L"Choose a local, absolute Equalizer APO config folder.";
         if (!endpointGuid(mic.guid))
             return L"Select an available microphone first.";
         if (options.noise && (mic.rate != 48000 || mic.channels < 1 || mic.channels > 2))
@@ -223,7 +225,8 @@ class MicrophoneEffects {
         if (root.find('\0') != std::string::npos)
             return L"Save Equalizer APO config.txt as UTF-8 before adding microphone effects.";
         auto filter = base / L"framoryx-microphone.txt";
-        if (read(filter, prior) && prior.rfind(marker, 0) != 0)
+        if (GetFileAttributesW(filter.c_str()) != INVALID_FILE_ATTRIBUTES &&
+            (!read(filter, prior) || prior.rfind(marker, 0) != 0))
             return L"The microphone config file belongs to another program and was not changed.";
         bool linked = included(base, root);
         if (!linked) {
@@ -234,13 +237,21 @@ class MicrophoneEffects {
                 return L"Cannot back up the APO config. Administrator rights may be required for "
                        L"this folder.";
         }
+        std::optional<std::filesystem::path> installed;
+        if (options.noise) {
+            installed = stageAudioPlugin(directory, plugin, expectedDigest);
+            if (!installed)
+                return L"Could not verify or install the microphone plugin into the APO config "
+                       L"folder. Check write access and the selected plugin.";
+        }
         std::string body =
             std::string(marker) +
             "\r\n# Selected capture endpoint only. No microphone audio is recorded.\r\nDevice: " +
             utf8(mic.guid) + "\r\nStage: capture\r\nChannel: all\r\n";
         if (options.noise)
-            body += "If: sampleRate == 48000\r\nVSTPlugin: Library \"" + utf8(plugin) +
-                    "\" ChunkData \"" + noiseChunk(options.preset) + "\"\r\nEndIf:\r\n";
+            body += "If: sampleRate == 48000\r\nVSTPlugin: Library \"" +
+                    utf8(installed->wstring()) + "\" ChunkData \"" + noiseChunk(options.preset) +
+                    "\"\r\nEndIf:\r\n";
         if (options.equalizer) {
             int headroom =
                 std::max(0, options.low) + std::max(0, options.mid) + std::max(0, options.high);
@@ -267,6 +278,9 @@ class MicrophoneEffects {
         return {};
     }
     static std::wstring disable(const std::wstring& directory) {
+        std::lock_guard transaction(audioConfigMutex);
+        if (!localFilePath(directory))
+            return L"Choose a local, absolute Equalizer APO config folder.";
         auto path = std::filesystem::path(directory) / L"framoryx-microphone.txt";
         std::string prior;
         if (!read(path, prior))
@@ -285,6 +299,9 @@ class OutputBass {
 
   public:
     static std::optional<int> configured(const std::wstring& directory, const std::wstring& guid) {
+        std::lock_guard transaction(audioConfigMutex);
+        if (!localFilePath(directory))
+            return {};
         std::filesystem::path base(directory);
         std::string root, filter;
         if (!endpointGuid(guid) || !Config::read(base / L"config.txt", root) ||
@@ -300,6 +317,9 @@ class OutputBass {
         return n && *n >= 0 && *n <= 9 ? std::optional<int>(int(*n)) : std::nullopt;
     }
     static std::wstring apply(const std::wstring& directory, const std::wstring& guid, int db) {
+        std::lock_guard transaction(audioConfigMutex);
+        if (!localFilePath(directory))
+            return L"Choose a local, absolute Equalizer APO config folder.";
         if (!endpointGuid(guid) || db < 0 || db > 9)
             return L"Choose an output device and 0–9 dB of bass.";
         std::filesystem::path base(directory);
@@ -309,7 +329,8 @@ class OutputBass {
         if (root.find('\0') != std::string::npos)
             return L"Save APO config.txt as UTF-8 before adding bass enhancement.";
         auto path = base / L"framoryx-bass.txt";
-        if (Config::read(path, prior) && prior.rfind(marker, 0) != 0)
+        if (GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES &&
+            (!Config::read(path, prior) || prior.rfind(marker, 0) != 0))
             return L"The bass config belongs to another program and was not changed.";
         bool linked = Config::included(base, root, L"framoryx-bass.txt");
         if (!linked) {
@@ -335,6 +356,9 @@ class OutputBass {
         return {};
     }
     static std::wstring disable(const std::wstring& directory) {
+        std::lock_guard transaction(audioConfigMutex);
+        if (!localFilePath(directory))
+            return L"Choose a local, absolute Equalizer APO config folder.";
         auto path = std::filesystem::path(directory) / L"framoryx-bass.txt";
         std::string prior;
         if (!Config::read(path, prior))

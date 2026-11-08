@@ -1,5 +1,7 @@
 #pragma once
 #include "platform.hpp"
+#include "file_safety.hpp"
+#include <shlobj.h>
 #include <mmdeviceapi.h>
 #include <endpointvolume.h>
 #include <functiondiscoverykeys_devpkey.h>
@@ -85,7 +87,7 @@ class AudioBoost {
     std::wstring directory_;
     unsigned backupSerial = 0;
     bool hasInclude(const std::string& config) const {
-        auto trim = [](std::string value) {
+        auto trim = [](const std::string& value) {
             auto begin = value.find_first_not_of(" \t\r");
             auto end = value.find_last_not_of(" \t\r");
             return begin == std::string::npos ? std::string()
@@ -123,47 +125,51 @@ class AudioBoost {
         }
         return false;
     }
-    static bool read(const std::filesystem::path& p, std::string& out) {
-        std::ifstream f(p, std::ios::binary);
-        if (!f)
+    static bool read(const std::filesystem::path& path, std::string& out) {
+        auto bytes = readRegularFile(path, 4u * 1024u * 1024u);
+        if (!bytes)
             return false;
-        out.assign(std::istreambuf_iterator<char>(f), {});
-        return f.good() || f.eof();
+        out.assign(bytes->begin(), bytes->end());
+        return true;
     }
-    static bool write(const std::filesystem::path& p, const std::string& text) {
-        auto temp = p;
-        temp += L".framoryx.tmp";
-        std::ofstream f(temp, std::ios::binary);
-        f << text;
-        f.close();
-        return bool(f) && MoveFileExW(temp.c_str(), p.c_str(),
-                                      MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+    static bool write(const std::filesystem::path& path, const std::string& text) {
+        return atomicFileWrite(path, text);
     }
 
   public:
-    AudioBoost() {
+    static std::wstring registeredDirectory() {
         wchar_t path[32768]{};
         DWORD size = sizeof(path);
         if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\EqualizerAPO", L"ConfigPath",
-                         RRF_RT_REG_SZ, nullptr, path, &size) == ERROR_SUCCESS)
-            directory_ = path;
-        if (directory_.empty()) {
-            GetEnvironmentVariableW(L"ProgramFiles", path, 32768);
-            directory_ = std::wstring(path) + L"\\EqualizerAPO\\config";
+                         RRF_RT_REG_SZ, nullptr, path, &size) == ERROR_SUCCESS &&
+            localFilePath(path))
+            return std::filesystem::path(path).lexically_normal().wstring();
+        PWSTR programFiles = nullptr;
+        std::wstring result;
+        if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_ProgramFiles, 0, nullptr, &programFiles))) {
+            result = std::wstring(programFiles) + L"\\EqualizerAPO\\config";
+            CoTaskMemFree(programFiles);
         }
+        return result;
     }
+    AudioBoost() : directory_(registeredDirectory()) {}
     const std::wstring& directory() const {
         return directory_;
     }
-    void directory(const std::wstring& path) {
-        directory_ = path;
+    bool directory(const std::wstring& path) {
+        if (!localFilePath(path))
+            return false;
+        directory_ = std::filesystem::path(path).lexically_normal().wstring();
+        return true;
     }
     bool available() const {
-        return GetFileAttributesW((directory_ + L"\\config.txt").c_str()) !=
-               INVALID_FILE_ATTRIBUTES;
+        return localFilePath(directory_) &&
+               GetFileAttributesW((directory_ + L"\\config.txt").c_str()) !=
+                   INVALID_FILE_ATTRIBUTES;
     }
     std::optional<double> configuredGain(const std::wstring& endpointGuid) const {
-        if (endpointGuid.empty())
+        std::lock_guard transaction(audioConfigMutex);
+        if (endpointGuid.empty() || !localFilePath(directory_))
             return {};
         std::string config, filter;
         if (!read(std::filesystem::path(directory_) / L"config.txt", config) || !hasInclude(config))
@@ -183,6 +189,7 @@ class AudioBoost {
         return n && *n >= 0 && *n <= 12 ? std::optional<double>(*n) : std::nullopt;
     }
     std::wstring apply(double db, const std::wstring& endpointGuid) {
+        std::lock_guard transaction(audioConfigMutex);
         bool validGuid = endpointGuid.size() == 38 && endpointGuid.front() == L'{' &&
                          endpointGuid.back() == L'}';
         if (validGuid)
@@ -207,8 +214,9 @@ class AudioBoost {
             return L"This audio config uses an unsupported encoding. Save it as UTF-8 in Equalizer "
                    L"APO before adding a boost.";
         std::string previous;
-        if (read(base / L"framoryx-boost.txt", previous) &&
-            previous.rfind("# Framoryx audio boost", 0) != 0)
+        if (GetFileAttributesW((base / L"framoryx-boost.txt").c_str()) != INVALID_FILE_ATTRIBUTES &&
+            (!read(base / L"framoryx-boost.txt", previous) ||
+             previous.rfind("# Framoryx audio boost", 0) != 0))
             return L"framoryx-boost.txt already exists and is not owned by this app. Choose a "
                    L"different Equalizer APO config folder.";
         bool installed = hasInclude(config);
@@ -240,6 +248,7 @@ class AudioBoost {
         return {};
     }
     std::wstring disable() {
+        std::lock_guard transaction(audioConfigMutex);
         if (!available())
             return L"No Equalizer APO config found.";
         std::string prior;

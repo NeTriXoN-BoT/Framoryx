@@ -1,5 +1,6 @@
 #include "core.hpp"
 #include "presentation.hpp"
+#include "audio_presets.hpp"
 #include <iostream>
 #include <stdexcept>
 int main() {
@@ -73,7 +74,8 @@ int main() {
               "manual overlay percentage is independent of game resolution");
         check(fg::overlayScale(0, 240) >= .8f && fg::overlayScale(900, 1080) <= 3.f,
               "overlay scaling stays within valid rendering limits");
-        check(fg::desktopScale(0, 192, 3840, 2160) == 2.f,
+        check(fg::desktopScale(0, 192, 3840, 2160) >= 2.f &&
+                  fg::desktopScale(0, 96, 3840, 2160) > fg::desktopScale(0, 96, 1920, 1080),
               "desktop automatic size follows high monitor DPI");
         float fitted = fg::desktopScale(175, 144, 1366, 768);
         check(fitted * 1180 <= 1366 && fitted * 820 <= 768 - 70,
@@ -91,6 +93,28 @@ int main() {
         check(std::abs(fast - slow) < .0001, "motion easing is independent of frame cadence");
         check(fg::easeOut(-1) == 0 && fg::easeOut(2) == 1,
               "navigation transitions stop at their endpoints");
+        for (auto size : {std::pair{860, 630}, std::pair{1180, 820}, std::pair{1920, 1080},
+                          std::pair{3440, 1440}, std::pair{3840, 2160}})
+            for (int dpi : {96, 144, 192})
+                for (int percent : {0, 80, 100, 125, 175}) {
+                    auto view = fg::desktopViewport(percent, float(dpi), 3840, 2160, size.first,
+                                                    size.second);
+                    check(view.scale > 0 && view.x >= 0 && view.y >= 0 &&
+                              view.x + 1180 * view.scale <= size.first + .1f &&
+                              view.y + 820 * view.scale <= size.second + .1f,
+                          "scaled canvas fits normal, maximized and ultrawide client areas without "
+                          "stretching");
+                }
+        auto normal = fg::desktopViewport(80, 96, 1920, 1080, 1180, 820);
+        auto maximized = fg::desktopViewport(80, 96, 1920, 1080, 1920, 1080);
+        check(normal.scale == maximized.scale && maximized.x > normal.x && maximized.y > normal.y,
+              "maximizing preserves requested percentage and centers the design");
+        check(fg::voicePresets[4].low == 6 && fg::voicePresets[4].mid == -3 &&
+                  fg::voicePresets[4].high == 0,
+              "bassy voice adds body without a treble boost");
+        check(fg::voicePresetIndex(6, -3, 0) == 4 &&
+                  fg::voicePresetIndex(6, 6, 0) == int(fg::voicePresets.size()),
+              "saved and custom voice bands map to the correct preset labels");
         std::cout << "PASS: " << checks << " core checks\n";
         return 0;
     } catch (const std::exception& error) {

@@ -169,7 +169,7 @@ void pushHookPresentation() {
     auto profile = found == app.hudProfiles.end() ? app.hudBase : found->second;
     app.hook.hudOptions(profile.options);
     app.hook.corner(profile.corner);
-    app.hook.overlay(app.overlay && app.hookHud && profile.mode != 1);
+    app.hook.overlay(app.overlay && profile.mode != 1);
 }
 void storeHudProfile() {
     app.contentDirty = true;
@@ -201,6 +201,12 @@ void applyDesktopScale() {
     app.transitionOld.reset();
     app.transitionNew.reset();
     pageControls(app.page);
+    if (IsZoomed(app.window)) {
+        layout();
+        syncHudControls();
+        InvalidateRect(app.window, nullptr, FALSE);
+        return;
+    }
     SetWindowPos(app.window, nullptr, info.rcWork.left + (availableWidth - width) / 2,
                  info.rcWork.top + (availableHeight - height) / 2, width, height,
                  SWP_NOZORDER | SWP_NOACTIVATE);
@@ -290,6 +296,7 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
         float graphHeight = compact ? 25 : 34;
         if (stats.frames.empty() && preview) {
             std::vector<PointF> path;
+            path.reserve(110);
             for (int i = 0; i < 110; ++i)
                 path.emplace_back(padding + i * (width - padding * 2) / 109,
                                   y + graphHeight - 8 -
@@ -347,8 +354,8 @@ void paintStudio(Graphics& g) {
     g.ResetClip();
     rounded(g, RectF(562, 628, 590, 124), card, 14, true);
     label(g, L"DESKTOP APP SIZE", 588, 647, 520, 23, 11, mint, true);
-    label(g, L"Auto fits this screen.\nPercentages resize the app.", 588, 684, 174, 48, 12, muted,
-          false, true);
+    label(g, L"Effective size: " + value(app.scale * 100) + L"%\nAuto follows your display.", 588,
+          684, 174, 48, 12, muted, false, true);
     auto profile = app.activeProfile.empty()
                        ? L"Default style · used for games without a saved profile"
                        : L"Style for " + fg::wide(app.activeProfile);
@@ -499,8 +506,10 @@ void advanceMotion() {
     app.metricCpu = app.motion ? fg::approach(app.metricCpu, app.cpu, dt, 12) : app.cpu;
     if (foreground && app.motion) {
         RECT rect{
-            0, 0, int(BW * app.scale),
-            int((app.transitionNew || app.page == 0 || app.page == 5 ? BH : 178) * app.scale)};
+            int(app.originX), int(app.originY), int(app.originX + BW * app.scale),
+            int(app.originY +
+                (app.transitionNew || app.page == 0 || app.page == 5 ? BH : 178) * app.scale) +
+                1};
         InvalidateRect(app.window, &rect, FALSE);
     }
 }

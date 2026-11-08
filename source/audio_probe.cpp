@@ -94,11 +94,11 @@ int wmain(int argc, wchar_t** argv) {
         effect->replace(effect, in, out, 480);
         for (int channel = 0; channel < effect->outputs; ++channel)
             for (int i = 0; i < 480; ++i) {
-                if (!std::isfinite(output[channel][i]))
+                if (!std::isfinite(output[channel][i]) || std::abs(output[channel][i]) > 4.f)
                     return 1;
                 if (block > 100) {
-                    inputPower += input[channel][i] * input[channel][i];
-                    outputPower += output[channel][i] * output[channel][i];
+                    inputPower += double(input[channel][i]) * input[channel][i];
+                    outputPower += double(output[channel][i]) * output[channel][i];
                 }
             }
     }

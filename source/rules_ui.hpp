@@ -258,11 +258,27 @@ LRESULT CALLBACK rulesProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_DPICHANGED:
         if (data) {
             auto rect = reinterpret_cast<RECT*>(lp);
-            float ratio = float(HIWORD(wp)) / std::max(1u, data->dpi);
+            MONITORINFO monitor{sizeof(monitor)};
+            GetMonitorInfoW(MonitorFromRect(rect, MONITOR_DEFAULTTONEAREST), &monitor);
+            int availableW = monitor.rcWork.right - monitor.rcWork.left;
+            int availableH = monitor.rcWork.bottom - monitor.rcWork.top;
+            RECT frame{};
+            AdjustWindowRectExForDpi(&frame, DWORD(GetWindowLongPtrW(window, GWL_STYLE)), FALSE,
+                                     DWORD(GetWindowLongPtrW(window, GWL_EXSTYLE)), HIWORD(wp));
+            float next = std::min(data->scale * float(HIWORD(wp)) / std::max(1u, data->dpi),
+                                  std::min((availableW - (frame.right - frame.left) - 16) / 660.f,
+                                           (availableH - (frame.bottom - frame.top) - 16) / 574.f));
+            next = std::max(.25f, next);
+            float ratio = next / data->scale;
             data->dpi = HIWORD(wp);
-            data->scale *= ratio;
-            SetWindowPos(window, nullptr, rect->left, rect->top, rect->right - rect->left,
-                         rect->bottom - rect->top, SWP_NOZORDER | SWP_NOACTIVATE);
+            data->scale = next;
+            int width = int(660 * next) + frame.right - frame.left;
+            int height = int(574 * next) + frame.bottom - frame.top;
+            int x = std::clamp(rect->left, monitor.rcWork.left,
+                               std::max(monitor.rcWork.left, monitor.rcWork.right - width));
+            int y = std::clamp(rect->top, monitor.rcWork.top,
+                               std::max(monitor.rcWork.top, monitor.rcWork.bottom - height));
+            SetWindowPos(window, nullptr, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
             scaleRuleControls(window, data, ratio);
             InvalidateRect(window, nullptr, FALSE);
         }
