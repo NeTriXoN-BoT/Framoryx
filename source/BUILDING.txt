@@ -1,0 +1,96 @@
+FRAMORYX SOURCE AND VALIDATION
+
+The application uses C++20, Win32 and GDI+. It does not require Electron,
+.NET or a web browser. The optional injected module uses MinHook and
+Dear ImGui's DX11 renderer. PresentMon is a separate official console
+binary included in ..\tools.
+
+Build from PowerShell:
+
+    & .\source\build.ps1
+
+Or pass an existing LLVM-MinGW installation and a scratch directory:
+
+    & .\source\build.ps1 -ToolchainBin C:\llvm-mingw\bin -BuildDirectory C:\scratch\framoryx-build
+
+Close Framoryx and all test scenes before replacing the binaries.
+The script downloads a pinned, SHA-256-verified portable LLVM-MinGW
+toolchain only when no toolchain path is supplied. It installs nothing
+globally. MinHook and ImGui source are vendored under source\vendor.
+Output is written to the parent application folder.
+
+build.ps1 runs deterministic statistics/parser/rule tests and audio
+configuration tests against a scratch directory. Audio tests do not
+change Windows audio or an installed Equalizer APO configuration.
+
+Optional graphics integration checks:
+
+    & .\source\validate.ps1 -ToolchainBin C:\llvm-mingw\bin -IncludeGraphicsTests
+
+These checks launch Framoryx's own 32/64-bit DirectX 11 and 64-bit DX12
+scenes, collect their ETW events, change window styles, and inject only
+into those test scenes. The UI stays x64; a fixed-purpose x86 helper
+handles the optional 32-bit hook. Shared protocol sizes are checked at
+compile time for both architectures.
+They check 30/60 FPS limits, live changes, uncapping, the DX11 HUD,
+hook-frame telemetry, live HUD fields/opacity/size changes, native font
+rebuilds, DX12 resizing, multiple-queue fallback, duplicate-injection
+refusal, disable behavior
+and controller-heartbeat loss. Active anti-cheat blocks injection tests.
+They also simulate an interrupted ETW owner, check abandoned-session
+cleanup and verify that a live controller's session is preserved.
+
+Longer local graphics soak and UI checks:
+
+    & .\source\validate.ps1 -ToolchainBin C:\llvm-mingw\bin -IncludeGraphicsTests -SoakSeconds 120 -UiSmokeSeconds 30
+
+The soak changes caps and repeatedly applies/restores borderless mode.
+It checks frame timing, shader-state preservation, memory and handles.
+The UI check launches its own managed scene, captures real frames,
+cycles pages, resizes the window and opens/closes the rules dialog.
+It leaves Windows audio settings untouched.
+
+UI self-test and rendering diagnostics:
+
+    .\Framoryx.exe --smoke-seconds 16 --report C:\scratch\ui-report.json
+    .\Framoryx.exe --smoke-seconds 16 --reduced-motion --report C:\scratch\ui-no-motion.json
+
+This cycles the app's own pages and exits. It does not start capture,
+enable hooks, change audio volume or apply borderless to another app.
+The report records paint times, process CPU time and resource counts.
+Without these explicit flags, the program does not write such reports.
+Add --with-demo for a managed DX11 scene plus real ETW capture, and
+--smoke-resize to cycle three sizes. --smoke-page 0 through 4 holds one
+page (0 through 6). The demo must deliver live frames for its self-test
+to pass. To exercise profile persistence and desktop percentage sizing
+without changing your normal preferences:
+
+    .\Framoryx.exe --with-demo --smoke-seconds 28 --smoke-resize --smoke-customize --settings-file C:\scratch\test-settings.ini --report C:\scratch\customization.json
+
+The scratch directory must exist. --smoke-customize requires an explicit
+settings-file override. It checks a per-game style round-trip, 80% sizing,
+a larger percentage constrained to the display and restoration to Auto.
+
+The self-test is a render/resource regression check. Passing it does not
+establish game compatibility, flawless pacing under every workload,
+anti-cheat approval or universal device support.
+
+File guide:
+  core.hpp               CSV parsing, rules, bounded rolling statistics
+  capture.hpp            PresentMon pipe, ETW session lifecycle and reader
+  platform.hpp           process inspection, optional injection, borderless
+  shared.hpp             versioned shared-memory protocol and frame ring
+  hook.cpp               DXGI pacing, telemetry, DX11 HUD, heartbeat guard
+  audio.hpp              Windows volume and optional APO config integration
+  main.cpp               native UI, cached rendering, profiles and controls
+  ui_features.hpp        Overlay Studio, preview, profiles, tray and motion
+  presentation.hpp       validated HUD options, scale and motion calculations
+  compatibility.hpp      read-only process/runtime/window inspection
+  dx12_bridge.hpp        observed-queue D3D11-on-12 HUD bridge
+  test_scene.cpp         local DirectX 11 target used for integration checks
+  test_scene12.cpp       local DirectX 12 target
+  injector32.cpp         restricted, explicit 32-bit architecture bridge
+  tests.cpp              deterministic core checks
+  audio_tests.cpp        isolated audio-config checks
+  integration_tests.cpp  graphics and lifecycle integration checks
+  stress_tests.cpp       longer limiter/resize/resource soak

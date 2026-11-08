@@ -1,0 +1,43 @@
+# Generated builds and packages
+/build/
+/work/
+/dist/
+/releases/
+**/build/
+*.exe
+*.dll
+*.o
+*.obj
+*.pdb
+*.lib
+*.zip
+*.sha256
+
+# Personal preferences, captures and diagnostics
+settings.ini
+settings.ini.tmp
+*.etl
+*.csv
+*-results.txt
+ui-*.json
+ui-*.ini
+
+# Editor and local development state
+.vs/
+.vscode/
+.idea/
+.env
+.env.*
+*.user
+*.suo
+*.tmp
+__pycache__/
+
+# Private working material is never part of this project
+.codex/
+.agents/
+AGENTS.md
+SKILL.md
+PROMPTS.txt
+*provenance*
+*private-notes*

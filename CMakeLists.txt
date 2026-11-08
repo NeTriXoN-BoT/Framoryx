@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+project(FramoryxCore VERSION 0.2.0 LANGUAGES CXX)
+enable_testing()
+add_executable(FramoryxCoreTests source/tests.cpp)
+target_compile_features(FramoryxCoreTests PRIVATE cxx_std_20)
+add_test(NAME shared-core COMMAND FramoryxCoreTests)
+message(STATUS "This CMake target verifies the shared core. The Windows desktop app uses source/build.ps1; a Linux GUI is not implemented.")

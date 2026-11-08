@@ -1,0 +1,32 @@
+name: Game compatibility
+description: Report a game, renderer or overlay-path issue
+title: "[Compatibility] "
+body:
+  - type: input
+    id: game
+    attributes:
+      label: Game and executable basename
+    validations:
+      required: true
+  - type: dropdown
+    id: renderer
+    attributes:
+      label: Renderer
+      options: [DX11, DX12, DX9, Vulkan, OpenGL, Unknown]
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Window mode
+      options: [Windowed, Borderless, Exclusive fullscreen, Unknown]
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happens?
+      description: State whether ETW frames arrive and whether Desktop or optional In-game mode was selected. Include only sanitized capture details and relevant overlay conflicts.
+    validations:
+      required: true
+  - type: textarea
+    id: policy
+    attributes:
+      label: Game policy and restrictions
+      description: Note known publisher/security restrictions. Do not request bypasses.

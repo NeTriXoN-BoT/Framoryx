@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a reproducible app problem
+title: "[Bug] "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Framoryx version and Windows build
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Relevant details
+      description: Include display DPI/scale and relevant sanitized diagnostics. Remove usernames, personal paths and unrelated process information.
