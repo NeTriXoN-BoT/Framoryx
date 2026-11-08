@@ -12,8 +12,10 @@ qt_add_resources(FramoryxDesktop framoryx_ui PREFIX / FILES
     qml/Overview.qml qml/OverlayStudio.qml qml/AudioPage.qml qml/GamesPage.qml qml/RulesPage.qml qml/SettingsPage.qml
     qml/qmldir)
 qt_add_resources(FramoryxDesktop framoryx_art PREFIX /art BASE ../assets FILES ../assets/icon.png ../assets/artwork.png ../assets/Framoryx.ico)
-if(WIN32)
+if(MSVC)
     target_compile_options(FramoryxDesktop PRIVATE /utf-8)
+endif()
+if(WIN32)
     target_link_libraries(FramoryxDesktop PRIVATE dwmapi)
     target_sources(FramoryxDesktop PRIVATE resources/desktop.rc)
     target_include_directories(FramoryxDesktop PRIVATE ../assets)

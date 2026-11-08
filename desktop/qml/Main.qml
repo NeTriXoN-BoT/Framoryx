@@ -132,6 +132,7 @@ ApplicationWindow {
         id: addGameDialog
         anchors.centerIn: parent
         width: Math.min(window.width-50,Theme.px(540))
+        height: Math.min(window.height-60,Theme.px(295))
         modal: true
         title: "Add to your library"
         standardButtons: Dialog.Save|Dialog.Cancel
@@ -143,11 +144,12 @@ ApplicationWindow {
         id: hookDialog
         anchors.centerIn: parent
         width: Math.min(window.width-50,Theme.px(580))
+        height: Math.min(window.height-60,Theme.px(450))
         modal: true
         title: "Enable experimental in-game features?"
         standardButtons: Dialog.Yes|Dialog.Cancel
         background: Rectangle { color: Theme.surface; radius: Theme.px(15); border.color: Theme.border }
-        contentItem: Text { text: "This loads the Framoryx DX11/DX12 module into the selected game for an in-game overlay and frame limiting.\n\nGame hooks can cause crashes or anti-cheat bans. An allow list or clear scan does not establish game approval. Use only where permitted.\n\nKnown anti-cheat/system blocks remain enforced. Disable restores hook entry points; restart the game to remove the module fully.\n\nEnable for this selected game now?"; color: Theme.text; font.pixelSize: Theme.px(13); wrapMode: Text.Wrap }
+        contentItem: ScrollView { clip: true; Text { width: parent.width; text: "This loads the Framoryx DX11/DX12 module into the selected game for an in-game overlay and frame limiting.\n\nGame hooks can cause crashes or anti-cheat bans. An allow list or clear scan does not establish game approval. Use only where permitted.\n\nKnown anti-cheat/system blocks remain enforced. Disable restores hook entry points; restart the game to remove the module fully.\n\nEnable for this selected game now?"; color: Theme.text; font.pixelSize: Theme.px(13); wrapMode: Text.Wrap } }
         onAccepted: app.action("enableHook",{confirmed:true})
     }
     Popup {

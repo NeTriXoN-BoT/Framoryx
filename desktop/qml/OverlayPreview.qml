@@ -64,10 +64,13 @@ Rectangle {
         }
         FrameGraph { visible: hud.bar && (app.options.fields&16)!==0; anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(12); height: Theme.px(25); samples: app.state.live?app.graph:stage.sample?[7,6.9,9,7,7,8,7,6.8,7,7,12,6.9]:[] }
         DragHandler {
+            id: placement
+            target: null
+            property point startScene: Qt.point(0,0)
+            property point startPosition: Qt.point(0,0)
             enabled: stage.draggable
-            onActiveChanged: if(!active){app.setOption("hudX",Math.max(0,Math.min(1,hud.x/Math.max(1,stage.width-hud.width*hud.scale))));app.setOption("hudY",Math.max(0,Math.min(1,hud.y/Math.max(1,stage.height-hud.height*hud.scale))))}
-            xAxis.minimum: 0; xAxis.maximum: Math.max(0,stage.width-hud.width*hud.scale)
-            yAxis.minimum: 0; yAxis.maximum: Math.max(0,stage.height-hud.height*hud.scale)
+            onActiveChanged: if(active){startScene=centroid.scenePosition;startPosition=Qt.point(hud.x,hud.y)}
+            onCentroidChanged: if(active){app.setOption("hudX",Math.max(0,Math.min(1,(startPosition.x+centroid.scenePosition.x-startScene.x)/Math.max(1,stage.width-hud.width*hud.scale))));app.setOption("hudY",Math.max(0,Math.min(1,(startPosition.y+centroid.scenePosition.y-startScene.y)/Math.max(1,stage.height-hud.height*hud.scale))))}
         }
     }
 }

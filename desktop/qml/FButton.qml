@@ -7,8 +7,11 @@ Button {
     property bool danger: false
     property string hint: ""
     implicitHeight: Theme.px(42)
-    implicitWidth: Math.max(Theme.px(96), label.implicitWidth + Theme.px(30))
-    padding: Theme.px(14)
+    implicitWidth: Math.ceil(Math.max(Theme.px(96), label.implicitWidth + leftPadding + rightPadding + 3))
+    leftPadding: Theme.px(text.length<=2?5:16)
+    rightPadding: leftPadding
+    topPadding: Theme.px(8)
+    bottomPadding: topPadding
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
     Accessible.name: text
