@@ -156,7 +156,7 @@ ApplicationWindow {
                     Connections { target: window; function onPageChanged(){scroll.contentItem.contentY=0;pageEnter.restart()} }
                     NumberAnimation { id: pageEnter; target: pageHost; property: "opacity"; from: Theme.motion?.7:1; to: 1; duration: Theme.duration; easing.type: Easing.OutCubic }
                 }
-                Text { text: app.state.notice||"Ready when you are."; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.bottomMargin: Theme.px(32) }
+                Text { textFormat: Text.PlainText; text: app.state.notice||"Ready when you are."; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.bottomMargin: Theme.px(32) }
             }
             contentHeight: column.implicitHeight+Theme.px(48)
         }
@@ -206,7 +206,7 @@ ApplicationWindow {
         width: Math.min(window.width-Theme.px(50),Theme.px(510))
         padding: Theme.px(18)
         background: Rectangle { color: "#20333e"; radius: Theme.px(12); border.color: toast.severity==="error"?Theme.red:toast.severity==="warning"?Theme.amber:Theme.accent }
-        contentItem: Text { text: toast.message; color: Theme.text; font.pixelSize: Theme.font(13); wrapMode: Text.Wrap }
+        contentItem: Text { textFormat: Text.PlainText; text: toast.message; color: Theme.text; font.pixelSize: Theme.font(13); wrapMode: Text.Wrap }
         Timer { id: toastTimer; interval: 5500; onTriggered: toast.close() }
     }
     Connections { target: app; function onToast(text,severity){toast.message=text;toast.severity=severity;toast.open();toastTimer.restart()} function onShowRequested(){window.show();window.raise();window.requestActivate()} }

@@ -33,7 +33,7 @@ ColumnLayout {
                 Rectangle { width: Theme.px(9); height: width; radius: width/2; color: release.index===0?Theme.accent:Theme.muted }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Text { text: modelData.version+(release.index===0?" · CURRENT DEVELOPMENT":" · RELEASED"); color: release.index===0?Theme.accent:Theme.muted; font.family: "monospace"; font.pixelSize: Theme.font(10); font.letterSpacing: 1 }
+                    Text { text: modelData.version+(release.index===0?" · CURRENT RELEASE":" · RELEASED"); color: release.index===0?Theme.accent:Theme.muted; font.family: "monospace"; font.pixelSize: Theme.font(10); font.letterSpacing: 1 }
                     Text { text: modelData.title; color: Theme.text; font.pixelSize: Theme.font(19); font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 }
                 FButton { text: release.expanded||search.text.length?"Collapse":"Read changes"; quiet: true; onClicked: {if(search.text.length)search.clear();release.expanded=!release.expanded} }

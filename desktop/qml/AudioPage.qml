@@ -10,7 +10,7 @@ ColumnLayout {
         Layout.fillWidth: true
         visible: !page.microphone
         Text { text: "Feel every detail."; color: Theme.text; font.pixelSize: Theme.font(26); font.weight: Font.DemiBold }
-        Text { text: app.state.outputName||"Default playback device"; color: Theme.muted; font.pixelSize: Theme.font(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Text { textFormat: Text.PlainText; text: app.state.outputName||"Default playback device"; color: Theme.muted; font.pixelSize: Theme.font(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
         RowLayout {
             Layout.fillWidth: true
             FSlider { objectName: "output-volume-slider"; Layout.fillWidth: true; from: 0; to: 200; stepSize: 1; value: app.volume; Accessible.name: "Output volume, zero to two hundred percent"; onMoved: app.setOption("volume",Math.round(value)) }

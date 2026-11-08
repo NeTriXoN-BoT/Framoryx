@@ -169,7 +169,6 @@ class HardwareBackend {
         }
         for(auto it=gpu.begin();it!=gpu.end();++it)values[it.key()]=it.value();
         if(!gpu.isEmpty()||cpu)values["sensorSource"]="Read-only Linux DRM and hwmon sensors. CPU temperature is the hottest exposed CPU sensor; GPU readings belong to one adapter.";
-        std::optional<double> clock;
         int count=0;double sum=0;for(const auto& cpuDir:QDir(sys+"/devices/system/cpu").entryList({"cpu[0-9]*"},QDir::Dirs)){const auto value=number(sys+"/devices/system/cpu/"+cpuDir+"/cpufreq/scaling_cur_freq",1000.);if(value&&*value<=10000){sum+=*value;++count;}}
         if(count)values["cpuClock"]=sum/count;
     }

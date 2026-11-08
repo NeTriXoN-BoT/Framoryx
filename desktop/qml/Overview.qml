@@ -40,7 +40,7 @@ ColumnLayout {
     FCard {
         Layout.fillWidth: true
         RowLayout { Layout.fillWidth: true; Text { text: "Hardware, in view."; color: Theme.text; font.pixelSize: Theme.font(21); font.weight: Font.DemiBold; Layout.fillWidth: true } Text { text: "LIVE · 1 SECOND"; color: Theme.accent; font.family: "monospace"; font.pixelSize: Theme.font(9) } }
-        Text { text: app.state.gpuName||"Checking available GPU sensors…"; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Text { textFormat: Text.PlainText; text: app.state.gpuName||"Checking available GPU sensors…"; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
         GridLayout {
             Layout.fillWidth: true; columns: page.width>Theme.px(1050)?4:2; columnSpacing: Theme.px(12); rowSpacing: Theme.px(12)
             Repeater {

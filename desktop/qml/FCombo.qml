@@ -8,6 +8,7 @@ ComboBox {
     font.pixelSize: Math.max(11,Theme.px(13))
     leftPadding: Theme.px(13); rightPadding: Theme.px(34)
     contentItem: Text {
+        textFormat: Text.PlainText
         text: control.displayText
         color: control.enabled ? Theme.text : Theme.muted
         font: control.font
@@ -22,7 +23,7 @@ ComboBox {
         width: control.width
         height: Theme.px(38)
         highlighted: control.highlightedIndex === index
-        contentItem: Text { text: control.textRole.length ? modelData[control.textRole] : modelData; color: highlighted ? Theme.accent : Theme.text; font: control.font; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter }
+        contentItem: Text { textFormat: Text.PlainText; text: control.textRole.length ? modelData[control.textRole] : modelData; color: highlighted ? Theme.accent : Theme.text; font: control.font; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter }
         background: Rectangle { color: highlighted ? "#26443f" : Theme.raised; radius: Theme.px(6) }
     }
     popup: Popup {
