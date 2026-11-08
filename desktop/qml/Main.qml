@@ -60,8 +60,8 @@ ApplicationWindow {
                         mipmap: true; smooth: true
                         SequentialAnimation on scale { loops: Animation.Infinite; running: Theme.motion; NumberAnimation { from: 1; to: 1.045; duration: 3000; easing.type: Easing.InOutSine } NumberAnimation { from: 1.045; to: 1; duration: 3000; easing.type: Easing.InOutSine } }
                     }
-                    Text { text: "FRAMORYX"; x: Theme.px(4); y: Theme.px(78); color: Theme.text; font.pixelSize: Theme.px(20); font.weight: Font.Bold; font.letterSpacing: .8 }
-                    Text { text: "PLAY AT YOUR BEST"; x: Theme.px(5); y: Theme.px(109); color: Theme.muted; font.pixelSize: Theme.px(8); font.letterSpacing: 1.2 }
+                    Text { text: "FRAMORYX"; x: Theme.px(4); y: Theme.px(78); color: Theme.text; font.pixelSize: Theme.font(20); font.weight: Font.Bold; font.letterSpacing: .8 }
+                    Text { text: "PLAY AT YOUR BEST"; x: Theme.px(5); y: Theme.px(109); color: Theme.muted; font.pixelSize: Theme.font(8); font.letterSpacing: 1.2 }
                 }
                 Repeater {
                     model: ["Overview","Overlay Studio","Audio","Games & pacing","Process control","Settings & setup","What’s new"]
@@ -69,6 +69,7 @@ ApplicationWindow {
                         required property int index
                         required property string modelData
                         text: modelData
+                        hint: modelData
                         objectName: "navigation-"+index
                         Layout.fillWidth: true
                         implicitHeight: Theme.px(46)
@@ -79,8 +80,8 @@ ApplicationWindow {
                 }
                 Item { Layout.fillHeight: true }
                 FToggle { text: "Motion effects"; checked: app.options.motion; Layout.fillWidth: true; onToggled: app.setOption("motion",checked) }
-                Text { text: "FRAMORYX 0.3.0 · "+app.platformName.toUpperCase(); color: Theme.muted; font.pixelSize: Theme.px(8); Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.topMargin: Theme.px(12) }
-                Text { text: app.platformName==="Windows"?"UNSIGNED BUILD":"NATIVE LINUX"; color: app.platformName==="Windows"?Theme.amber:Theme.accent; font.pixelSize: Theme.px(8); font.letterSpacing: 1 }
+                Text { text: "FRAMORYX 0.3.0 · "+app.platformName.toUpperCase(); color: Theme.muted; font.pixelSize: Theme.font(8); Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.topMargin: Theme.px(12) }
+                Text { text: app.platformName==="Windows"?"UNSIGNED BUILD":"NATIVE LINUX"; color: app.platformName==="Windows"?Theme.amber:Theme.accent; font.pixelSize: Theme.font(8); font.letterSpacing: 1 }
                 }
             }
         }
@@ -99,14 +100,14 @@ ApplicationWindow {
                     Layout.fillWidth: true; implicitHeight: Theme.px(152); radius: Theme.px(17); color: "#14232c"; border.color: Theme.border
                     Backdrop { anchors.fill: parent; anchors.margins: 1 }
                     ColumnLayout { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Theme.px(28); width: parent.width-Theme.px(50); spacing: Theme.px(10)
-                        Text { text: "FRAMORYX // PERFORMANCE SYSTEM"; color: Theme.accent; font.family: "monospace"; font.pixelSize: Theme.px(9); font.letterSpacing: 1.4 }
+                        Text { text: "FRAMORYX // PERFORMANCE SYSTEM"; color: Theme.accent; font.family: "monospace"; font.pixelSize: Theme.font(9); font.letterSpacing: 1.4 }
                         Item { Layout.fillWidth: true; implicitHeight: headline.implicitHeight
-                            Text { id: headline; width: parent.width-Theme.px(20); text: window.titles[window.page].toUpperCase(); color: Theme.text; font.family: app.platformName==="Windows"?"Consolas":"monospace"; font.pixelSize: Theme.px(25); font.weight: Font.DemiBold; font.letterSpacing: -.5; wrapMode: Text.Wrap }
+                            Text { id: headline; width: parent.width-Theme.px(20); text: window.titles[window.page].toUpperCase(); color: Theme.text; font.family: app.platformName==="Windows"?"Consolas":"monospace"; font.pixelSize: Theme.font(25); font.weight: Font.DemiBold; font.letterSpacing: -.5; wrapMode: Text.Wrap }
                             Rectangle { x: Math.min(headline.contentWidth,headline.width)+Theme.px(7); y: headline.height-Theme.px(25); width: Theme.px(11); height: Theme.px(24); color: Theme.accent; opacity: 1
                                 SequentialAnimation on opacity { running: Theme.motion&&visible; loops: Animation.Infinite; PauseAnimation { duration: 560 } NumberAnimation { to: 0; duration: 80 } PauseAnimation { duration: 360 } NumberAnimation { to: 1; duration: 80 } }
                             }
                         }
-                        Text { text: window.subtitles[window.page]; color: Theme.muted; font.pixelSize: Theme.px(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                        Text { text: window.subtitles[window.page]; color: Theme.muted; font.pixelSize: Theme.font(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
                     }
                 }
                 FCard {
@@ -124,14 +125,14 @@ ApplicationWindow {
                             onActivated: app.selectGame(entries[currentIndex].id)
                         }
                         FButton { text: "Refresh"; visible: column.width>Theme.px(780); onClicked: app.action("refresh") }
-                        FButton { text: app.state.capture?"Stop capture":app.platformName==="Linux"?"Launch & capture":"Start capture"; primary: true; onClicked: app.action("capture") }
+                        FButton { text: app.state.capture?"Stop capture":"Start capture"; primary: true; onClicked: app.action("capture") }
                     }
                 }
                 FCard {
                     Layout.fillWidth: true; padding: Theme.px(13)
                     RowLayout { Layout.fillWidth: true
                         Rectangle { width: Theme.px(7); height: width; radius: width/2; color: app.state.antiCheatStatus==="detected"?Theme.amber:Theme.muted }
-                        Text { text: app.state.antiCheatStatus==="detected"?"Anti-cheat indicators detected":app.state.antiCheatStatus==="no-known-indicator"?"No known anti-cheat indicators · approval unverified":"Anti-cheat status unknown · external overlay preferred"; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                        Text { text: app.state.antiCheatStatus==="detected"?"Anti-cheat indicators detected":app.state.antiCheatStatus==="no-known-indicator"?"No known anti-cheat indicators · approval unverified":"Anti-cheat status unknown · external overlay preferred"; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
                         FButton { text: "Details"; quiet: true; implicitHeight: Theme.px(30); onClicked: window.page=5 }
                     }
                 }
@@ -151,11 +152,11 @@ ApplicationWindow {
                             sourceComponent: [overview,studio,audio,games,rules,settings,changes][index]
                         }
                     }
-                    Text { anchors.centerIn: parent; visible: {const loader=pages.itemAt(window.page);return !loader||loader.status!==Loader.Ready} text: "Preparing your workspace…"; color: Theme.muted; font.pixelSize: Theme.px(13) }
+                    Text { anchors.centerIn: parent; visible: {const loader=pages.itemAt(window.page);return !loader||loader.status!==Loader.Ready} text: "Preparing your workspace…"; color: Theme.muted; font.pixelSize: Theme.font(13) }
                     Connections { target: window; function onPageChanged(){scroll.contentItem.contentY=0;pageEnter.restart()} }
                     NumberAnimation { id: pageEnter; target: pageHost; property: "opacity"; from: Theme.motion?.7:1; to: 1; duration: Theme.duration; easing.type: Easing.OutCubic }
                 }
-                Text { text: app.state.notice||"Ready when you are."; color: Theme.muted; font.pixelSize: Theme.px(12); Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.bottomMargin: Theme.px(32) }
+                Text { text: app.state.notice||"Ready when you are."; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.bottomMargin: Theme.px(32) }
             }
             contentHeight: column.implicitHeight+Theme.px(48)
         }
@@ -182,7 +183,7 @@ ApplicationWindow {
         title: "Add to your library"
         standardButtons: Dialog.Save|Dialog.Cancel
         background: Rectangle { color: Theme.surface; radius: Theme.px(15); border.color: Theme.border }
-        contentItem: ColumnLayout { spacing: Theme.px(14); TextField { id: gameName; Layout.fillWidth: true; placeholderText: "Game name (optional)"; color: Theme.text; selectByMouse: true } TextField { id: gameArgs; Layout.fillWidth: true; placeholderText: "Launch arguments (optional)"; color: Theme.text; selectByMouse: true } Text { text: "Launch arguments are passed directly to the game. Framoryx does not run them through a shell."; color: Theme.muted; font.pixelSize: Theme.px(12); wrapMode: Text.Wrap; Layout.fillWidth: true } }
+        contentItem: ColumnLayout { spacing: Theme.px(14); TextField { id: gameName; Layout.fillWidth: true; placeholderText: "Game name (optional)"; color: Theme.text; selectByMouse: true } TextField { id: gameArgs; Layout.fillWidth: true; placeholderText: "Launch arguments (optional)"; color: Theme.text; selectByMouse: true } Text { text: "Launch arguments are passed directly to the game. Framoryx does not run them through a shell."; color: Theme.muted; font.pixelSize: Theme.font(12); wrapMode: Text.Wrap; Layout.fillWidth: true } }
         onAccepted: {app.addGame(window.chosenGamePath,gameName.text,gameArgs.text);gameName.clear();gameArgs.clear()}
     }
     Dialog {
@@ -194,7 +195,7 @@ ApplicationWindow {
         title: "Enable experimental in-game features?"
         standardButtons: Dialog.Yes|Dialog.Cancel
         background: Rectangle { color: Theme.surface; radius: Theme.px(15); border.color: Theme.border }
-        contentItem: ScrollView { clip: true; Text { width: parent.width; text: "This loads the Framoryx DX11/DX12 module into the selected game for an in-game overlay and frame limiting.\n\nGame hooks can cause crashes or anti-cheat bans. An allow list or clear scan does not establish game approval. Use only where permitted.\n\nKnown anti-cheat/system blocks remain enforced. Disable restores hook entry points; restart the game to remove the module fully.\n\nUse at your own risk. You are responsible for checking the game’s rules. Framoryx’s maintainers accept no responsibility for bans, suspensions or other consequences of its use.\n\nEnable for this selected game now?"; color: Theme.text; font.pixelSize: Theme.px(13); wrapMode: Text.Wrap } }
+        contentItem: ScrollView { clip: true; Text { width: parent.width; text: "This loads the Framoryx DX11/DX12 module into the selected game for an in-game overlay and frame limiting.\n\nGame hooks can cause crashes or anti-cheat bans. An allow list or clear scan does not establish game approval. Use only where permitted.\n\nKnown anti-cheat/system blocks remain enforced. Disable restores hook entry points; restart the game to remove the module fully.\n\nUse at your own risk. You are responsible for checking the game’s rules. Framoryx’s maintainers accept no responsibility for bans, suspensions or other consequences of its use.\n\nEnable for this selected game now?"; color: Theme.text; font.pixelSize: Theme.font(13); wrapMode: Text.Wrap } }
         onAccepted: app.action("enableHook",{confirmed:true})
     }
     Popup {
@@ -205,7 +206,7 @@ ApplicationWindow {
         width: Math.min(window.width-Theme.px(50),Theme.px(510))
         padding: Theme.px(18)
         background: Rectangle { color: "#20333e"; radius: Theme.px(12); border.color: toast.severity==="error"?Theme.red:toast.severity==="warning"?Theme.amber:Theme.accent }
-        contentItem: Text { text: toast.message; color: Theme.text; font.pixelSize: Theme.px(13); wrapMode: Text.Wrap }
+        contentItem: Text { text: toast.message; color: Theme.text; font.pixelSize: Theme.font(13); wrapMode: Text.Wrap }
         Timer { id: toastTimer; interval: 5500; onTriggered: toast.close() }
     }
     Connections { target: app; function onToast(text,severity){toast.message=text;toast.severity=severity;toast.open();toastTimer.restart()} function onShowRequested(){window.show();window.raise();window.requestActivate()} }

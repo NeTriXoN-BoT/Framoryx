@@ -15,7 +15,7 @@ ComboBox {
         elide: Text.ElideRight
     }
     background: Rectangle { color: control.hovered ? "#223643" : Theme.raised; radius: Theme.px(9); border.width: control.visualFocus ? 2 : 1; border.color: control.visualFocus ? Theme.accent : Theme.border }
-    indicator: Text { text: "⌄"; color: Theme.muted; font.pixelSize: Theme.px(18); x: control.width - width - Theme.px(13); y: (control.height-height)/2 }
+    indicator: Text { text: "⌄"; color: Theme.muted; font.pixelSize: Theme.font(18); x: control.width - width - Theme.px(13); y: (control.height-height)/2 }
     delegate: ItemDelegate {
         required property int index
         required property var modelData

@@ -19,27 +19,27 @@ ColumnLayout {
         FCard {
             Layout.fillWidth: true
             Layout.preferredWidth: Theme.px(660)
-            RowLayout { Layout.fillWidth: true; Text { text: "Frame pacing"; color: Theme.text; font.pixelSize: Theme.px(19); font.weight: Font.DemiBold; Layout.fillWidth: true } Text { text: app.state.renderer||"Waiting for renderer"; color: Theme.muted; font.pixelSize: Theme.px(11); elide: Text.ElideRight; Layout.maximumWidth: Theme.px(260) } }
+            RowLayout { Layout.fillWidth: true; Text { text: "Frame pacing"; color: Theme.text; font.pixelSize: Theme.font(19); font.weight: Font.DemiBold; Layout.fillWidth: true } Text { text: app.state.renderer||"Waiting for renderer"; color: Theme.muted; font.pixelSize: Theme.font(11); elide: Text.ElideRight; Layout.maximumWidth: Theme.px(260) } }
             FrameGraph { Layout.fillWidth: true; Layout.preferredHeight: Theme.px(220); samples: app.graph }
-            RowLayout { Layout.fillWidth: true; Text { text: "Earlier"; color: Theme.muted; font.pixelSize: Theme.px(10); Layout.fillWidth: true } Text { text: "Now"; color: Theme.muted; font.pixelSize: Theme.px(10) } }
+            RowLayout { Layout.fillWidth: true; Text { text: "Earlier"; color: Theme.muted; font.pixelSize: Theme.font(10); Layout.fillWidth: true } Text { text: "Now"; color: Theme.muted; font.pixelSize: Theme.font(10) } }
         }
         FCard {
             Layout.fillWidth: true
             Layout.preferredWidth: Theme.px(300)
-            Text { text: "System pulse"; color: Theme.text; font.pixelSize: Theme.px(19); font.weight: Font.DemiBold }
-            Text { text: "PROCESSOR"; color: Theme.muted; font.pixelSize: Theme.px(10); font.letterSpacing: 1 }
-            Text { text: Math.round(app.state.cpu||0)+"%"; color: Theme.accent; font.pixelSize: Theme.px(32); font.weight: Font.DemiBold }
+            Text { text: "System pulse"; color: Theme.text; font.pixelSize: Theme.font(19); font.weight: Font.DemiBold }
+            Text { text: "PROCESSOR"; color: Theme.muted; font.pixelSize: Theme.font(10); font.letterSpacing: 1 }
+            Text { text: Math.round(app.state.cpu||0)+"%"; color: Theme.accent; font.pixelSize: Theme.font(32); font.weight: Font.DemiBold }
             ProgressBar { Layout.fillWidth: true; value: (app.state.cpu||0)/100; implicitHeight: Theme.px(5); background: Rectangle { color: Theme.border; radius: 3 } contentItem: Item { Rectangle { width: parent.width*parent.parent.position; height: 5; radius: 3; color: Theme.accent } } }
             Item { Layout.preferredHeight: Theme.px(8) }
-            Text { text: "MEMORY"; color: Theme.muted; font.pixelSize: Theme.px(10); font.letterSpacing: 1 }
-            Text { text: Number(app.state.ram||0).toFixed(1)+" GB"; color: Theme.text; font.pixelSize: Theme.px(30); font.weight: Font.DemiBold }
-            Text { text: "of "+Number(app.state.totalRam||0).toFixed(1)+" GB system RAM"; color: Theme.muted; font.pixelSize: Theme.px(12) }
+            Text { text: "MEMORY"; color: Theme.muted; font.pixelSize: Theme.font(10); font.letterSpacing: 1 }
+            Text { text: Number(app.state.ram||0).toFixed(1)+" GB"; color: Theme.text; font.pixelSize: Theme.font(30); font.weight: Font.DemiBold }
+            Text { text: "of "+Number(app.state.totalRam||0).toFixed(1)+" GB system RAM"; color: Theme.muted; font.pixelSize: Theme.font(12) }
         }
     }
     FCard {
         Layout.fillWidth: true
-        RowLayout { Layout.fillWidth: true; Text { text: "Hardware, in view."; color: Theme.text; font.pixelSize: Theme.px(21); font.weight: Font.DemiBold; Layout.fillWidth: true } Text { text: "LIVE · 1 SECOND"; color: Theme.accent; font.family: "monospace"; font.pixelSize: Theme.px(9) } }
-        Text { text: app.state.gpuName||"Checking available GPU sensors…"; color: Theme.muted; font.pixelSize: Theme.px(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        RowLayout { Layout.fillWidth: true; Text { text: "Hardware, in view."; color: Theme.text; font.pixelSize: Theme.font(21); font.weight: Font.DemiBold; Layout.fillWidth: true } Text { text: "LIVE · 1 SECOND"; color: Theme.accent; font.family: "monospace"; font.pixelSize: Theme.font(9) } }
+        Text { text: app.state.gpuName||"Checking available GPU sensors…"; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
         GridLayout {
             Layout.fillWidth: true; columns: page.width>Theme.px(1050)?4:2; columnSpacing: Theme.px(12); rowSpacing: Theme.px(12)
             Repeater {
@@ -53,9 +53,9 @@ ColumnLayout {
                 }
             }
         }
-        Text { text: typeof app.state.vramUsed==="number"&&typeof app.state.vramTotal==="number"?Number(app.state.vramUsed).toFixed(1)+" / "+Number(app.state.vramTotal).toFixed(1)+" GB dedicated GPU memory":"Dedicated GPU memory capacity is unavailable."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
-        Text { text: app.state.sensorSource||"Sensors are read in the background. Unsupported values remain unavailable."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
-        RowLayout { visible: app.platformName==="Windows"; Layout.fillWidth: true; FButton { text: "Temperature setup"; quiet: true; onClicked: app.action("sensorGuide") } Text { text: "CPU temperatures can use an existing Libre Hardware Monitor WMI provider. Framoryx does not install a sensor driver."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap } }
+        Text { text: typeof app.state.vramUsed==="number"&&typeof app.state.vramTotal==="number"?Number(app.state.vramUsed).toFixed(1)+" / "+Number(app.state.vramTotal).toFixed(1)+" GB dedicated GPU memory":"Dedicated GPU memory capacity is unavailable."; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Text { text: app.state.sensorSource||"Sensors are read in the background. Unsupported values remain unavailable."; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        RowLayout { visible: app.platformName==="Windows"; Layout.fillWidth: true; FButton { text: "Temperature setup"; quiet: true; onClicked: app.action("sensorGuide") } Text { text: "CPU temperatures can use an existing Libre Hardware Monitor WMI provider. Framoryx does not install a sensor driver."; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap } }
     }
     FCard {
         Layout.fillWidth: true
@@ -66,6 +66,6 @@ ColumnLayout {
             FButton { text: "Export capture"; enabled: app.state.average>0; onClicked: shell.exportCapture() }
             FButton { text: "Open test scene"; onClicked: app.action("fixture") }
         }
-        Text { Layout.fillWidth: true; text: app.platformName==="Linux"?"Select a running X11 game for external capture, or choose an explicit game layer in Overlay Studio.":"Choose a running game or leave Auto selected, then start capture. Your data stays local."; color: Theme.muted; font.pixelSize: Theme.px(12); wrapMode: Text.Wrap }
+        Text { Layout.fillWidth: true; text: app.platformName==="Linux"?"Select a running X11 game for external capture, or choose an explicit game layer in Overlay Studio.":"Choose a running game or leave Auto selected, then start capture. Your data stays local."; color: Theme.muted; font.pixelSize: Theme.font(12); wrapMode: Text.Wrap }
     }
 }

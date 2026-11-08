@@ -13,5 +13,5 @@ Item {
         antialiasing: true
         ShapePath { strokeColor: chart.lineColor; strokeWidth: Theme.px(1.7); fillColor: "transparent"; PathPolyline { path: chart.visible ? chart.points() : [] } }
     }
-    Text { anchors.centerIn: parent; visible: chart.samples.length<2; text: "Your game's frame times will appear here"; color: Theme.muted; font.pixelSize: Theme.px(13) }
+    Text { anchors.centerIn: parent; visible: chart.samples.length<2; text: "Your game's frame times will appear here"; color: Theme.muted; font.pixelSize: Theme.font(13) }
 }

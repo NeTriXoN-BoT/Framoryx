@@ -14,4 +14,5 @@ QtObject {
     readonly property color red: "#ff8b96"
     readonly property int duration: motion ? 170 : 0
     function px(value) { return Math.round(value * scale) }
+    function font(value) { return Math.max(10,Math.round(value * scale)) }
 }

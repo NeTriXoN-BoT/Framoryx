@@ -9,8 +9,9 @@ class MangoClient final : public QObject {
     Q_OBJECT
 public:
     explicit MangoClient(QObject* parent=nullptr);
-    void start(const QString& prefix);
+    void start(const QString& prefix,bool collecting=true);
     void stop();
+    void setCollecting(bool collecting);
     void reload();
     void configure(const QVariantMap& options,bool visible);
     void metrics(const QVariantMap& state);
@@ -18,6 +19,7 @@ public:
 signals:
     void frames(const QList<double>& durations,quint32 pid);
     void connectedToGame(quint32 pid);
+    void disconnectedFromGame();
     void lostSamples(quint64 count);
 private:
     QLocalSocket m_socket;
@@ -30,7 +32,7 @@ private:
     quint32 m_pid=0;
     quint64 m_dropped=0;
     qint64 m_retry=0,m_connectTime=0;
-    bool m_verified=false,m_supported=false;
+    bool m_verified=false,m_supported=false,m_collecting=true;
     void poll();
     void receive();
 };

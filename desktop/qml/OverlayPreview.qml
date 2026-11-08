@@ -10,7 +10,7 @@ Rectangle {
     implicitHeight: Theme.px(320)
     Repeater { model: 14; Rectangle { required property int index; x: index*stage.width/13; width: 1; height: stage.height; color: "#172934" } }
     Repeater { model: 9; Rectangle { required property int index; y: index*stage.height/8; height: 1; width: stage.width; color: "#172934" } }
-    Text { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(12); text: stage.draggable ? "Drag to place · live sizing preview" : ""; color: Theme.muted; opacity: .7; font.pixelSize: Theme.px(10) }
+    Text { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(12); text: stage.draggable ? "Drag to place · live sizing preview" : ""; color: Theme.muted; opacity: .7; font.pixelSize: Theme.font(10) }
     OverlayReadouts {
         id: hud
         sample: stage.sample

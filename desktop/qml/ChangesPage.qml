@@ -11,8 +11,8 @@ ColumnLayout {
             Layout.fillWidth: true
             ColumnLayout {
                 Layout.fillWidth: true
-                Text { text: "Built frame by frame."; color: Theme.text; font.pixelSize: Theme.px(24); font.weight: Font.DemiBold }
-                Text { text: "The full change history travels with your app. No internet connection is needed to read it."; color: Theme.muted; font.pixelSize: Theme.px(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                Text { text: "Built frame by frame."; color: Theme.text; font.pixelSize: Theme.font(24); font.weight: Font.DemiBold }
+                Text { text: "The full change history travels with your app. No internet connection is needed to read it."; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
             }
             FButton { text: "Latest download"; onClicked: app.action("release") }
         }
@@ -33,8 +33,8 @@ ColumnLayout {
                 Rectangle { width: Theme.px(9); height: width; radius: width/2; color: release.index===0?Theme.accent:Theme.muted }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Text { text: modelData.version+(release.index===0?" · CURRENT DEVELOPMENT":" · RELEASED"); color: release.index===0?Theme.accent:Theme.muted; font.family: "monospace"; font.pixelSize: Theme.px(10); font.letterSpacing: 1 }
-                    Text { text: modelData.title; color: Theme.text; font.pixelSize: Theme.px(19); font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                    Text { text: modelData.version+(release.index===0?" · CURRENT DEVELOPMENT":" · RELEASED"); color: release.index===0?Theme.accent:Theme.muted; font.family: "monospace"; font.pixelSize: Theme.font(10); font.letterSpacing: 1 }
+                    Text { text: modelData.title; color: Theme.text; font.pixelSize: Theme.font(19); font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 }
                 FButton { text: release.expanded||search.text.length?"Collapse":"Read changes"; quiet: true; onClicked: {if(search.text.length)search.clear();release.expanded=!release.expanded} }
             }
@@ -46,7 +46,7 @@ ColumnLayout {
                 wrapMode: Text.Wrap
                 color: Theme.muted
                 linkColor: Theme.accent
-                font.pixelSize: Theme.px(13)
+                font.pixelSize: Theme.font(13)
                 lineHeight: 1.2
                 onLinkActivated: function(link){if(String(link).indexOf("https://")===0)Qt.openUrlExternally(link);else Qt.openUrlExternally("https://github.com/NeTriXoN-BoT/framoryx/blob/main/docs/releases/"+link)}
             }

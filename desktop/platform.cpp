@@ -113,19 +113,17 @@ void Platform::start(){
     m_passive=std::make_unique<PassiveCapture>(this);
     m_mango=std::make_unique<MangoClient>(this);
     connect(m_mango.get(),&MangoClient::frames,this,[this](const QList<double>& times,quint32 pid){if(m_monitoring&&!c->m_state["externalCapture"].toBool())c->sampleFrames(times,c->m_state["profileExe"].toString(),pid);});
-    connect(m_mango.get(),&MangoClient::connectedToGame,this,[this](quint32 pid){c->setState("profilePid",pid);m_mango->configure(c->m_options,c->m_state["overlay"].toBool()&&c->m_options["linuxOverlayMode"].toInt()==2);c->setState("overlayHint","Connected to the game. Overlay and frame-limit changes apply live; frame telemetry stays in bounded memory.");});
+    connect(m_mango.get(),&MangoClient::connectedToGame,this,[this](quint32 pid){c->setState("profilePid",pid);c->setState("gameRunning",true);m_mango->configure(c->m_options,c->m_state["overlay"].toBool()&&c->m_options["linuxOverlayMode"].toInt()==2);c->setState("overlayHint","Connected to the game. Overlay and frame-limit changes apply live; frame telemetry stays in bounded memory.");});
+    connect(m_mango.get(),&MangoClient::disconnectedFromGame,this,[this]{c->setState("gameRunning",false);});
     connect(m_mango.get(),&MangoClient::lostSamples,this,[this](quint64 count){c->setState("droppedFrameSamples",count);});
     c->setState("connected",true);linuxScan();
     m_scanTimer.setInterval(5000);connect(&m_scanTimer,&QTimer::timeout,this,&Platform::linuxScan);m_scanTimer.start();
-    connect(&m_game,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this](int code,QProcess::ExitStatus status){c->setState("gameRunning",false);c->setState("capture",false);if(status==QProcess::CrashExit||code)c->notify("The game exited. Its launch diagnostics are available in Compatibility.","warning");});
-    connect(&m_game,&QProcess::errorOccurred,this,[this](QProcess::ProcessError error){if(error==QProcess::FailedToStart)c->notify("The game could not start. Check its executable and launch arguments.","error");});
-    connect(&m_game,&QProcess::readyReadStandardError,this,[this]{const auto text=QString::fromUtf8(m_game.readAllStandardError()).right(8192);c->setState("gameDiagnostic",text);});
-    connect(&m_game,&QProcess::readyReadStandardOutput,this,[this]{m_game.readAllStandardOutput();});
     applyOptions();
 #endif
     refresh();
 #ifndef Q_OS_WIN
     if(c->m_options["autoCapture"].toBool()){m_monitoring=true;c->setState("externalCapture",c->m_options["linuxOverlayMode"].toInt()!=2);c->setState("capture",true);c->notify("Automatic capture is armed for monitored game launches. No game is launched automatically.");}
+    if(c->m_options["linuxOverlayMode"].toInt()==2&&m_mango)m_mango->start(mangoPrefix(),m_monitoring);
 #endif
 }
 void Platform::send(const QJsonObject& input){
@@ -206,13 +204,13 @@ void Platform::select(const QString& id){
     QJsonObject request{{"action","select"},{"id",id}};for(const auto& item:c->m_games)if(item.toMap()["id"]==id)request["exe"]=QFileInfo(item.toMap()["executable"].toString()).fileName();send(request);
 #else
     if(m_passive)m_passive->stop();if(m_mango)m_mango->stop();c->m_livePid=0;c->m_store.clear();c->m_graph.clear();c->m_state["gameForeground"]=false;c->m_state["live"]=false;c->m_state["fps"]=0.;c->m_state["average"]=0.;c->m_state["low"]=0.;c->setState("selectedWindow",id);
-    for(const auto& value:c->m_games){const auto game=value.toMap();if(game["id"].toString()==id){c->m_state["profileExe"]=QFileInfo(game["executable"].toString()).fileName();c->m_state["profilePid"]=0;c->setState("game",game["name"]);if(m_monitoring)attachPassive();return;}}
+    for(const auto& value:c->m_games){const auto game=value.toMap();if(game["id"].toString()==id){c->m_state["profileExe"]=QFileInfo(game["executable"].toString()).fileName();c->m_state["profilePid"]=0;c->setState("game",game["name"]);if(c->m_options["linuxOverlayMode"].toInt()==2){if(m_mango)m_mango->start(mangoPrefix(),m_monitoring);}else if(m_monitoring)attachPassive();return;}}
     for(const auto& value:c->m_state["windows"].toList()){const auto window=value.toMap();if(window["id"].toString()==id)c->setState("game",window["name"]);}if(m_monitoring)attachPassive();
 #endif
 }
 void Platform::poll(){
 #ifndef Q_OS_WIN
-    if(m_monitoring&&m_mango&&m_mango->connected())m_mango->metrics(c->m_state);
+    if(m_mango&&m_mango->connected())m_mango->metrics(c->m_state);
     if(c->m_state["externalCapture"].toBool()){
         if(m_monitoring&&m_passive&&m_passive->running()){
         const auto times=m_passive->takeFrames();if(!times.isEmpty())c->sampleFrames(times,m_passiveName,m_passivePid);
@@ -220,7 +218,7 @@ void Platform::poll(){
         }
     }
     QFile stat("/proc/stat");if(stat.open(QIODevice::ReadOnly)){const auto parts=stat.readLine().simplified().split(' ');quint64 total=0,idle=0;for(int i=1;i<parts.size()&&i<=8;++i){const quint64 n=parts[i].toULongLong();total+=n;if(i==4||i==5)idle+=n;}if(m_oldCpuTotal&&total>m_oldCpuTotal)c->m_state["cpu"]=qBound(0.,100.*(1.-double(idle-m_oldCpuIdle)/double(total-m_oldCpuTotal)),100.);m_oldCpuTotal=total;m_oldCpuIdle=idle;}
-    QFile memory("/proc/meminfo");if(memory.open(QIODevice::ReadOnly)){quint64 total=0,available=0;while(!memory.atEnd()){const auto line=memory.readLine().simplified().split(' ');if(line.size()<2)continue;if(line[0]=="MemTotal:")total=line[1].toULongLong();if(line[0]=="MemAvailable:")available=line[1].toULongLong();}c->m_state["ram"]=double(total-std::min(total,available))/1048576.;c->m_state["totalRam"]=double(total)/1048576.;}
+    QFile memory("/proc/meminfo");if(memory.open(QIODevice::ReadOnly)){quint64 total=0,available=0;for(const auto& bytes:memory.read(1024*1024).split('\n')){const auto line=bytes.simplified().split(' ');if(line.size()<2)continue;if(line[0]=="MemTotal:")total=line[1].toULongLong();if(line[0]=="MemAvailable:")available=line[1].toULongLong();}if(total){c->m_state["ram"]=double(total-std::min(total,available))/1048576.;c->m_state["totalRam"]=double(total)/1048576.;}}
     emit c->stateChanged();
 #endif
 }
@@ -307,7 +305,7 @@ void Platform::linuxLaunch(){
     QStringList args;if(inProcess)args<<"--dlsym";if(c->m_options["gamescope"].toBool())args<<exe("gamescope")<<"-b"<<"-r"<<QString::number(c->m_options["cap"].toInt())<<"--";
     args<<file.absoluteFilePath();args+=unlock::arguments(QProcess::splitCommand(game["arguments"].toString()),game["unlock"].toBool()&&unlock::supported(file.absoluteFilePath()));
     m_game.setWorkingDirectory(file.absolutePath());QString program;if(inProcess)program=mangoExecutable();else {program=args.takeFirst();if(program.isEmpty())program=file.absoluteFilePath();}
-    m_game.setProgram(program);m_game.setArguments(args);m_game.setStandardOutputFile(QProcess::nullDevice());m_game.setStandardErrorFile(c->root()+"/game-launch.log");if(!m_game.startDetached(&m_launchedPid)){c->notify("The game could not start. Check its executable and launch arguments.","error");return;}m_lastLaunchId=c->m_options["selectedGame"].toString();m_launchStart=processStart(m_launchedPid);m_monitoring=true;c->m_state["profilePid"]=quint32(m_launchedPid);c->m_state["profileExe"]=file.fileName();c->m_state["profilePath"]=file.absoluteFilePath();c->m_state["gameRunning"]=true;c->m_state["capture"]=true;c->m_state["game"]=game["name"];c->m_state["externalCapture"]=!inProcess;c->m_state["renderer"]=inProcess?"MangoHud · Vulkan / OpenGL":"Waiting for X Present";c->m_state["launchTime"]=QDateTime::currentMSecsSinceEpoch();
+    m_game.setProgram(program);m_game.setArguments(args);m_game.setStandardOutputFile(QProcess::nullDevice());m_game.setStandardErrorFile(QProcess::nullDevice());if(!m_game.startDetached(&m_launchedPid)){c->notify("The game could not start. Check its executable and launch arguments.","error");return;}m_lastLaunchId=c->m_options["selectedGame"].toString();m_launchStart=processStart(m_launchedPid);m_monitoring=true;c->m_state["profilePid"]=quint32(m_launchedPid);c->m_state["profileExe"]=file.fileName();c->m_state["profilePath"]=file.absoluteFilePath();c->m_state["gameRunning"]=true;c->m_state["capture"]=true;c->m_state["game"]=game["name"];c->m_state["externalCapture"]=!inProcess;c->m_state["renderer"]=inProcess?"MangoHud · Vulkan / OpenGL":"Waiting for X Present";c->m_state["launchTime"]=QDateTime::currentMSecsSinceEpoch();
     c->notify(inProcess?"Launching with your explicitly enabled MangoHud layer and frame limit.":"Game launched. External capture is armed; no monitoring module was added to the game.");
     if(inProcess&&m_mango)m_mango->start(mangoPrefix());
 #endif
@@ -342,7 +340,7 @@ void Platform::linuxAudio(bool microphone,bool verified){
     }else add("bass","bq_lowshelf",{{"Freq",90},{"Q",.707},{"Gain",o["bass"].toInt()}});
     if(nodes.isEmpty()){c->notify("Choose a microphone effect before applying.");return;}
     const int headroom=microphone?(o["eq"].toBool()?std::max({0,o["low"].toInt(),o["mid"].toInt(),o["high"].toInt()}):0):o["bass"].toInt();
-    QJsonObject gain{{"type","builtin"},{"name","headroom"},{"label","linear"},{"control",QJsonObject{{"Mult",std::pow(10.,-headroom/20.)},{"Add",0.}}}};nodes.append(gain);links.append(QJsonObject{{"output",previous},{"input","headroom:In"}});previous="headroom:Out";
+    QJsonObject gain{{"type","builtin"},{"name","headroom"},{"label","mixer"},{"control",QJsonObject{{"Gain 1",std::pow(10.,-headroom/20.)}}}};nodes.append(gain);links.append(QJsonObject{{"output",previous},{"input","headroom:In 1"}});previous="headroom:Out";
     QJsonObject capture{{"node.name",microphone?"capture.framoryx_mic":"framoryx_output"},{"node.description",microphone?"Framoryx microphone input":"Framoryx Output"},{"audio.position",QJsonArray{microphone?"MONO":"FL",microphone?"MONO":"FR"}}};
     QJsonObject playback{{"node.name",microphone?"framoryx_mic":"playback.framoryx_output"},{"node.description",microphone?"Framoryx Microphone":"Framoryx output playback"}};
     if(microphone){capture["node.passive"]=true;capture["audio.rate"]=48000;capture["audio.channels"]=1;capture["audio.position"]=QJsonArray{"MONO"};playback["media.class"]="Audio/Source";playback["audio.rate"]=48000;playback["audio.channels"]=1;playback["audio.position"]=QJsonArray{"MONO"};
@@ -453,9 +451,9 @@ void Platform::action(const QString& name,const QVariantMap& args){
     if(name=="launch"){for(const auto& entry:c->m_games){const auto game=entry.toMap();if(game["id"]!=c->m_options["selectedGame"])continue;const QFileInfo file(game["executable"].toString());if(!file.isFile()||denied(c->m_options,file.fileName())){c->notify("This game is unavailable or blocked by your process rules.","warning");return;}QProcess launch;launch.setProgram(file.absoluteFilePath());launch.setWorkingDirectory(file.absolutePath());launch.setArguments(unlock::arguments(QProcess::splitCommand(game["arguments"].toString()),game["unlock"].toBool()&&unlock::supported(file.absoluteFilePath())));if(!launch.startDetached())c->notify("The game could not be launched.","warning");else {c->notify("Game launched. Capture can follow its foreground window.");send({{"action","select"},{"id","auto"},{"exe",file.fileName()}});}return;}c->notify("Add and select a game in your library first.");return;}
     QJsonObject request=QJsonObject::fromVariantMap(args);if(name=="apoConfig")request["path"]=QUrl(args["url"].toString()).toLocalFile();request["action"]=name;send(request);
 #else
-    if(name=="capture"&&c->m_state["capture"].toBool()){m_monitoring=false;if(m_passive)m_passive->stop();if(m_mango)m_mango->stop();c->setState("capture",false);c->setState("live",false);c->notify("Capture stopped. Your game and its in-game overlay keep running.");return;}
-    if(name=="capture"&&c->m_options["linuxOverlayMode"].toInt()!=2){m_monitoring=true;c->setState("externalCapture",true);c->setState("capture",true);if(!attachPassive(true)&&c->m_options["selectedGame"]!="auto")for(const auto& game:c->m_games)if(game.toMap()["id"]==c->m_options["selectedGame"]){linuxLaunch();break;}return;}
-    if(name=="launch"||name=="capture"){linuxLaunch();return;}
+    if(name=="capture"&&c->m_state["capture"].toBool()){m_monitoring=false;if(m_passive)m_passive->stop();if(m_mango)m_mango->setCollecting(false);c->setState("capture",false);c->setState("live",false);c->notify("Capture stopped. Your game and its in-game overlay keep running.");return;}
+    if(name=="capture"){m_monitoring=true;const bool layer=c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected";c->setState("externalCapture",!layer);c->setState("capture",true);if(layer){if(m_mango)m_mango->start(mangoPrefix(),true);c->notify("Capture armed for this game's enabled layer. Launch from your library or with its saved Steam options.");}else attachPassive(true);return;}
+    if(name=="launch"){linuxLaunch();return;}
     if(name=="overlay"){c->setState("overlay",!c->m_state["overlay"].toBool());applyOptions("fields");c->notify(c->m_state["overlay"].toBool()?"Overlay enabled for monitored launches. Reload it with Shift+F4 in a running game.":"Overlay hidden for monitored launches. Reload it with Shift+F4 in a running game.");return;}
     if(name=="micApply"){linuxAudio(true);return;}
     if(name=="bassApply"){linuxAudio(false);return;}
