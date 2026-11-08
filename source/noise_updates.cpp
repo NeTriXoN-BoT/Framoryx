@@ -378,7 +378,16 @@ void NoiseUpdater::start(const std::wstring& directory, bool force) {
     if (state->worker.joinable())
         state->worker.join();
     state->cancel = false;
-    state->worker = std::thread([this, directory, force] { state->run(directory, force); });
+    {
+        std::lock_guard lock(state->mutex);
+        state->result.reset();
+    }
+    try {
+        state->worker = std::thread([this, directory, force] { state->run(directory, force); });
+    } catch (const std::exception&) {
+        state->status(L"Windows could not start the update worker. Try again later.");
+        state->busy = false;
+    }
 }
 bool NoiseUpdater::running() const {
     return state->busy;

@@ -1223,6 +1223,8 @@ void paintMain(HDC destination, const RECT& invalid) {
             line(g, 24, 476, 162, 476);
             label(g, L"YOUR TOOLKIT", 24, 722, 145, 20, 9, muted, true);
             label(g, L"FRAMORYX 0.2 · WINDOWS X64", 24, 747, 146, 40, 9, muted, false, true);
+            rounded(g, RectF(24, 770, 100, 17), Color(255, 43, 36, 29), 4);
+            label(g, L"UNSIGNED BUILD", 30, 771, 94, 16, 8, amber, true);
             if (!app.preferencesSaved)
                 label(g, L"Preferences not saved", 24, 794, 145, 20, 9, amber, true);
             if (app.page == 5)
@@ -1798,7 +1800,9 @@ LRESULT CALLBACK comboProc(HWND w, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWO
         GetClientRect(w, &r);
         {
             Graphics g(dc);
-            g.Clear(id == Corner ? bg : card);
+            bool audioInset = id == BoostLevel || id == BassAmount || id == MicNoisePreset ||
+                              id == MicEQPreset || (id >= MicLow && id <= MicHigh);
+            g.Clear(id == Corner ? bg : (audioInset ? Color(255, 17, 25, 32) : card));
             g.SetSmoothingMode(SmoothingModeAntiAlias);
             rounded(g, RectF(0, 0, float(r.right - 1), float(r.bottom - 1)), Color(255, 25, 38, 46),
                     7, true);
@@ -2366,7 +2370,10 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
         Color buttonColor = disabled  ? Color(255, 22, 29, 35)
                             : pressed ? Color(255, 49, 96, 80)
                                       : mixColor(base, hot, warmth);
-        g.Clear(nav ? bg : card);
+        bool audioInset = d->CtlID == ApplyBoost || d->CtlID == DisableBoost ||
+                          d->CtlID == BassApply || d->CtlID == BassDisable ||
+                          d->CtlID == MicChoosePlugin || d->CtlID == MicDownload;
+        g.Clear(nav ? bg : (audioInset ? Color(255, 17, 25, 32) : card));
         rounded(g, RectF(0, 0, width - 1, height - 1), buttonColor, 9,
                 !nav && !primary && !stepper);
         if (!nav && !disabled && warmth > .01) {
@@ -2585,6 +2592,11 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
             double db = SendMessageW(app.controls[BoostLevel], CB_GETCURSEL, 0, 0) == 0
                             ? 3.0
                             : 20 * std::log10(2.0);
+            if (!app.smokeAudio && !fg::setAudioVolume(1.f)) {
+                app.audioNotice = L"Windows could not change this output’s volume.";
+                break;
+            }
+            app.audio.volume = 1.f;
             app.gainWorker.request(app.boost.directory(), app.audio.guid, db);
             app.outputBoostActive = true;
             app.outputPercent = std::clamp(
@@ -2815,7 +2827,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             app.rulesSnapshotPath = arguments[++i];
         else if (argument == L"--audio-mic")
             app.diagnosticMic = true;
-        else if (argument == L"--snapshot" && i + 1 < argumentCount)
+        else if (argument == L"--audio-setup" && diagnosticInstance) {
+            app.audioSetup = true;
+            app.fixedSmokePage = 1;
+        } else if (argument == L"--snapshot" && i + 1 < argumentCount)
             app.snapshotPath = arguments[++i];
         else if (argument == L"--smoke-seconds" && i + 1 < argumentCount) {
             auto duration = fg::number(fg::utf8(arguments[++i]));

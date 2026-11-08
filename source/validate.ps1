@@ -8,7 +8,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $packageDirectory = Split-Path $PSScriptRoot -Parent
-if (!$BuildDirectory) { $BuildDirectory = Join-Path $PSScriptRoot 'build' }
+if (!$BuildDirectory) { $BuildDirectory = Join-Path (Split-Path $PSScriptRoot -Parent) 'work/build' }
 $BuildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
 New-Item -ItemType Directory -Force $BuildDirectory | Out-Null
 if (!$ToolchainBin) { $ToolchainBin = Join-Path $BuildDirectory 'toolchain\llvm-mingw-20261104-ucrt-x86_64\bin' }

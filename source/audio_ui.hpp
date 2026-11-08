@@ -64,7 +64,8 @@ void paintAudio(Graphics& g) {
         label(g,
               L"Bass and EQ include headroom reduction. Amplifying above 100% can still clip. "
               L"Effects remain configured after exit.",
-              244, 745, 860, 22, 10, muted);
+              244, 605, 860, 22, 10, muted);
+        label(g, app.audioNotice, 214, 777, 938, 38, 12, muted, false, true);
         return;
     }
     if (app.audioTab == 0) {

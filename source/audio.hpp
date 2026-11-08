@@ -180,7 +180,7 @@ class AudioBoost {
         pos += 8;
         auto end = filter.find(' ', pos);
         auto n = number(filter.substr(pos, end - pos));
-        return n ? std::optional<double>(*n) : std::nullopt;
+        return n && *n >= 0 && *n <= 12 ? std::optional<double>(*n) : std::nullopt;
     }
     std::wstring apply(double db, const std::wstring& endpointGuid) {
         bool validGuid = endpointGuid.size() == 38 && endpointGuid.front() == L'{' &&
@@ -230,7 +230,8 @@ class AudioBoost {
             return L"Cannot save boost. Run Framoryx as administrator to change the Equalizer APO "
                    L"config.";
         if (!installed) {
-            config += "\r\n# Framoryx audio boost\r\nDevice: all\r\nInclude: framoryx-boost.txt\r\n";
+            config +=
+                "\r\n# Framoryx audio boost\r\nDevice: all\r\nInclude: framoryx-boost.txt\r\n";
             if (!write(base / L"config.txt", config)) {
                 write(base / L"framoryx-boost.txt", "# Framoryx audio boost\r\nPreamp: 0 dB\r\n");
                 return L"Cannot link the audio configuration. No boost applied.";

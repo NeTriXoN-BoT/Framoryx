@@ -35,6 +35,15 @@ Keep an eye on real frame data, make the HUD your own, and get back to playing. 
 
 </details>
 
+<details>
+<summary>Frame limiter and process rules</summary>
+
+![Frame limiter with a rounded FPS stepper](docs/images/limiter.png)
+
+![Process rules with matching cards and inline validation](docs/images/rules.png)
+
+</details>
+
 ## Get started
 
 1. Download the Windows ZIP and extract the whole folder.

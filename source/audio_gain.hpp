@@ -3,6 +3,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
 namespace fg {
 class GainWorker {
     struct Request {
@@ -14,7 +15,7 @@ class GainWorker {
     std::condition_variable wake;
     std::optional<Request> pending;
     std::optional<std::wstring> result;
-    bool stopped = false;
+    bool stopped = false, writing = false;
 
   public:
     ~GainWorker() {
@@ -45,12 +46,14 @@ class GainWorker {
                         break;
                     auto request = *pending;
                     pending.reset();
+                    writing = true;
                     lock.unlock();
                     AudioBoost boost;
                     boost.directory(request.directory);
                     auto error =
                         request.db > 0 ? boost.apply(request.db, request.guid) : boost.disable();
                     lock.lock();
+                    writing = false;
                     result = std::move(error);
                 }
             });
@@ -61,6 +64,10 @@ class GainWorker {
         auto out = result;
         result.reset();
         return out;
+    }
+    bool busy() {
+        std::lock_guard lock(mutex);
+        return writing || pending.has_value();
     }
 };
 } // namespace fg

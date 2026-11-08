@@ -12,7 +12,7 @@ The toolchain archive is pinned and SHA-256 verified. PresentMon is fetched sepa
 ./scripts/package.ps1 -ToolchainBin C:\llvm-mingw\bin
 ```
 
-Core tests and audio-configuration tests run during the build. Audio tests use scratch configuration files and do not change system audio.
+The build runs 32 core, 20 gain and 38 microphone/bass configuration checks. It also builds an isolated VST2 audio-compatibility helper for runtime RNNoise downloads. Audio tests use scratch configuration files and do not change system audio.
 
 ## Runtime checks
 
@@ -26,6 +26,8 @@ Core tests and audio-configuration tests run during the build. Audio tests use s
 # UI/profile/scale/motion checks with isolated preferences
 ./source/validate.ps1 -ToolchainBin C:\llvm-mingw\bin -UiSmokeSeconds 28
 ```
+
+The bounded `--smoke-audio-controls` app flag can be combined with `--smoke-seconds 12 --smoke-page 1 --report <scratch.json> --settings-file <scratch.ini>` to exercise the audio/rules controls. It suppresses Windows volume writes, disables automatic downloads and directs gain changes into a scratch APO config. Both report and isolated settings arguments are required. `--snapshot <image.png>`, `--audio-mic` and `--audio-setup` export the app's own client rendering for visual review.
 
 The old injection soak is a separate `-IncludeHookSoak` opt-in and was blocked by Defender on the development host. A blocked or incomplete run is not counted as a pass. See [compatibility](COMPATIBILITY.md).
 

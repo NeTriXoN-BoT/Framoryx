@@ -1,4 +1,6 @@
 void syncOutputVolume() {
+    if (app.gainWorker.busy())
+        return;
     app.audio = fg::audioState();
     double gain = app.boost.configuredGain(app.audio.guid).value_or(0);
     app.outputBoostActive = gain > .001;

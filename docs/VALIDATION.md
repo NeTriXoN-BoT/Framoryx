@@ -8,11 +8,14 @@ The local Windows validation completed:
 - Official RNNoise v1.10 mono and stereo VST2 binaries accepted all three configured voice thresholds and processed 480,000 finite offline samples each. This is a DSP/state check, not a listening-quality certification.
 - **67 graphics/lifecycle checks** against bundled x64 DX11, x64 DX12 and x86 DX11 scenes.
 - **Four UI/profile/scale checks**, including saved-layout round-trip through the actual controls, smaller/larger desktop percentages and Auto restoration.
+- **Six audio UI checks** through the actual controls, covering live percentage state, the 200% range, voice presets and setup navigation. Windows volume writes are suppressed in this bounded diagnostic mode; any gain configuration uses an isolated scratch folder.
+- **Two process-rule UI checks** for inline invalid-path rejection and valid-rule persistence.
+- A successful automatic download of the latest stable upstream RNNoise release (v1.10), with archive SHA-256, mono/stereo selection and isolated audio/preset probes. Transient GitHub failures exercised retry and release-list/asset-route fallback behavior.
 - A **120-second non-injecting ETW/borderless soak**: 391 steady observations, no missing telemetry, seven window transitions, 36,864 bytes of post-warm-up collector growth and zero handle growth.
 
 The graphics checks covered all three HUD layouts, selected readouts, live size/opacity/accent changes, font-atlas rebuilding, frame-ring integrity, 30/60/uncapped pacing, shader preservation, resizing, clean disable, heartbeat loss and conservative multi-queue DX12 fallback.
 
-The UI animation check targeted the detected 144 Hz display, completed seven navigation transitions, exercised three window sizes and received real demo frames. Average paint time was approximately 1.4 ms; initial/layout/cache work caused higher peaks. This is a diagnostic workload, not a universal frame-presentation or idle-power benchmark.
+The UI animation check targeted the detected 144 Hz display, completed seven navigation transitions, exercised three window sizes and received real demo frames. The latest 28-second run received 101 real demo samples and completed seven transitions, with an average paint time of approximately 1.28 ms; initial/layout/cache work caused higher peaks. This is a diagnostic workload, not a universal frame-presentation or idle-power benchmark.
 
 ## Interrupted test
 
