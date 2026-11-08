@@ -268,7 +268,7 @@ QString Controller::processRuleStatus(const QString& name)const{
 void Controller::assessCurrentGame(bool force){
     if(m_test)return;
     QString path;quint32 pid=0;const auto selected=m_options["selectedGame"].toString();
-    for(const auto& item:m_games){const auto game=item.toMap();if(game["id"]==selected){path=game["executable"].toString();if(QFileInfo(path).fileName().compare(m_state["profileExe"].toString(),Qt::CaseInsensitive)==0)pid=m_state["profilePid"].toUInt();}}
+    for(const auto& item:m_games){const auto game=item.toMap();if(game["id"]==selected){path=game["executable"].toString();if(QFileInfo(path).fileName().compare(m_state["profileExe"].toString(),Qt::CaseInsensitive)==0||(m_state["gameRunning"].toBool()&&m_state["monitoringLibraryId"]==selected))pid=m_state["profilePid"].toUInt();}}
     for(const auto& item:m_state["windows"].toList()){const auto window=item.toMap();if(window["id"]==selected){pid=window["pid"].toUInt();break;}}
     if(selected=="auto"){pid=m_state["profilePid"].toUInt();path=m_state["profilePath"].toString();}
     const auto key=path+":"+QString::number(pid);if(!force&&key==m_safetyKey)return;

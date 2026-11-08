@@ -45,6 +45,7 @@ private:
     qint64 m_launchedPid = 0;
     QString m_lastLaunchId,m_launchStart;
     QMap<qint64,QString> m_fixtures;
+    QSet<QString> m_fixtureGames;
     void stopFixtures();
     bool m_monitoring = false;
     bool m_volumeWriting = false, m_volumePending = false;

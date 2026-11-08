@@ -157,8 +157,8 @@ class Checks : public QObject {
         case 16:
             if(first)c->action("capture");await(state["capture"].toBool()&&state["live"].toBool()&&phase.elapsed()>1500,"Game-layer telemetry reconnects to the running game");break;
         case 17:
-            if(first){c->action("capture");c->action("fixtureClose");c->setOption("linuxOverlayMode",2);c->setOption("cap",vulkanLow);QFile::remove(c->root()+"/fixture-result.json");c->action("fixture",{{"api","vulkan"},{"seconds",35},{"report",true}});}
-            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>vulkanLow*.9&&state["fps"].toDouble()<vulkanLow*1.1&&phase.elapsed()>2000,QString("Vulkan game layer streams real frames at %1 FPS").arg(vulkanLow),20000);if(stage==18)record("Vulkan HUD generates visible geometry",state["gameHudFrames"].toLongLong()>0);break;
+            if(first){c->action("capture");c->action("fixtureClose");c->setOption("linuxOverlayMode",2);c->setOption("cap",vulkanLow);QFile::remove(c->root()+"/fixture-result.json");c->action("fixture",{{"api","vulkan"},{"seconds",35},{"report",true},{"launcher",true}});}
+            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>vulkanLow*.9&&state["fps"].toDouble()<vulkanLow*1.1&&phase.elapsed()>2000,QString("Vulkan game layer streams real frames at %1 FPS").arg(vulkanLow),20000);if(stage==18){record("Vulkan HUD generates visible geometry",state["gameHudFrames"].toLongLong()>0);record("Launcher capture resolves the actual game process identity",state["profileExe"]=="FramoryxVulkanScene");}break;
         case 18:
             if(first){screenshot("hud-vulkan-glass.png");c->setOption("cap",vulkanHigh);c->setOption("style",2);c->setOption("fields",65535);c->setOption("accent",8);c->setOption("opacity",85);}
             await(state["fps"].toDouble()>vulkanHigh*.9&&state["fps"].toDouble()<vulkanHigh*1.1&&state["appliedCap"].toInt()==vulkanHigh&&phase.elapsed()>2500,QString("Vulkan limiter updates to %1 FPS without relaunch").arg(vulkanHigh),15000);break;
