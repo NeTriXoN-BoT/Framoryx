@@ -301,6 +301,7 @@ void Controller::refreshDevices(){
     QVariantList out;for(const auto& device:QMediaDevices::audioInputs())out<<QVariantMap{{"id",QString::fromLatin1(device.id().toBase64())},{"name",device.description()},{"rate",device.preferredFormat().sampleRate()},{"channels",device.preferredFormat().channelCount()}};
     m_devices=out;for(const auto& item:m_devices)if(item.toMap()["id"]==m_options["micId"])m_state["selectedMicName"]=item.toMap()["name"];emit devicesChanged();
     if(m_options["micId"].toString().isEmpty()&&!out.isEmpty())setOption("micId",QString::fromLatin1(QMediaDevices::defaultAudioInput().id().toBase64()));
+    if(!m_test&&m_platform)m_platform->refresh();
 }
 void Controller::refreshCapabilities(){if(!m_test)m_platform->refresh();}
 void Controller::receive(const QJsonObject& incoming){

@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['desktop/**', 'CMakeLists.txt', '.github/workflows/desktop.yml']
+    paths: ['desktop/**', 'runtime/**', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
   pull_request:
-    paths: ['desktop/**', 'CMakeLists.txt', '.github/workflows/desktop.yml']
+    paths: ['desktop/**', 'runtime/**', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
 permissions:
   contents: read
 jobs:
@@ -110,5 +110,47 @@ jobs:
           path: |
             work/desktop-previews
             work/desktop-backends
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Package native Windows desktop
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/package-desktop.ps1
+      - name: Check deployed Windows bundle without the build environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $app=(Resolve-Path './dist/desktop/Framoryx/Framoryx.exe').Path
+          $env:PATH="$env:SystemRoot/System32;$env:SystemRoot"
+          foreach($name in @('QT_ROOT_DIR','QT_PLUGIN_PATH','QML2_IMPORT_PATH','QML_IMPORT_PATH')){Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue}
+          $testRoot=Join-Path $env:RUNNER_TEMP 'framoryx-deployed'
+          $shots=Join-Path (Get-Location) 'work/package-previews'
+          $process=Start-Process -FilePath $app -WorkingDirectory $env:RUNNER_TEMP -ArgumentList @('--bundle-test','--test-root',('"'+$testRoot+'"'),'--snapshot-dir',('"'+$shots+'"')) -WindowStyle Hidden -PassThru
+          if(!$process.WaitForExit(45000)){Stop-Process -Id $process.Id -Force;throw 'Deployed application timed out.'}
+          if($process.ExitCode -ne 0){throw 'Deployed application failed.'}
+      - name: Package and check native Linux desktop
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          bash scripts/package-linux.sh
+          unset QT_PLUGIN_PATH QML2_IMPORT_PATH QML_IMPORT_PATH LD_LIBRARY_PATH
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a -s '-screen 0 1920x1080x24' ./dist/desktop/Framoryx-Linux-x86_64.AppImage --bundle-test --test-root "$RUNNER_TEMP/framoryx-deployed" --snapshot-dir ./work/package-previews
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: success()
+        with:
+          name: Framoryx-Desktop-${{ matrix.label }}
+          path: |
+            dist/desktop/*.zip
+            dist/desktop/*.tar.gz
+            dist/desktop/*.AppImage
+            dist/desktop/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: Framoryx-Deployed-UI-${{ matrix.label }}
+          path: work/package-previews
           if-no-files-found: ignore
           retention-days: 7

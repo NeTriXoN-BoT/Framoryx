@@ -66,9 +66,10 @@ int main(int argc,char** argv){
     parser.addOption({"self-test","Run headless model checks without audio or game changes."});
     parser.addOption({"backend-test","Run live integrations on an isolated CI runner."});
     parser.addOption({"ui-smoke","Run bounded UI checks on the isolated CI runner."});
+    parser.addOption({"bundle-test","Verify packaged QML and rendering without the optional input driver."});
     parser.addOption({"snapshot-dir","Write CI UI captures and results here.","path"});
     parser.process(application);
-    const bool modelTest=parser.isSet("self-test"),smoke=parser.isSet("ui-smoke"),backendTest=parser.isSet("backend-test");
+    const bool bundleTest=parser.isSet("bundle-test"),modelTest=parser.isSet("self-test"),smoke=parser.isSet("ui-smoke")||bundleTest,backendTest=parser.isSet("backend-test");
     if((modelTest||smoke||backendTest)&&!parser.isSet("test-root")){qCritical("Diagnostics require --test-root.");return 2;}
     if((smoke||backendTest)&&qEnvironmentVariable("GITHUB_ACTIONS")!="true"){qCritical("UI diagnostics are restricted to the isolated CI runner.");return 2;}
     const QString root=parser.isSet("test-root")?QFileInfo(parser.value("test-root")).absoluteFilePath():QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
@@ -147,6 +148,7 @@ int main(int argc,char** argv){
                 }
                 (*interactions)["sliderDragMs"]=elapsed.elapsed();(*interactions)["sliderFinalValue"]=controller.options()["volume"];(*interactions)["sliderPassed"]=pass;(*interactions)["sliderEvents"]=123;
             }
+            else if(*step==23&&bundleTest){(*interactions)["tabNavigationChecked"]=false;}
             else if(*step==23){
                 bool pass=true;QVariantList tabResults;QElapsedTimer elapsed;elapsed.start();
                 if(!click){pass=false;(*interactions)["inputError"]=inputDriver->errorString();}
@@ -154,7 +156,7 @@ int main(int argc,char** argv){
                 (*interactions)["tabs"]=tabResults;(*interactions)["sevenTabSwitchesMs"]=elapsed.elapsed();(*interactions)["tabNavigationPassed"]=pass;(*interactions)["statePreserved"]=controller.options()["volume"].toInt()==200;
             }
             else if(*step==24){
-                timer->stop();const bool pass=!qmlFailure&&*frames>10&&interactions->value("sliderPassed").toBool()&&interactions->value("tabNavigationPassed").toBool()&&interactions->value("statePreserved").toBool();
+                timer->stop();const bool pass=!qmlFailure&&*frames>10&&interactions->value("sliderPassed").toBool()&&(bundleTest||(interactions->value("tabNavigationPassed").toBool()&&interactions->value("statePreserved").toBool()));
                 QSaveFile file(destination+"/ui-result.json");file.open(QIODevice::WriteOnly);file.write(QJsonDocument(QJsonObject{{"passed",pass},{"interactions",QJsonObject::fromVariantMap(*interactions)},{"qmlWarnings",qmlFailure},{"warnings",QJsonArray::fromStringList(qmlWarnings)},{"frames",*frames},{"exposed",window->isExposed()},{"visible",window->isVisible()},{"graphicsApi",int(window->rendererInterface()->graphicsApi())},{"pages",7},{"screenshots",13},{"platform",controller.platformName()}}).toJson());file.commit();delete step;application.exit(pass?0:1);return;
             }
             ++*step;

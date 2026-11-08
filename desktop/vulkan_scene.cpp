@@ -14,8 +14,9 @@ class SceneRenderer final : public QVulkanWindowRenderer {
     QVulkanDeviceFunctions* functions=nullptr;
     QElapsedTimer clock;
     quint64* frames;
+    bool* rendered;
 public:
-    SceneRenderer(QVulkanWindow* target,quint64* counter):window(target),frames(counter){}
+    SceneRenderer(QVulkanWindow* target,quint64* counter,bool* valid):window(target),frames(counter),rendered(valid){}
     void initResources() override {functions=window->vulkanInstance()->deviceFunctions(window->device());clock.start();}
     void startNextFrame() override {
         const float time=clock.elapsed()/1000.f;
@@ -28,13 +29,14 @@ public:
         pass.clearValueCount=2;pass.pClearValues=values;
         functions->vkCmdBeginRenderPass(window->currentCommandBuffer(),&pass,VK_SUBPASS_CONTENTS_INLINE);
         functions->vkCmdEndRenderPass(window->currentCommandBuffer());
-        ++*frames;window->frameReady();window->requestUpdate();
+        *rendered=window->isValid();++*frames;window->frameReady();window->requestUpdate();
     }
 };
 class SceneWindow final : public QVulkanWindow {
 public:
     quint64 frames=0;
-    QVulkanWindowRenderer* createRenderer() override {return new SceneRenderer(this,&frames);}
+    bool rendered=false;
+    QVulkanWindowRenderer* createRenderer() override {return new SceneRenderer(this,&frames,&rendered);}
 };
 int main(int argc,char** argv){
     QGuiApplication application(argc,argv);application.setApplicationName("FramoryxVulkanScene");
@@ -45,6 +47,6 @@ int main(int argc,char** argv){
     bool valid=false;const int seconds=arguments.value(secondsIndex+1).toInt(&valid);
     if(secondsIndex>=0&&valid&&seconds>0&&seconds<=600)QTimer::singleShot(seconds*1000,&application,&QGuiApplication::quit);
     QElapsedTimer elapsed;elapsed.start();const int status=application.exec();
-    if(reportIndex>=0){QSaveFile file(arguments.value(reportIndex+1));const QJsonObject result{{"api","Vulkan"},{"frames",qint64(window.frames)},{"elapsedMs",elapsed.elapsed()},{"valid",window.isValid()}};if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(result).toJson())<0||!file.commit())return 3;}
+    if(reportIndex>=0){QSaveFile file(arguments.value(reportIndex+1));const QJsonObject result{{"api","Vulkan"},{"frames",qint64(window.frames)},{"elapsedMs",elapsed.elapsed()},{"valid",window.rendered}};if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(result).toJson())<0||!file.commit())return 3;}
     return status?status:window.frames>0?0:1;
 }

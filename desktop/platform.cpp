@@ -47,6 +47,18 @@ bool denied(const QVariantMap& options,const QString& name){
     return false;
 }
 bool allowed(const QVariantMap& options,const QString& name){if(denied(options,name))return false;for(const auto& pattern:options["allow"].toStringList())if(fg::wildcard(pattern.toStdString(),name.toStdString()))return true;return false;}
+QProcessEnvironment hostEnvironment(){
+    auto environment=QProcessEnvironment::systemEnvironment();
+#ifndef Q_OS_WIN
+    if(environment.contains("FRAMORYX_ORIGINAL_LD_LIBRARY_PATH")){
+        const QString appdir=environment.value("APPDIR");const auto original=environment.value("FRAMORYX_ORIGINAL_LD_LIBRARY_PATH");environment.remove("FRAMORYX_ORIGINAL_LD_LIBRARY_PATH");
+        if(original.isEmpty())environment.remove("LD_LIBRARY_PATH");else environment.insert("LD_LIBRARY_PATH",original);
+        for(const auto& key:QStringList{"QT_PLUGIN_PATH","QML2_IMPORT_PATH","QML_IMPORT_PATH"})if(!appdir.isEmpty()&&environment.contains(key)){auto paths=environment.value(key).split(':',Qt::SkipEmptyParts);paths.removeIf([&](const QString& path){return path==appdir||path.startsWith(appdir+'/');});if(paths.isEmpty())environment.remove(key);else environment.insert(key,paths.join(':'));}
+        for(const auto& key:QStringList{"APPDIR","APPIMAGE","ARGV0","OWD"})environment.remove(key);
+    }
+#endif
+    return environment;
+}
 }
 Platform::Platform(Controller* controller):QObject(controller),c(controller){
     m_optionTimer.setInterval(75);m_optionTimer.setSingleShot(true);connect(&m_optionTimer,&QTimer::timeout,this,&Platform::flushOptions);
@@ -79,7 +91,7 @@ void Platform::command(const QString& program,const QStringList& args,std::funct
     connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[process,buffer,finish](int code,QProcess::ExitStatus status){*buffer+=process->readAllStandardOutput();finish(status==QProcess::NormalExit?code:-1);});
     connect(process,&QProcess::errorOccurred,this,[finish](QProcess::ProcessError error){if(error==QProcess::FailedToStart)finish(-1);});
     QTimer::singleShot(timeout,process,[finish]{finish(-3);});
-    process->setProgram(program);process->setArguments(args);process->start();
+    process->setProcessEnvironment(hostEnvironment());process->setProgram(program);process->setArguments(args);process->start();
 }
 void Platform::start(){
 #ifdef Q_OS_WIN
@@ -141,6 +153,7 @@ void Platform::refresh(){
     list<<QVariantMap{{"name",wayland?"Wayland window controls":"X11 window controls"},{"ready",wayland?!exe("gamescope").isEmpty():!exe("wmctrl").isEmpty()},{"detail",wayland?"Use Gamescope when launching. Wayland restricts arbitrary changes to other windows.":"Window selection and reversible fullscreen changes through your window manager."}};
     c->setState("session",wayland?"Wayland":"X11");
     c->setState("setupCommand","Ubuntu/Debian: sudo apt install mangohud gamescope pipewire wireplumber wmctrl\nFedora: sudo dnf install mangohud gamescope pipewire wireplumber wmctrl\nArch: sudo pacman -S mangohud gamescope pipewire wireplumber wmctrl");
+    linuxScan();
 #endif
     c->m_capabilities=list;emit c->capabilitiesChanged();
 }
@@ -224,6 +237,13 @@ void Platform::linuxScan(){
         m_refreshing=false;if(code)return;const auto array=QJsonDocument::fromJson(output).array();QVariantList nodes;
         for(const auto& item:array){const auto object=item.toObject();if(object["type"]!="PipeWire:Interface:Node")continue;const auto props=object["info"].toObject()["props"].toObject();const auto media=props["media.class"].toString();if(!media.startsWith("Audio/Source")&&!media.startsWith("Audio/Sink"))continue;nodes<<QVariantMap{{"id",object["id"].toInt()},{"name",props["node.name"].toString()},{"description",props["node.description"].toString()},{"media",media},{"rate",props["audio.rate"].toInt()}};}
         c->setState("audioNodes",nodes);
+        bool micNode=false,outputNode=false,micDevice=false;
+        for(const auto& value:nodes){const auto node=value.toMap();if(node["name"]=="framoryx_mic")micNode=true;if(node["name"]=="framoryx_output")outputNode=true;}
+        for(const auto& device:QMediaDevices::audioInputs())if(device.description()=="Framoryx Microphone"||device.id()=="framoryx_mic")micDevice=true;
+        const bool micReady=m_mic.state()==QProcess::Running&&micNode&&micDevice,outputReady=m_output.state()==QProcess::Running&&outputNode;
+        c->setState("micConfigured",micReady);c->setState("bassConfigured",outputReady);
+        if(micReady&&c->m_state["micApplying"].toBool()){c->setState("micApplying",false);c->setState("audioStatus","Framoryx Microphone is ready. Select it in your game's voice settings.");}
+        if(outputReady&&c->m_state["bassApplying"].toBool()){c->setState("bassApplying",false);c->setState("audioStatus","Framoryx Output is ready. Choose it as playback output to hear bass enhancement.");}
     });else m_refreshing=false;
 #endif
 }
@@ -280,7 +300,7 @@ void Platform::linuxLaunch(){
     if(inProcess&&mangoExecutable().isEmpty()){c->notify("The game runtime is missing. Extract the complete package or install MangoHud.","warning");return;}
     if(c->m_options["gamescope"].toBool()&&exe("gamescope").isEmpty()){c->notify("Gamescope is unavailable. Disable its launch option or install it in Setup.","warning");return;}
     applyOptions();flushOptions();c->m_store.clear();c->m_frameTime=0;
-    QProcessEnvironment env=QProcessEnvironment::systemEnvironment();env.insert("MANGOHUD_CONFIGFILE",overlayConfigPath());env.insert("MANGOHUD_DLSYM","1");m_game.setProcessEnvironment(env);
+    QProcessEnvironment env=hostEnvironment();env.insert("MANGOHUD_CONFIGFILE",overlayConfigPath());env.insert("MANGOHUD_DLSYM","1");m_game.setProcessEnvironment(env);
     QStringList args;if(inProcess)args<<"--dlsym";if(c->m_options["gamescope"].toBool())args<<exe("gamescope")<<"-b"<<"-r"<<QString::number(c->m_options["cap"].toInt())<<"--";
     args<<file.absoluteFilePath();args+=unlock::arguments(QProcess::splitCommand(game["arguments"].toString()),game["unlock"].toBool()&&unlock::supported(file.absoluteFilePath()));
     m_game.setWorkingDirectory(file.absolutePath());QString program;if(inProcess)program=mangoExecutable();else {program=args.takeFirst();if(program.isEmpty())program=file.absoluteFilePath();}
@@ -334,7 +354,7 @@ void Platform::linuxAudio(bool microphone,bool verified){
         if(target.isEmpty()){c->notify("A physical output could not be identified. Refresh audio devices before applying bass.","warning");return;}m_outputTarget=target;playback["target.object"]=target;
     }
     const QJsonObject graph{{"nodes",nodes},{"links",links},{"inputs",QJsonArray{first}},{"outputs",QJsonArray{previous}}};
-    const QJsonObject args{{"node.description",microphone?"Framoryx Microphone":"Framoryx Output"},{"filter.graph",graph},{"capture.props",capture},{"playback.props",playback}};
+    const QJsonObject args{{"node.description",microphone?"Framoryx Microphone":"Framoryx Output"},{"media.name",microphone?"Framoryx Microphone":"Framoryx Output"},{"audio.rate",48000},{"audio.channels",microphone?1:2},{"audio.position",microphone?QJsonArray{"MONO"}:QJsonArray{"FL","FR"}},{"filter.graph",graph},{"capture.props",capture},{"playback.props",playback}};
     QJsonArray modules{QJsonObject{{"name","libpipewire-module-rt"},{"flags",QJsonArray{"ifexists","nofail"}}},QJsonObject{{"name","libpipewire-module-protocol-native"}},QJsonObject{{"name","libpipewire-module-client-node"}},QJsonObject{{"name","libpipewire-module-adapter"}},QJsonObject{{"name","libpipewire-module-filter-chain"},{"args",args}}};
     QJsonObject config{{"context.properties",QJsonObject{{"log.level",1}}},{"context.spa-libs",QJsonObject{{"audio.convert.*","audioconvert/libspa-audioconvert"},{"support.*","support/libspa-support"}}},{"context.modules",modules}};
     const QString path=c->root()+(microphone?"/microphone.conf":"/output.conf");if(!writeFile(path,QJsonDocument(config).toJson())){c->notify("Audio configuration could not be saved.","error");return;}
@@ -348,8 +368,9 @@ void Platform::startAudio(QProcess* process){
 #ifndef Q_OS_WIN
     if(m_closing||!m_pendingAudio.contains(process))return;
     const auto path=m_pendingAudio.take(process);const auto generation=m_audioGeneration[process];const bool microphone=process==&m_mic;
-    process->start(exe("pipewire"),{"-c",path});
-    QTimer::singleShot(1200,this,[this,process,generation,microphone]{if(generation!=m_audioGeneration[process]||m_closing)return;const bool running=process->state()==QProcess::Running;c->setState(microphone?"micApplying":"bassApplying",false);c->setState(microphone?"micConfigured":"bassConfigured",running);c->setState("audioStatus",running?(microphone?"Framoryx Microphone is ready. Select it in your game's voice settings.":"Framoryx Output is ready. Choose it as playback output to hear bass enhancement."):"The audio filter could not start. Open Settings for its diagnostic.");linuxScan();});
+    process->setProcessEnvironment(hostEnvironment());process->start(exe("pipewire"),{"-c",path});
+    QTimer::singleShot(1200,this,[this,process,generation,microphone]{if(generation!=m_audioGeneration[process]||m_closing)return;if(process->state()!=QProcess::Running){c->setState(microphone?"micApplying":"bassApplying",false);c->setState("audioStatus","The audio filter could not start. Open Settings for its diagnostic.");}linuxScan();});
+    QTimer::singleShot(10000,this,[this,process,generation,microphone]{if(generation!=m_audioGeneration[process]||m_closing)return;if(c->m_state[microphone?"micApplying":"bassApplying"].toBool()){c->setState(microphone?"micApplying":"bassApplying",false);c->setState("audioStatus","The audio process started, but its virtual device is unavailable. Refresh audio and check your PipeWire session.");}});
 #else
     Q_UNUSED(process);
 #endif
