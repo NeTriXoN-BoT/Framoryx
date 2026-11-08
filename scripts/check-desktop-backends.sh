@@ -35,17 +35,22 @@ paplay --device=framoryx_ci_input "$XDG_RUNTIME_DIR/tone.wav" > "$XDG_RUNTIME_DI
 sleep 1
 retry pactl set-source-volume framoryx_ci_mic 100%
 retry pactl set-source-mute framoryx_ci_mic false
+result=0
+./build/desktop/desktop/Framoryx --backend-test --backend-scope graphics --test-root "$RUNNER_TEMP/framoryx-backend-graphics" --snapshot-dir ./work/desktop-backends/graphics || result=1
 timeout 2 parec --device=framoryx_ci_mic --format=s16le --rate=48000 --channels=1 > "$XDG_RUNTIME_DIR/dry-input.raw" || [[ "$?" == 124 ]]
-python3 - "$XDG_RUNTIME_DIR/dry-input.raw" <<'PY'
+if python3 - "$XDG_RUNTIME_DIR/dry-input.raw" <<'PY'
 import array, pathlib, sys
 samples=array.array('h');samples.frombytes(pathlib.Path(sys.argv[1]).read_bytes())
 peak=max((abs(sample) for sample in samples),default=0)
 assert peak>0, 'The private test microphone must contain the synthesized signal'
 print('PASS: private microphone signal is nonzero; peak='+str(peak))
 PY
-result=0
-./build/desktop/desktop/Framoryx --backend-test --backend-scope graphics --test-root "$RUNNER_TEMP/framoryx-backend-graphics" --snapshot-dir ./work/desktop-backends/graphics || result=1
-./build/desktop/desktop/Framoryx --backend-test --backend-scope audio --test-root "$RUNNER_TEMP/framoryx-backend-audio" --snapshot-dir ./work/desktop-backends/audio || result=1
+then
+    ./build/desktop/desktop/Framoryx --backend-test --backend-scope audio --test-root "$RUNNER_TEMP/framoryx-backend-audio" --snapshot-dir ./work/desktop-backends/audio || result=1
+else
+    cat "$XDG_RUNTIME_DIR/tone.log"
+    result=1
+fi
 if [[ "$result" != 0 ]]; then
     pactl list sources short
     pw-dump | python3 -c 'import json,sys; nodes=json.load(sys.stdin); print(json.dumps([{"name":x.get("info",{}).get("props",{}).get("node.name"),"media":x.get("info",{}).get("props",{}).get("media.class"),"state":x.get("info",{}).get("state")} for x in nodes if x.get("type")=="PipeWire:Interface:Node"],indent=2))'

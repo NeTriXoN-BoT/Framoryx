@@ -6,6 +6,9 @@ on:
     paths: ['desktop/**', 'runtime/**', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
   pull_request:
     paths: ['desktop/**', 'runtime/**', 'scripts/package-*', 'scripts/build-mangohud.sh', 'scripts/check-desktop-backends.sh', 'CMakeLists.txt', '.github/workflows/desktop.yml']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

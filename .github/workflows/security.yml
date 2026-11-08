@@ -6,6 +6,9 @@ on:
   pull_request:
     paths: ['source/**', 'desktop/**', 'runtime/**', 'scripts/**', '.github/workflows/security.yml']
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
   security-events: write
