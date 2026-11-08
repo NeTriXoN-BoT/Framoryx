@@ -1,6 +1,7 @@
 #include "platform.hpp"
 #include "controller.hpp"
 #include "unlock.hpp"
+#include "lifecycle.hpp"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDesktopServices>
@@ -66,7 +67,7 @@ Platform::Platform(Controller* controller):QObject(controller),c(controller){
     connect(&m_volumeTimer,&QTimer::timeout,this,&Platform::flushVolume);
     for(auto* process:{&m_mic,&m_output}){
         connect(process,&QProcess::started,this,[this,process]{if(m_expectedStops.contains(process)||m_pendingAudio.contains(process))process->terminate();});
-        connect(process,&QProcess::readyReadStandardError,this,[this,process]{auto error=process->readAllStandardError();if(error.size()>4096)error=error.right(4096);c->setState(process==&m_mic?"micDiagnostic":"outputDiagnostic",QString::fromUtf8(error));});
+        connect(process,&QProcess::readyReadStandardError,this,[this,process]{const QString key=process==&m_mic?"micDiagnostic":"outputDiagnostic";const auto error=(c->m_state[key].toString()+QString::fromUtf8(process->readAllStandardError())).right(16384);c->setState(key,error);});
         connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this,process](int code,QProcess::ExitStatus){c->setState(process==&m_mic?"micConfigured":"bassConfigured",false);const bool expected=m_expectedStops.remove(process);if(code&&!m_closing&&!expected&&!m_pendingAudio.contains(process))c->notify("An audio filter stopped. Open Audio setup to inspect its status.","warning");if(m_pendingAudio.contains(process)&&!m_closing)QTimer::singleShot(0,this,[this,process]{startAudio(process);});});
     }
 }
@@ -112,7 +113,7 @@ void Platform::start(){
     m_passive=std::make_unique<PassiveCapture>(this);
     m_mango=std::make_unique<MangoClient>(this);
     connect(m_mango.get(),&MangoClient::frames,this,[this](const QList<double>& times,quint32 pid){if(m_monitoring&&!c->m_state["externalCapture"].toBool())c->sampleFrames(times,c->m_state["profileExe"].toString(),pid);});
-    connect(m_mango.get(),&MangoClient::connectedToGame,this,[this](quint32 pid){c->setState("profilePid",pid);c->setState("overlayHint","Connected to the game. Overlay and frame-limit changes apply live; frame telemetry stays in bounded memory.");});
+    connect(m_mango.get(),&MangoClient::connectedToGame,this,[this](quint32 pid){c->setState("profilePid",pid);m_mango->configure(c->m_options,c->m_state["overlay"].toBool()&&c->m_options["linuxOverlayMode"].toInt()==2);c->setState("overlayHint","Connected to the game. Overlay and frame-limit changes apply live; frame telemetry stays in bounded memory.");});
     connect(m_mango.get(),&MangoClient::lostSamples,this,[this](quint64 count){c->setState("droppedFrameSamples",count);});
     c->setState("connected",true);linuxScan();
     m_scanTimer.setInterval(5000);connect(&m_scanTimer,&QTimer::timeout,this,&Platform::linuxScan);m_scanTimer.start();
@@ -180,19 +181,20 @@ void Platform::flushOptions(){
     const double scale=o["overlayScale"].toInt()?o["overlayScale"].toInt()/100.:qBound(.85,QGuiApplication::primaryScreen()?QGuiApplication::primaryScreen()->size().height()/1080.:1.,2.5);
     QByteArray config="legacy_layout=0\nbackground_color=0c131a\ntext_color=e9f2f6\nround_corners=12\n";
     config+="background_alpha="+QByteArray::number(o["opacity"].toInt()/100.,'f',2)+"\n";
-    config+="font_size="+QByteArray::number(qRound((style==1?18:22)*scale*o["fontScale"].toInt()/100.))+"\n";
+    config+="font_size="+QByteArray::number(qRound(34*scale*o["fontScale"].toInt()/100.))+"\n";
     config+="fps_color="+colors.value(o["accent"].toInt()).toLatin1()+"\nframetime_color="+colors.value(o["accent"].toInt()).toLatin1()+"\n";
     config+="fps_limit="+QByteArray::number(o["cap"].toInt())+"\nfps_limit_method=late\n";
     config+="position=top-left\noffset_x="+QByteArray::number(qRound(o["hudX"].toDouble()*std::max(1,QGuiApplication::primaryScreen()?QGuiApplication::primaryScreen()->size().width()-260:1000)))+"\noffset_y="+QByteArray::number(qRound(o["hudY"].toDouble()*std::max(1,QGuiApplication::primaryScreen()?QGuiApplication::primaryScreen()->size().height()-220:800)))+"\n";
     config+="autostart_log=0\nlog_duration=30\ncontrol="+mangoPrefix().toLatin1()+"%p\n";
-    if(!c->m_state["overlay"].toBool()||!fields)config+="no_display\n";
+    config+="no_display=0\n";
     if(style==2)config+="horizontal\ntable_columns=10\n";
-    if(style==3)config+="round_corners=0\nfont_size="+QByteArray::number(qRound(18*scale*o["fontScale"].toInt()/100.))+"\n";
+    if(style==3)config+="round_corners=0\n";
     if(style==4)config+="table_columns=4\nwidth=390\n";
     const QStringList values{"fps","fps_metrics=avg","fps_metrics=0.01","frametime","frame_timing","cpu_stats","ram","show_fps_limit","engine_version","custom_text=FRAMORYX","gpu_stats","vram","gpu_temp","cpu_temp","gpu_power","gpu_core_clock"};
     bool metricsWritten=false;
     for(const auto& index:o["order"].toList()){const int i=index.toInt();if(!(fields&(1<<i)))continue;if(i==1||i==2){if(!metricsWritten){QStringList metrics;if(fields&2)metrics<<"avg";if(fields&4)metrics<<"0.01";config+="fps_metrics="+metrics.join(',').toUtf8()+'\n';metricsWritten=true;}}else config+=values.value(i).toUtf8()+'\n';}
     if(!writeFile(overlayConfigPath(),config))c->notify("The overlay configuration could not be written.","warning");else QFile::setPermissions(overlayConfigPath(),QFile::ReadOwner|QFile::WriteOwner);
+    if(m_mango)m_mango->configure(o,c->m_state["overlay"].toBool()&&o["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected");
     if(key.isEmpty()||key=="cap"||key=="style"||key=="fields"||key=="opacity"||key=="overlayScale"||key=="accent"||key=="order"||key=="hudX"||key=="hudY"||key=="fontScale"){
         if(m_mango&&m_mango->connected()){m_mango->reload();c->setState("overlayHint","Overlay and frame-limit changes sent to the running game.");}
         else if(c->m_state["gameRunning"].toBool())c->setState("overlayHint","Saved. Connect the bundled game runtime, or use Shift+F4 and relaunch for changes with a host MangoHud installation.");
@@ -210,6 +212,7 @@ void Platform::select(const QString& id){
 }
 void Platform::poll(){
 #ifndef Q_OS_WIN
+    if(m_monitoring&&m_mango&&m_mango->connected())m_mango->metrics(c->m_state);
     if(c->m_state["externalCapture"].toBool()){
         if(m_monitoring&&m_passive&&m_passive->running()){
         const auto times=m_passive->takeFrames();if(!times.isEmpty())c->sampleFrames(times,m_passiveName,m_passivePid);
@@ -300,7 +303,7 @@ void Platform::linuxLaunch(){
     if(inProcess&&mangoExecutable().isEmpty()){c->notify("The game runtime is missing. Extract the complete package or install MangoHud.","warning");return;}
     if(c->m_options["gamescope"].toBool()&&exe("gamescope").isEmpty()){c->notify("Gamescope is unavailable. Disable its launch option or install it in Setup.","warning");return;}
     applyOptions();flushOptions();c->m_store.clear();c->m_frameTime=0;
-    QProcessEnvironment env=hostEnvironment();env.insert("MANGOHUD_CONFIGFILE",overlayConfigPath());env.insert("MANGOHUD_DLSYM","1");m_game.setProcessEnvironment(env);
+    QProcessEnvironment env=hostEnvironment();env.insert("MANGOHUD_CONFIGFILE",overlayConfigPath());env.insert("MANGOHUD_DLSYM","1");if(inProcess)env.insert("FRAMORYX_HUD","1");m_game.setProcessEnvironment(env);
     QStringList args;if(inProcess)args<<"--dlsym";if(c->m_options["gamescope"].toBool())args<<exe("gamescope")<<"-b"<<"-r"<<QString::number(c->m_options["cap"].toInt())<<"--";
     args<<file.absoluteFilePath();args+=unlock::arguments(QProcess::splitCommand(game["arguments"].toString()),game["unlock"].toBool()&&unlock::supported(file.absoluteFilePath()));
     m_game.setWorkingDirectory(file.absolutePath());QString program;if(inProcess)program=mangoExecutable();else {program=args.takeFirst();if(program.isEmpty())program=file.absoluteFilePath();}
@@ -356,7 +359,7 @@ void Platform::linuxAudio(bool microphone,bool verified){
     const QJsonObject graph{{"nodes",nodes},{"links",links},{"inputs",QJsonArray{first}},{"outputs",QJsonArray{previous}}};
     const QJsonObject args{{"node.description",microphone?"Framoryx Microphone":"Framoryx Output"},{"media.name",microphone?"Framoryx Microphone":"Framoryx Output"},{"audio.rate",48000},{"audio.channels",microphone?1:2},{"audio.position",microphone?QJsonArray{"MONO"}:QJsonArray{"FL","FR"}},{"filter.graph",graph},{"capture.props",capture},{"playback.props",playback}};
     QJsonArray modules{QJsonObject{{"name","libpipewire-module-rt"},{"flags",QJsonArray{"ifexists","nofail"}}},QJsonObject{{"name","libpipewire-module-protocol-native"}},QJsonObject{{"name","libpipewire-module-client-node"}},QJsonObject{{"name","libpipewire-module-adapter"}},QJsonObject{{"name","libpipewire-module-filter-chain"},{"args",args}}};
-    QJsonObject config{{"context.properties",QJsonObject{{"log.level",1}}},{"context.spa-libs",QJsonObject{{"audio.convert.*","audioconvert/libspa-audioconvert"},{"support.*","support/libspa-support"}}},{"context.modules",modules}};
+    QJsonObject config{{"context.properties",QJsonObject{{"log.level",qEnvironmentVariable("GITHUB_ACTIONS")=="true"?3:1}}},{"context.spa-libs",QJsonObject{{"audio.convert.*","audioconvert/libspa-audioconvert"},{"support.*","support/libspa-support"}}},{"context.modules",modules}};
     const QString path=c->root()+(microphone?"/microphone.conf":"/output.conf");if(!writeFile(path,QJsonDocument(config).toJson())){c->notify("Audio configuration could not be saved.","error");return;}
     c->setState(microphone?"micApplying":"bassApplying",true);auto process=microphone?&m_mic:&m_output;m_pendingAudio[process]=path;++m_audioGeneration[process];
     if(process->state()==QProcess::NotRunning)startAudio(process);
@@ -384,7 +387,7 @@ void Platform::updateNoise(bool force){
     auto watcher=new QFutureWatcher<QVariantMap>(this);const auto directory=c->root()+"/rnnoise";
     connect(watcher,&QFutureWatcher<QVariantMap>::finished,this,[this,watcher,force]{const auto cached=watcher->result();watcher->deleteLater();
         const auto age=QDateTime::currentSecsSinceEpoch()-cached["checkedAt"].toLongLong();
-        if(cached["ok"].toBool()&&!force&&age>=0&&age<6*60*60){c->setState("noiseBusy",false);c->setState("noiseStatus","RNNoise "+cached["version"].toString()+" ready · verified official Linux plugin");if(c->m_state["pendingMic"].toBool()){c->setState("pendingMic",false);linuxAudio(true,true);}return;}
+        if(cached["ok"].toBool()&&!force&&(!c->m_options["autoNoise"].toBool()||(age>=0&&age<6*60*60))){c->setState("noiseBusy",false);c->setState("noiseStatus","RNNoise "+cached["version"].toString()+" ready · verified official Linux plugin");if(c->m_state["pendingMic"].toBool()){c->setState("pendingMic",false);linuxAudio(true,true);}return;}
         beginNoiseDownload(cached);
     });watcher->setFuture(QtConcurrent::run(verifiedNoiseCache,directory));
 #endif
@@ -458,7 +461,7 @@ void Platform::action(const QString& name,const QVariantMap& args){
     if(name=="bassApply"){linuxAudio(false);return;}
     if(name=="micDisable"||name=="bassDisable"){auto process=name=="micDisable"?&m_mic:&m_output;m_pendingAudio.remove(process);++m_audioGeneration[process];m_expectedStops.insert(process);process->terminate();c->setState(name=="micDisable"?"micApplying":"bassApplying",false);c->setState(name=="micDisable"?"micConfigured":"bassConfigured",false);c->setState("pendingMic",false);c->notify("The selected Framoryx effects are disabled.");return;}
     if(name=="defaultMic"||name=="defaultOutput"){const QString target=name=="defaultMic"?"framoryx_mic":"framoryx_output";for(const auto& value:c->m_state["audioNodes"].toList()){const auto node=value.toMap();if(node["name"]==target){command(exe("wpctl"),{"set-default",node["id"].toString()},[this](int code,QByteArray){c->notify(code?"The default audio device could not be changed.":"Framoryx is now the default audio device.",code?"warning":"info");});return;}}c->notify("Apply this effect first, then choose its virtual device.");return;}
-    if(name=="shortcut"){const QString folder=QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);if(folder.isEmpty()){c->notify("No desktop folder is configured. Framoryx is available in your app launcher.");return;}const QString program=QCoreApplication::applicationFilePath();QByteArray entry="[Desktop Entry]\nType=Application\nName=Framoryx\nExec=\""+QFile::encodeName(program).replace("\"","\\\"")+"\"\nIcon=io.framoryx.Framoryx\nTerminal=false\nCategories=Game;Utility;\n";const QString path=folder+"/Framoryx.desktop";if(writeFile(path,entry)){QFile::setPermissions(path,QFile::permissions(path)|QFile::ExeOwner);c->notify("Desktop shortcut created. Your desktop may ask you to trust the launcher once.");}else c->notify("The desktop shortcut could not be created.","warning");return;}
+    if(name=="shortcut"){const QString folder=QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);if(folder.isEmpty()){c->notify("No desktop folder is configured. Framoryx is available in your app launcher.");return;}const QByteArray entry=lifecycle::desktopEntry(lifecycle::launchPath(),false);const QString path=folder+"/Framoryx.desktop";if(!entry.isEmpty()&&writeFile(path,entry)){QFile::setPermissions(path,QFile::permissions(path)|QFile::ExeOwner);c->notify("Desktop shortcut created. Your desktop may ask you to trust the launcher once.");}else c->notify("The desktop shortcut could not be created.","warning");return;}
     if(name=="fixtureClose"){stopFixtures();return;}
     if(name=="fixture"){const int mode=c->m_options["linuxOverlayMode"].toInt(),cap=c->m_options["cap"].toInt();const QString scene=QCoreApplication::applicationDirPath()+(mode==2?(args["api"]=="vulkan"?"/FramoryxVulkanScene":"/FramoryxScene"):"/FramoryxPresentScene");c->addGame(QUrl::fromLocalFile(scene),"Framoryx test scene","");c->setOption("linuxOverlayMode",mode);c->setOption("cap",cap);linuxLaunch();if(m_launchedPid&&!m_launchStart.isEmpty())m_fixtures[m_launchedPid]=m_launchStart;return;}
     if(name=="soundSettings"){QDesktopServices::openUrl(QUrl("https://github.com/NeTriXoN-BoT/Framoryx/blob/main/docs/AUDIO.md"));return;}

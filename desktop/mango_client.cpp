@@ -21,8 +21,23 @@ void MangoClient::start(const QString& prefix){if(m_prefix==prefix&&m_timer.isAc
 void MangoClient::stop(){m_timer.stop();if(m_verified){m_socket.write(":framoryx_stop;");m_socket.flush();}m_verified=false;m_supported=false;m_socket.abort();m_prefix.clear();m_bytes.clear();m_pid=0;m_dropped=0;}
 bool MangoClient::connected()const{return m_verified&&m_supported;}
 void MangoClient::reload(){if(connected())m_socket.write(":framoryx_reload;");}
+void MangoClient::configure(const QVariantMap& options,bool visible){
+    QList<QByteArray> values{QByteArray("1")};
+    for(const auto& key:QStringList{"fields","overlayScale","opacity","accent","style","fontScale"})values<<QByteArray::number(options[key].toInt());
+    values<<QByteArray::number(qRound(options["hudX"].toDouble()*10000))<<QByteArray::number(qRound(options["hudY"].toDouble()*10000))<<QByteArray::number(options["cap"].toInt())<<QByteArray::number(visible?1:0);
+    for(const auto& item:options["order"].toList())values<<QByteArray::number(item.toInt());
+    QByteArray body;for(const auto& value:values){if(!body.isEmpty())body+='|';body+=value;}
+    const auto packet=":framoryx_hud="+body+';';if(packet==m_hudPacket)return;m_hudPacket=packet;if(connected())m_socket.write(packet);
+}
+void MangoClient::metrics(const QVariantMap& state){
+    QByteArray body;
+    for(const auto& key:QStringList{"average","low","cpu","ram","gpu","vramPercent","gpuTemp","cpuTemp","gpuPower","gpuClock"}){
+        bool ok=false;const double number=state[key].toDouble(&ok);const int value=ok&&!state[key].isNull()&&std::isfinite(number)&&number>=0&&number<=1000000?qRound(number*100):-1;
+        if(!body.isEmpty())body+='|';body+=QByteArray::number(value);
+    }m_metricPacket=":framoryx_metrics="+body+';';if(connected())m_socket.write(m_metricPacket);
+}
 void MangoClient::poll(){
-    if(m_verified){if(m_socket.bytesToWrite()<16384)m_socket.write(":framoryx_frames;");else m_socket.abort();return;}
+    if(m_verified){if(m_socket.bytesToWrite()<16384){m_socket.write(":framoryx_frames;");if(connected()&&++m_pollCount%10==0&&!m_hudPacket.isEmpty())m_socket.write(m_hudPacket);}else m_socket.abort();return;}
     if(m_socket.state()==QLocalSocket::ConnectingState){if(m_clock.elapsed()-m_connectTime>3000)m_socket.abort();return;}
     if(m_prefix.isEmpty()||m_clock.elapsed()<m_retry)return;m_retry=m_clock.elapsed()+1000;
     QFile sockets("/proc/net/unix");if(!sockets.open(QIODevice::ReadOnly))return;
@@ -31,7 +46,7 @@ void MangoClient::poll(){
 }
 void MangoClient::receive(){
     m_bytes+=m_socket.readAll();if(m_bytes.size()>65536){m_socket.abort();m_bytes.clear();return;}
-    int end;while((end=m_bytes.indexOf(';'))>=0){const auto packet=m_bytes.left(end);m_bytes.remove(0,end+1);if(!m_verified||!packet.startsWith(":FramoryxFrames="))continue;const auto body=packet.mid(16);const auto divider=body.indexOf('|');if(divider<0)continue;bool valid=false;const auto dropped=body.left(divider).toULongLong(&valid);if(!valid)continue;if(!m_supported){m_supported=true;emit connectedToGame(m_pid);}if(dropped!=m_dropped){m_dropped=dropped;emit lostSamples(dropped);}
+    int end;while((end=m_bytes.indexOf(';'))>=0){const auto packet=m_bytes.left(end);m_bytes.remove(0,end+1);if(!m_verified||!packet.startsWith(":FramoryxFrames="))continue;const auto body=packet.mid(16);const auto divider=body.indexOf('|');if(divider<0)continue;bool valid=false;const auto dropped=body.left(divider).toULongLong(&valid);if(!valid)continue;if(!m_supported){m_supported=true;if(!m_hudPacket.isEmpty())m_socket.write(m_hudPacket);if(!m_metricPacket.isEmpty())m_socket.write(m_metricPacket);emit connectedToGame(m_pid);}if(dropped!=m_dropped){m_dropped=dropped;emit lostSamples(dropped);}
         QList<double> durations;const auto pieces=body.mid(divider+1).split(',');if(pieces.size()>250)continue;for(const auto& value:pieces){const auto microseconds=value.toUInt(&valid);if(valid&&microseconds>0&&microseconds<60000000)durations<<microseconds/1000.;}if(!durations.isEmpty())emit frames(durations,m_pid);
     }
 }

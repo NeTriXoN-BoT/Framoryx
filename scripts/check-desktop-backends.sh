@@ -34,7 +34,8 @@ PY
 paplay --device=framoryx_ci_input "$XDG_RUNTIME_DIR/tone.wav" > "$XDG_RUNTIME_DIR/tone.log" 2>&1 & pids+=("$!")
 sleep 1
 result=0
-./build/desktop/desktop/Framoryx --backend-test --test-root "$RUNNER_TEMP/framoryx-backend" --snapshot-dir ./work/desktop-backends || result=1
+./build/desktop/desktop/Framoryx --backend-test --backend-scope graphics --test-root "$RUNNER_TEMP/framoryx-backend-graphics" --snapshot-dir ./work/desktop-backends/graphics || result=1
+./build/desktop/desktop/Framoryx --backend-test --backend-scope audio --test-root "$RUNNER_TEMP/framoryx-backend-audio" --snapshot-dir ./work/desktop-backends/audio || result=1
 if [[ "$result" != 0 ]]; then
     pactl list sources short
     pw-dump | python3 -c 'import json,sys; nodes=json.load(sys.stdin); print(json.dumps([{"name":x.get("info",{}).get("props",{}).get("node.name"),"media":x.get("info",{}).get("props",{}).get("media.class"),"state":x.get("info",{}).get("state")} for x in nodes if x.get("type")=="PipeWire:Interface:Node"],indent=2))'

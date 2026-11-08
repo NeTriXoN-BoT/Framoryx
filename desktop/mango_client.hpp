@@ -4,6 +4,7 @@
 #include <QTimer>
 #include <QElapsedTimer>
 #include <QList>
+#include <QVariantMap>
 class MangoClient final : public QObject {
     Q_OBJECT
 public:
@@ -11,6 +12,8 @@ public:
     void start(const QString& prefix);
     void stop();
     void reload();
+    void configure(const QVariantMap& options,bool visible);
+    void metrics(const QVariantMap& state);
     bool connected() const;
 signals:
     void frames(const QList<double>& durations,quint32 pid);
@@ -22,6 +25,8 @@ private:
     QElapsedTimer m_clock;
     QString m_prefix;
     QByteArray m_bytes;
+    QByteArray m_hudPacket,m_metricPacket;
+    unsigned m_pollCount=0;
     quint32 m_pid=0;
     quint64 m_dropped=0;
     qint64 m_retry=0,m_connectTime=0;

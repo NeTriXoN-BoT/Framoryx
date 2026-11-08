@@ -69,7 +69,7 @@ jobs:
           path: |
             work/mangohud-source
             work/mangohud-build
-          key: mangohud-0.8.4-linux-${{ hashFiles('runtime/mangohud/**', 'scripts/build-mangohud.sh', 'source/vendor/imgui/**', 'source/scalar_formats.hpp') }}
+          key: mangohud-0.8.4-linux-${{ hashFiles('runtime/mangohud/**', 'scripts/build-mangohud.sh', 'source/vendor/imgui/**', 'source/scalar_formats.hpp', 'source/presentation.hpp') }}
       - name: Linux isolated live backends and graphics APIs
         if: runner.os == 'Linux'
         env:

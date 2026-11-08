@@ -28,7 +28,7 @@ QString windowsCommand(const QString& executable) {
     if (!validPath(executable)) return {};
     return '"'+QDir::toNativeSeparators(executable)+"\" --startup --background";
 }
-QByteArray desktopEntry(const QString& executable) {
+QByteArray desktopEntry(const QString& executable,bool startup) {
     if (!validPath(executable)) return {};
     QString escaped;
     // Exec quoting, then desktop-entry string escaping. Percent is a field code.
@@ -39,7 +39,7 @@ QByteArray desktopEntry(const QString& executable) {
         else escaped+=c;
     }
     return ("[Desktop Entry]\nType=Application\nName=Framoryx\nComment=Your game, your way\nExec=\""+escaped+
-        "\" --startup --background\nIcon=io.framoryx.Framoryx\nTerminal=false\nX-GNOME-Autostart-enabled=true\nX-Framoryx-Managed=true\n").toUtf8();
+        "\""+(startup?" --startup --background":"")+"\nIcon=io.framoryx.Framoryx\nTerminal=false\nX-GNOME-Autostart-enabled=true\nX-Framoryx-Managed=true\n").toUtf8();
 }
 bool startupEnabled() {
 #ifdef Q_OS_WIN

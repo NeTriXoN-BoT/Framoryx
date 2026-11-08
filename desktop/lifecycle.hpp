@@ -4,7 +4,7 @@
 namespace lifecycle {
 QString launchPath();
 QString windowsCommand(const QString& executable);
-QByteArray desktopEntry(const QString& executable);
+QByteArray desktopEntry(const QString& executable,bool startup=true);
 bool startupEnabled();
 bool setStartup(bool enabled, QString* error);
 bool selfTest(QString* error);

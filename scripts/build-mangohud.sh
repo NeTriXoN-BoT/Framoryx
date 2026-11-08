@@ -9,11 +9,13 @@ if [[ ! -d "$source/.git" ]]; then git clone --no-checkout https://github.com/fl
 git -C "$source" fetch --depth 1 origin "$revision"
 git -C "$source" checkout --detach "$revision"
 [[ "$(git -C "$source" rev-parse HEAD)" == "$revision" ]] || exit 1
-if ! git -C "$source" apply --reverse --check "$project/runtime/mangohud/framoryx.patch" 2>/dev/null; then
-    git -C "$source" apply --check "$project/runtime/mangohud/framoryx.patch"
-    git -C "$source" apply "$project/runtime/mangohud/framoryx.patch"
+if ! git -C "$source" apply --unidiff-zero --reverse --check "$project/runtime/mangohud/framoryx.patch" 2>/dev/null; then
+    git -C "$source" apply --unidiff-zero --check "$project/runtime/mangohud/framoryx.patch"
+    git -C "$source" apply --unidiff-zero "$project/runtime/mangohud/framoryx.patch"
 fi
 cmp -s runtime/mangohud/framoryx_stream.hpp "$source/src/framoryx_stream.hpp" || cp runtime/mangohud/framoryx_stream.hpp "$source/src/framoryx_stream.hpp"
+cmp -s runtime/mangohud/framoryx_hud.hpp "$source/src/framoryx_hud.hpp" || cp runtime/mangohud/framoryx_hud.hpp "$source/src/framoryx_hud.hpp"
+cmp -s source/presentation.hpp "$source/src/presentation.hpp" || cp source/presentation.hpp "$source/src/presentation.hpp"
 cp runtime/mangohud/imgui.wrap "$source/subprojects/imgui.wrap"
 meson subprojects download --sourcedir "$source" imgui
 for file in imgui.cpp imgui_draw.cpp imgui_tables.cpp imgui_widgets.cpp imgui.h imgui_internal.h imconfig.h imstb_rectpack.h imstb_textedit.h imstb_truetype.h; do

@@ -65,6 +65,7 @@ int main(int argc,char** argv){
     parser.addOption({"test-root","Use an isolated configuration directory.","path"});
     parser.addOption({"self-test","Run headless model checks without audio or game changes."});
     parser.addOption({"backend-test","Run live integrations on an isolated CI runner."});
+    parser.addOption({"backend-scope","Choose all, graphics or audio live integrations.","scope","all"});
     parser.addOption({"ui-smoke","Run bounded UI checks on the isolated CI runner."});
     parser.addOption({"bundle-test","Verify packaged QML and rendering without the optional input driver."});
     parser.addOption({"snapshot-dir","Write CI UI captures and results here.","path"});
@@ -100,7 +101,7 @@ int main(int argc,char** argv){
 #ifdef Q_OS_WIN
     BOOL dark=TRUE;DwmSetWindowAttribute(HWND(window->winId()),20,&dark,sizeof(dark));
 #endif
-    if(backendTest){window->hide();return runBackendChecks(&controller,parser.value("snapshot-dir"),&qmlFailure);}
+    if(backendTest){window->hide();return runBackendChecks(&controller,parser.value("snapshot-dir"),&qmlFailure,parser.value("backend-scope"));}
     QObject::connect(&controller,&Controller::quitRequested,&application,&QApplication::quit);
     QSystemTrayIcon tray(QIcon(":/art/icon.png"));QMenu menu;
     auto show=menu.addAction("Open Framoryx");QObject::connect(show,&QAction::triggered,&controller,[&]{emit controller.showRequested();});
