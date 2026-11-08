@@ -47,6 +47,7 @@ private:
     QMap<qint64,QString> m_fixtures;
     void stopFixtures();
     bool m_monitoring = false;
+    bool m_volumeWriting = false, m_volumePending = false;
     QTimer m_scanTimer, m_volumeTimer, m_optionTimer;
     QSet<QString> m_pendingOptions;
     void flushOptions();

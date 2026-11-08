@@ -98,7 +98,7 @@ private:
     friend class Platform;
     friend class AudioMonitor;
     QString m_root;
-    bool m_test = false, m_active = true, m_scanningProcesses = false;
+    bool m_test = false, m_active = true, m_scanningProcesses = false, m_saveAllowed = true;
     QVariantMap m_state, m_options, m_baseOverlay, m_gameOptions;
     QString m_activeGameKey;
     void activateGameProfile(const QString& executable);

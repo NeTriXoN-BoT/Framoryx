@@ -1,0 +1,32 @@
+name: PipeWire configuration diagnostics
+on:
+  workflow_dispatch:
+    inputs:
+      desktop_run:
+        description: Shared desktop run containing a failed Linux audio configuration
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: sudo apt-get update && sudo apt-get install -y pipewire pipewire-bin wireplumber dbus-x11
+      - name: Fetch configuration from this repository's test run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.desktop_run }}
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || exit 2
+          gh run download "$RUN_ID" --name Framoryx-Shared-UI-Linux-x64 --dir work/audio-input
+      - name: Inspect an isolated PipeWire session
+        run: dbus-run-session -- bash scripts/probe-pipewire.sh work/audio-input/desktop-backends/audio/output.conf
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: PipeWire-diagnostics
+          path: work/pipewire-diagnostics
+          retention-days: 7

@@ -40,6 +40,6 @@ LegacySettings readLegacySettings(const QString& path,const QVariantMap& default
     }
     if(!recognized){result.native.clear();return result;}
     if(haveRules){global["allow"]=allow;global["deny"]=deny;}
-    for(auto item=limits.begin();item!=limits.end();++item){auto saved=profiles[item.key()].toMap();saved["cap"]=item.value();profiles[item.key()]=saved;}
+    for(auto item=limits.begin();item!=limits.end();++item){if(!profiles.contains(item.key())&&profiles.size()>=256)continue;auto saved=profiles[item.key()].toMap();saved["cap"]=item.value();profiles[item.key()]=saved;}
     result.valid=true;result.options=global;result.gameOptions=profiles;return result;
 }

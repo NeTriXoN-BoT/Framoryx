@@ -29,6 +29,7 @@
 #include <QTextStream>
 #include <QRegularExpression>
 #include <QSet>
+#include <QDateTime>
 #include <fstream>
 #include <cmath>
 
@@ -115,7 +116,18 @@ QVariantMap Controller::cleanOptions(const QVariantMap& input)const{
 void Controller::load(){
     QJsonObject document;
     if(!boundedJson(m_root+"/settings.json",&document)){
-        if(QFileInfo::exists(m_root+"/settings.json"))return;
+        const QString path=m_root+"/settings.json";const QFileInfo info(path);
+        if(info.exists()||info.isSymLink()){
+            m_saveAllowed=false;
+            // Preserve the original bytes before allowing defaults to replace malformed JSON.
+            QFile original(path);
+            if(info.isFile()&&!info.isSymLink()&&info.size()<=1024*1024&&original.open(QIODevice::ReadOnly)){
+                const auto bytes=original.read(1024*1024+1);QSaveFile backup(path+".recovered-"+QString::number(QDateTime::currentMSecsSinceEpoch())+"-"+QUuid::createUuid().toString(QUuid::Id128)+".bak");
+                if(bytes.size()<=1024*1024&&original.error()==QFile::NoError&&backup.open(QIODevice::WriteOnly)){backup.setPermissions(QFile::ReadOwner|QFile::WriteOwner);m_saveAllowed=backup.write(bytes)==bytes.size()&&backup.commit();}
+            }
+            m_state["notice"]=m_saveAllowed?"Unreadable preferences were backed up. Default settings are ready.":"Preferences could not be loaded and have been preserved. Check the configuration file before saving.";
+            return;
+        }
         QStringList sources{m_root+"/legacy-settings.ini"};
 #ifdef Q_OS_WIN
         if(!m_test)sources<<QCoreApplication::applicationDirPath()+"/settings.ini";
@@ -128,7 +140,7 @@ void Controller::load(){
             return;
         }return;
     }
-    if(document.value("schema").toInt()!=3)return;
+    if(document.value("schema").toInt()!=3){m_saveAllowed=false;m_state["notice"]="These preferences use an unsupported version and have been preserved.";return;}
     m_options=cleanOptions(document.value("options").toObject().toVariantMap());
     m_baseOverlay=pick(cleanOptions(document.contains("baseOverlay")?document["baseOverlay"].toObject().toVariantMap():m_options),gameKeys);
     const auto savedGames=document["gameOptions"].toObject();
@@ -145,8 +157,17 @@ void Controller::load(){
     };
     m_games=cleanList(document.value("games").toArray(),true);
     m_profiles=cleanList(document.value("profiles").toArray(),false);
+    // Running-window IDs expire between sessions; only library selections are persistent.
+    const QString selected=m_options["selectedGame"].toString();QString selectedKey;
+    for(const auto& value:m_games){const auto game=value.toMap();if(game["id"]==selected&&!selected.isEmpty())selectedKey=gameKey(game["executable"].toString());}
+    if(selectedKey.isEmpty())m_options["selectedGame"]="auto";
+    m_activeGameKey=selectedKey;const auto values=selectedKey.isEmpty()||!m_gameOptions.contains(selectedKey)?m_baseOverlay:m_gameOptions[selectedKey].toMap();
+    for(const auto& key:gameKeys)if(values.contains(key))m_options[key]=values[key];
+    if(m_options["linuxOverlayMode"].toInt()==2)m_options["gamescope"]=false;
 }
 bool Controller::save(){
+    if(!m_saveAllowed){notify("Preferences are being preserved. Resolve the existing configuration file before saving changes.","warning");return false;}
+    const QFileInfo existing(m_root+"/settings.json");if(existing.isSymLink()||(existing.exists()&&(!existing.isFile()||existing.size()>1024*1024))){notify("The configuration file cannot be replaced safely.","warning");return false;}
     QSaveFile file(m_root+"/settings.json");
     const QJsonObject object{{"schema",3},{"activeGameKey",m_activeGameKey},{"baseOverlay",QJsonObject::fromVariantMap(m_baseOverlay)},{"gameOptions",QJsonObject::fromVariantMap(m_gameOptions)},{"options",QJsonObject::fromVariantMap(m_options)},{"games",QJsonArray::fromVariantList(m_games)},{"profiles",QJsonArray::fromVariantList(m_profiles)}};
     const auto bytes=QJsonDocument(object).toJson();if(bytes.size()>1024*1024){notify("Preferences exceed the storage limit. Remove some library entries or presets.","warning");return false;}
@@ -162,6 +183,8 @@ void Controller::setOption(const QString& key,const QVariant& value){
         m_options["volume"]=percent;m_state["volume"]=percent;m_volumeUntil=m_clock.elapsed()+700;emit volumeChanged();scheduleSave();if(!m_test)m_platform->applyOptions("volume");return;
     }
     const auto validated=cleanOptions(QVariantMap{{key,value}});auto next=m_options;next[key]=validated[key];if(next==m_options)return;
+    if(key=="gamescope"&&next[key].toBool()&&next["linuxOverlayMode"].toInt()==2){notify("Choose an external overlay method before enabling Gamescope. Combining it with the game layer is not supported yet.","warning");emit optionsChanged();return;}
+    if(key=="linuxOverlayMode"&&next[key].toInt()==2)next["gamescope"]=false;
     if(key=="startWithSystem"&&!m_test){QString error;if(!lifecycle::setStartup(next[key].toBool(),&error)){notify(error,"warning");emit optionsChanged();return;}}
     m_options=std::move(next);
     if(key=="low"||key=="mid"||key=="high"){

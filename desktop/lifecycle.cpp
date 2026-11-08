@@ -26,7 +26,8 @@ QString launchPath() {
 }
 QString windowsCommand(const QString& executable) {
     if (!validPath(executable)) return {};
-    return '"'+QDir::toNativeSeparators(executable)+"\" --startup --background";
+    const QString command='"'+QDir::toNativeSeparators(executable)+"\" --startup --background";
+    return command.size()<=260?command:QString();
 }
 QByteArray desktopEntry(const QString& executable,bool startup) {
     if (!validPath(executable)) return {};
@@ -44,7 +45,8 @@ QByteArray desktopEntry(const QString& executable,bool startup) {
 bool startupEnabled() {
 #ifdef Q_OS_WIN
     QSettings run("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",QSettings::NativeFormat);
-    return run.value("Framoryx").toString()==windowsCommand(launchPath());
+    const auto command=windowsCommand(launchPath());
+    return !command.isEmpty()&&run.value("Framoryx").toString()==command;
 #else
     QFile file(autostartPath());
     return file.open(QIODevice::ReadOnly) && file.size()<65536 && file.readAll()==desktopEntry(launchPath());
@@ -53,6 +55,7 @@ bool startupEnabled() {
 bool setStartup(bool enabled,QString* error) {
     if (!validPath(launchPath())) {*error="This application path cannot be registered for startup.";return false;}
 #ifdef Q_OS_WIN
+    if(enabled&&windowsCommand(launchPath()).isEmpty()){*error="Windows startup needs a shorter application path. Move Framoryx to a shorter folder and try again.";return false;}
     QSettings run("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",QSettings::NativeFormat);
     if (enabled) run.setValue("Framoryx",windowsCommand(launchPath()));
     else run.remove("Framoryx");
@@ -74,6 +77,9 @@ bool selfTest(QString* error) {
     if (!entry.contains("100%%") || !entry.contains("\\\\$") || !entry.contains("\\\\`") || !entry.contains("--startup --background") || !desktopEntry("relative/path").isEmpty() || !desktopEntry("/tmp/bad\nentry").isEmpty() || !windowsCommand("relative.exe").isEmpty()) {
         *error="Startup command escaping or path validation failed";return false;
     }
+#ifdef Q_OS_WIN
+    if(!windowsCommand("C:/"+QString(260,'a')+"/Framoryx.exe").isEmpty()||windowsCommand("C:/Apps/Framoryx.exe").isEmpty()){*error="Windows startup command length validation failed";return false;}
+#endif
     return true;
 }
 }

@@ -77,8 +77,10 @@ void Platform::flushVolume(){
         send({{"action","volume"},{"value",c->m_options["volume"].toInt()}});
 #else
         if(exe("wpctl").isEmpty()){c->notify("PipeWire volume controls are unavailable. Open Setup for the required components.","warning");return;}
+        if(m_volumeWriting){m_volumePending=true;return;}
+        m_volumeWriting=true;m_volumePending=false;
         const double volume=c->m_options["volume"].toInt()/100.;
-        command(exe("wpctl"),{"set-volume","-l","2.0","@DEFAULT_AUDIO_SINK@",QString::number(volume,'f',2)},[this](int code,QByteArray){if(code)c->notify("The output volume could not be changed. Check your audio session.","warning");});
+        command(exe("wpctl"),{"set-volume","-l","2.0","@DEFAULT_AUDIO_SINK@",QString::number(volume,'f',2)},[this](int code,QByteArray){m_volumeWriting=false;if(code&&!m_closing)c->notify("The output volume could not be changed. Check your audio session.","warning");if(m_volumePending&&!m_closing)flushVolume();});
 #endif
 }
 Platform::~Platform(){shutdown();}
@@ -106,7 +108,7 @@ void Platform::start(){
         int end;while((end=m_incoming.indexOf('\n'))>=0){const auto line=m_incoming.left(end);m_incoming.remove(0,end+1);const auto doc=QJsonDocument::fromJson(line);if(doc.isObject())c->receive(doc.object());}
     });
     connect(&m_engine,&QProcess::readyReadStandardError,this,[this]{c->setState("engineDiagnostic",QString::fromUtf8(m_engine.readAllStandardError()).right(4096));});
-    connect(&m_engine,&QProcess::started,this,[this]{applyOptions();flushOptions();if(c->m_options["autoCapture"].toBool())send({{"action","captureStart"}});});
+    connect(&m_engine,&QProcess::started,this,[this]{applyOptions();flushOptions();select(c->m_options["selectedGame"].toString());if(c->m_options["autoCapture"].toBool())send({{"action","captureStart"}});});
     connect(&m_engine,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this](int,QProcess::ExitStatus){c->setState("connected",false);if(!m_closing)c->notify("The Windows engine closed. Restart Framoryx to reconnect.","error");});
     m_engine.start(path,{"--engine-server",m_token,"--settings-file",c->root()+"/engine.ini"});
 #else
@@ -215,7 +217,7 @@ void Platform::linuxScan(){
         if(m_monitoring&&c->m_options["linuxOverlayMode"].toInt()!=2)attachPassive();
         if(c->m_options["autoBorderless"].toBool())for(const auto& value:windows){const auto window=value.toMap();if(window["id"]==c->m_options["selectedGame"]&&allowed(c->m_options,window["exe"].toString())&&!m_windowRestores.contains(window["id"].toString()))borderless(false);}
     });
-    if(!exe("wpctl").isEmpty())command(exe("wpctl"),{"get-volume","@DEFAULT_AUDIO_SINK@"},[this](int code,QByteArray output){if(code)return;const auto parts=output.simplified().split(' ');if(parts.size()>1){const int value=qBound(0,qRound(parts[1].toDouble()*100),200);if(!m_volumeTimer.isActive()&&c->m_clock.elapsed()>c->m_volumeUntil){c->m_state["volume"]=value;c->m_options["volume"]=value;emit c->optionsChanged();}c->m_state["muted"]=output.contains("MUTED");}});
+    if(!exe("wpctl").isEmpty()&&!m_volumeWriting&&!m_volumeTimer.isActive())command(exe("wpctl"),{"get-volume","@DEFAULT_AUDIO_SINK@"},[this](int code,QByteArray output){if(code)return;const auto parts=output.simplified().split(' ');if(parts.size()>1){const int value=qBound(0,qRound(parts[1].toDouble()*100),200);if(!m_volumeWriting&&!m_volumePending&&!m_volumeTimer.isActive()&&c->m_clock.elapsed()>c->m_volumeUntil&&c->volume()!=value){c->m_state["volume"]=value;c->m_options["volume"]=value;emit c->volumeChanged();}c->m_state["muted"]=output.contains("MUTED");}});
     if(!exe("pw-dump").isEmpty())command(exe("pw-dump"),{},[this](int code,QByteArray output){
         m_refreshing=false;if(code)return;const auto array=QJsonDocument::fromJson(output).array();QVariantList nodes;
         for(const auto& item:array){const auto object=item.toObject();if(object["type"]!="PipeWire:Interface:Node")continue;const auto props=object["info"].toObject()["props"].toObject();const auto media=props["media.class"].toString();if(!media.startsWith("Audio/Source")&&!media.startsWith("Audio/Sink"))continue;nodes<<QVariantMap{{"id",object["id"].toInt()},{"name",props["node.name"].toString()},{"description",props["node.description"].toString()},{"media",media},{"rate",props["audio.rate"].toInt()}};}
@@ -249,7 +251,7 @@ QString Platform::launchCommand()const{
     return {};
 #else
     if(c->m_options["linuxOverlayMode"].toInt()!=2||c->m_state["antiCheatStatus"]=="detected")return (c->m_options["gamescope"].toBool()?"gamescope -b -r "+QString::number(c->m_options["cap"].toInt())+" -- ":QString())+"%command%";
-    return "env FRAMORYX_HUD=1 MANGOHUD_CONFIG="+shellQuote(mangoConfiguration())+' '+shellQuote(mangoExecutable().isEmpty()?"mangohud":mangoExecutable())+' '+(c->m_options["gamescope"].toBool()?"gamescope -b -r "+QString::number(c->m_options["cap"].toInt())+" -- ":QString())+"%command%";
+    return "env FRAMORYX_HUD=1 MANGOHUD_CONFIG="+shellQuote(mangoConfiguration())+' '+shellQuote(mangoExecutable().isEmpty()?"mangohud":mangoExecutable())+" %command%";
 #endif
 }
 bool Platform::attachPassive(bool explain){
@@ -286,6 +288,7 @@ void Platform::linuxLaunch(){
     const QFileInfo file(game["executable"].toString());if(game.isEmpty()||!file.isFile()||!file.isExecutable()){c->notify("Add a game executable to your library, then select it.","warning");return;}
     if(denied(c->m_options,file.fileName())){c->notify("This executable is blocked by your process rules.","warning");return;}
     const bool inProcess=c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected";
+    if(inProcess&&c->m_options["gamescope"].toBool()){c->notify("Choose either the Framoryx game layer or Gamescope for this launch. Their combined rendering path is not supported yet.","warning");return;}
     if(inProcess&&mangoExecutable().isEmpty()){c->notify("The game runtime is missing. Extract the complete package or install MangoHud.","warning");return;}
     if(c->m_options["gamescope"].toBool()&&exe("gamescope").isEmpty()){c->notify("Gamescope is unavailable. Disable its launch option or install it in Setup.","warning");return;}
     applyOptions();flushOptions();c->m_store.clear();c->m_frameTime=0;
@@ -427,7 +430,8 @@ void Platform::action(const QString& name,const QVariantMap& args){
 #ifdef Q_OS_WIN
         send({{"action","safetyFallback"},{"enabled",args["enabled"].toBool()}});
 #else
-        c->setState("externalPreferred",args["enabled"].toBool());
+        const bool enabled=args["enabled"].toBool();c->setState("externalPreferred",enabled);
+        if(enabled){if(m_mango){m_mango->configure(c->m_options,false);m_mango->setLimit(0,mangoFontPixels());m_mango->setCollecting(false);}c->m_state["externalCapture"]=true;c->m_state["live"]=false;if(m_monitoring)attachPassive();c->setState("overlayHint","Known anti-cheat indicators were detected. The running layer has been disabled and external capture is preferred. Restart the game without the layer launch options to remove loaded code.");}
 #endif
         return;
     }
