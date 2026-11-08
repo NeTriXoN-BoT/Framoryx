@@ -4,12 +4,14 @@ root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 if [ "${1-}" = --version ]; then printf '%s\n' 'MangoHud v0.8.4 / Framoryx stream 1'; exit 0; fi
 if [ "${1-}" = --dlsym ]; then shift; fi
 [ "$#" -gt 0 ] || exit 2
-export MANGOHUD=1
+# This is an explicit, separately named layer. Do not also activate a host
+# MangoHud implicit layer, which would impose a second independent frame cap.
+unset MANGOHUD
 export MANGOHUD_DLSYM=1
 export LD_PRELOAD="$root/lib/libMangoHud_shim.so${LD_PRELOAD:+:$LD_PRELOAD}"
 export VK_LAYER_PATH="$root/layers${VK_LAYER_PATH:+:$VK_LAYER_PATH}"
 case ":${VK_INSTANCE_LAYERS-}:" in
-    *:VK_LAYER_MANGOHUD_overlay_x86_64:*) ;;
-    *) export VK_INSTANCE_LAYERS="VK_LAYER_MANGOHUD_overlay_x86_64${VK_INSTANCE_LAYERS:+:$VK_INSTANCE_LAYERS}" ;;
+    *:VK_LAYER_FRAMORYX_overlay_x86_64:*) ;;
+    *) export VK_INSTANCE_LAYERS="VK_LAYER_FRAMORYX_overlay_x86_64${VK_INSTANCE_LAYERS:+:$VK_INSTANCE_LAYERS}" ;;
 esac
 exec "$@"

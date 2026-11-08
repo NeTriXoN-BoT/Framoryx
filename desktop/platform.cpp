@@ -84,6 +84,7 @@ Platform::Platform(Controller* controller):QObject(controller),c(controller){
 #endif
         connect(process,&QProcess::started,this,[this,process]{if(m_expectedStops.contains(process)||m_pendingAudio.contains(process))process->terminate();});
         connect(process,&QProcess::readyReadStandardError,this,[this,process]{const QString key=process==&m_mic?"micDiagnostic":"outputDiagnostic";const auto error=(c->m_state[key].toString()+QString::fromUtf8(process->readAllStandardError())).right(16384);c->setState(key,error);});
+        connect(process,&QProcess::errorOccurred,this,[this,process](QProcess::ProcessError error){if(error==QProcess::FailedToStart)c->setState(process==&m_mic?"micDiagnostic":"outputDiagnostic",process->errorString());});
         connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this,process](int code,QProcess::ExitStatus){c->setState(process==&m_mic?"micConfigured":"bassConfigured",false);const bool expected=m_expectedStops.remove(process);if(code&&!m_closing&&!expected&&!m_pendingAudio.contains(process))c->notify("An audio filter stopped. Open Audio setup to inspect its status.","warning");if(m_pendingAudio.contains(process)&&!m_closing)QTimer::singleShot(0,this,[this,process]{startAudio(process);});});
     }
 }
@@ -131,7 +132,7 @@ void Platform::start(){
     m_passive=std::make_unique<PassiveCapture>(this);
     m_mango=std::make_unique<MangoClient>(this);
     connect(m_mango.get(),&MangoClient::frames,this,[this](const QList<double>& times,quint32 pid){if(m_monitoring&&!c->m_state["externalCapture"].toBool())c->sampleFrames(times,c->m_state["profileExe"].toString(),pid);});
-    connect(m_mango.get(),&MangoClient::connectedToGame,this,[this](quint32 pid){c->setState("profilePid",pid);c->setState("gameRunning",true);m_mango->configure(c->m_options,c->m_state["overlay"].toBool()&&c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected");c->setState("overlayHint","Connected to the game. Overlay and frame-limit changes apply live; frame telemetry stays in bounded memory.");});
+    connect(m_mango.get(),&MangoClient::connectedToGame,this,[this](quint32 pid){c->setState("profilePid",pid);c->setState("gameRunning",true);const bool layer=c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected"&&!denied(c->m_options,c->m_state["profileExe"].toString());if(layer){if(m_passive)m_passive->stop();c->setState("externalCapture",false);}m_mango->configure(c->m_options,c->m_state["overlay"].toBool()&&layer);c->setState("overlayHint","Connected to the game. Overlay and frame-limit changes apply live; frame telemetry stays in bounded memory.");});
     connect(m_mango.get(),&MangoClient::limitApplied,this,[this](int cap){c->setState("appliedCap",cap);});
     connect(m_mango.get(),&MangoClient::disconnectedFromGame,this,[this]{c->setState("gameRunning",false);});
     connect(m_mango.get(),&MangoClient::lostSamples,this,[this](quint64 count){c->setState("droppedFrameSamples",count);});
@@ -170,7 +171,7 @@ void Platform::refresh(){
     list<<QVariantMap{{"name","PipeWire · audio processing"},{"ready",!exe("pipewire").isEmpty()&&!exe("wpctl").isEmpty()},{"detail","Output gain, bass, microphone EQ and the Framoryx noise-suppressed input."}};
     list<<QVariantMap{{"name",wayland?"Wayland window controls":"X11 window controls"},{"ready",wayland?!exe("gamescope").isEmpty():!exe("wmctrl").isEmpty()},{"detail",wayland?"Use Gamescope when launching. Wayland restricts arbitrary changes to other windows.":"Window selection and reversible fullscreen changes through your window manager."}};
     c->setState("session",wayland?"Wayland":"X11");
-    c->setState("setupCommand","Ubuntu/Debian: sudo apt install mangohud gamescope pipewire wireplumber wmctrl\nFedora: sudo dnf install mangohud gamescope pipewire wireplumber wmctrl\nArch: sudo pacman -S mangohud gamescope pipewire wireplumber wmctrl");
+    c->setState("setupCommand","Ubuntu/Debian: sudo apt install gamescope pipewire wireplumber wmctrl\nFedora: sudo dnf install gamescope pipewire wireplumber wmctrl\nArch: sudo pacman -S gamescope pipewire wireplumber wmctrl");
     linuxScan();
 #endif
     c->m_capabilities=list;emit c->capabilitiesChanged();
@@ -193,10 +194,14 @@ void Platform::flushOptions(){
     send({{"action","options"},{"key",key},{"keys",QJsonArray::fromStringList(keys)},{"options",QJsonObject::fromVariantMap(values)}});
 #else
     if(m_mango){
-        const bool visible=c->m_state["overlay"].toBool()&&c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected";
+        const bool blocked=denied(c->m_options,c->m_state["profileExe"].toString());const bool layer=c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected"&&!blocked;
+        if(layer){m_mango->start(mangoPrefix(),m_monitoring);if(m_mango->connected()){if(m_passive)m_passive->stop();c->setState("externalCapture",false);}}
+        else {m_mango->setCollecting(false);c->setState("externalCapture",true);if(m_monitoring)attachPassive();}
+        if(blocked){c->setState("live",false);c->setState("overlayHint","This game is blocked by your process rules. Its layer overlay, capture and frame limit are disabled.");}
+        const bool visible=c->m_state["overlay"].toBool()&&layer;
         m_mango->configure(c->m_options,visible);
-        m_mango->setLimit(c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected"?c->m_options["cap"].toInt():0,mangoFontPixels());
-        if(m_mango->connected())c->setState("overlayHint","Overlay and frame-limit changes sent to the running game.");
+        m_mango->setLimit(layer?c->m_options["cap"].toInt():0,mangoFontPixels());
+        if(!blocked&&m_mango->connected())c->setState("overlayHint","Overlay and frame-limit changes sent to the running game.");
     }
 #endif
 }
@@ -257,16 +262,18 @@ int Platform::mangoFontPixels()const{
 }
 QString Platform::mangoConfiguration()const{
     const bool layer=c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected";
-    return "legacy_layout=0,no_display=0,cpu_stats=0,gpu_stats=0,frame_timing=0,fps=0,fps_limit_method=early,font_size="+QString::number(mangoFontPixels())+",fps_limit="+QString::number(layer?c->m_options["cap"].toInt():0)+",control="+mangoPrefix()+"%p";
+    return "legacy_layout=0,no_display=0,cpu_stats=0,gpu_stats=0,frame_timing=0,fps=0,fps_limit_method=late,font_size="+QString::number(mangoFontPixels())+",fps_limit="+QString::number(layer?c->m_options["cap"].toInt():0)+",control="+mangoPrefix()+"%p";
 }
 QString Platform::mangoExecutable()const{
     const QString bundled=QCoreApplication::applicationDirPath()+"/runtime/mangohud/bin/mangohud";
-    if(QFileInfo(bundled).isExecutable())return bundled;return exe("mangohud");
+    const QDir runtime(QCoreApplication::applicationDirPath()+"/runtime/mangohud");
+    if(QFileInfo(bundled).isExecutable()&&runtime.exists("lib/libMangoHud.so")&&runtime.exists("lib/libMangoHud_shim.so")&&runtime.exists("lib/libMangoHud_opengl.so")&&runtime.exists("layers/Framoryx.json"))return bundled;return {};
 }
 QString Platform::launchCommand()const{
 #ifdef Q_OS_WIN
     return {};
 #else
+    if(c->m_options["linuxOverlayMode"].toInt()==2&&(c->m_activeGameKey.isEmpty()||mangoExecutable().isEmpty()))return {};
     if(c->m_options["linuxOverlayMode"].toInt()!=2||c->m_state["antiCheatStatus"]=="detected")return (c->m_options["gamescope"].toBool()?"gamescope -b -r "+QString::number(c->m_options["cap"].toInt())+" -- ":QString())+"%command%";
     return "env FRAMORYX_HUD=1 MANGOHUD_CONFIG="+shellQuote(mangoConfiguration())+' '+shellQuote(mangoExecutable().isEmpty()?"mangohud":mangoExecutable())+" %command%";
 #endif
@@ -278,11 +285,12 @@ bool Platform::attachPassive(bool explain){
         c->setState("overlayHint","Native Wayland restricts external overlay positioning and passive presentation capture. Use an X11 session, or explicitly select the MangoHud game layer where permitted.");if(explain)c->notify(c->m_state["overlayHint"].toString(),"warning");return false;
     }
     const auto target=selectedWindow(c->m_options,c->m_games,c->m_state["windows"].toList(),m_passive->foreground());
-    if(target.isEmpty()){if(explain)c->notify("Capture is armed. Select a running game window, or add your game to the allow list for automatic capture.");return false;}
+    if(target.isEmpty()){if(m_passive->running()){m_passive->stop();c->setState("live",false);c->setState("gameForeground",false);}if(explain)c->notify("Capture is armed. Select a running game window, or add your game to the allow list for automatic capture.");return false;}
     const quint32 id=target["id"].toString().toUInt(nullptr,16);
     if(m_passive->running()&&m_passive->window()==id)return true;
     QString error;if(!m_passive->start(id,target["pid"].toUInt(),&error)){if(explain)c->notify(error,"warning");c->setState("overlayHint",error);return false;}
     m_passiveName=target["exe"].toString();m_passivePid=target["pid"].toUInt();c->m_store.clear();c->m_frameTime=0;
+    c->activateGameProfile(m_passiveName);
     c->m_state["profileExe"]=m_passiveName;c->m_state["profilePid"]=m_passivePid;c->m_state["externalCapture"]=true;c->m_state["renderer"]="X Present · external";
     const double dpr=QGuiApplication::primaryScreen()?QGuiApplication::primaryScreen()->devicePixelRatio():1.;
     auto screen=QGuiApplication::screenAt(QPoint(int(target["x"].toInt()/dpr),int(target["y"].toInt()/dpr)));if(!screen)screen=QGuiApplication::primaryScreen();
@@ -294,6 +302,7 @@ bool Platform::attachPassive(bool explain){
 }
 void Platform::linuxLaunch(){
 #ifndef Q_OS_WIN
+    if(m_mango&&m_mango->connected()){m_monitoring=true;m_mango->setCollecting(true);c->setState("capture",true);c->notify("Your selected game is already running. Monitoring resumed without launching a duplicate.");return;}
     if(m_launchedPid&&m_lastLaunchId==c->m_options["selectedGame"].toString()&&!m_launchStart.isEmpty()&&processStart(m_launchedPid)==m_launchStart){m_monitoring=true;if(c->m_options["linuxOverlayMode"].toInt()==2&&m_mango)m_mango->start(mangoPrefix());c->setState("capture",true);c->notify("Monitoring resumed for the running game.");return;}
     QVariantMap game;for(const auto& value:c->m_games)if(value.toMap()["id"]==c->m_options["selectedGame"])game=value.toMap();
     const QFileInfo file(game["executable"].toString());if(game.isEmpty()||!file.isFile()||!file.isExecutable()){c->notify("Add a game executable to your library, then select it.","warning");return;}
@@ -301,7 +310,7 @@ void Platform::linuxLaunch(){
     const bool inProcess=c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected";
     if(inProcess&&c->m_options["gamescope"].toBool()){c->notify("Choose either the Framoryx game layer or Gamescope for this launch. Their combined rendering path is not supported yet.","warning");return;}
     if(inProcess){QFile binary(file.absoluteFilePath());if(binary.open(QIODevice::ReadOnly)&&binary.read(5)==QByteArray("\x7f" "ELF\x01",5)){c->notify("The bundled game layer supports 64-bit games. Use external monitoring for this 32-bit executable.","warning");return;}}
-    if(inProcess&&mangoExecutable().isEmpty()){c->notify("The game runtime is missing. Extract the complete package or install MangoHud.","warning");return;}
+    if(inProcess&&mangoExecutable().isEmpty()){c->notify("The Framoryx game runtime is missing. Extract the complete package; an unmodified system MangoHud does not provide Framoryx controls.","warning");return;}
     if(c->m_options["gamescope"].toBool()&&exe("gamescope").isEmpty()){c->notify("Gamescope is unavailable. Disable its launch option or install it in Setup.","warning");return;}
     applyOptions();flushOptions();c->m_store.clear();c->m_frameTime=0;
     QProcessEnvironment env=hostEnvironment();env.insert("MANGOHUD_CONFIG",mangoConfiguration());env.insert("MANGOHUD_DLSYM","1");if(inProcess)env.insert("FRAMORYX_HUD","1");m_game.setProcessEnvironment(env);
@@ -374,7 +383,7 @@ void Platform::linuxAudio(bool microphone,bool verified){
 void Platform::startAudio(QProcess* process){
 #ifndef Q_OS_WIN
     if(m_closing||!m_pendingAudio.contains(process))return;
-    const auto path=m_pendingAudio.take(process);const auto generation=m_audioGeneration[process];const bool microphone=process==&m_mic;
+    const auto path=m_pendingAudio.take(process);const auto generation=m_audioGeneration[process];const bool microphone=process==&m_mic;m_expectedStops.remove(process);
     process->setProcessEnvironment(hostEnvironment());process->start(exe("pipewire"),{"-c",path});
     QTimer::singleShot(1200,this,[this,process,generation,microphone]{if(generation!=m_audioGeneration[process]||m_closing)return;if(process->state()!=QProcess::Running){c->setState(microphone?"micApplying":"bassApplying",false);c->setState("audioStatus","The audio filter could not start. Open Settings for its diagnostic.");}linuxScan();});
     QTimer::singleShot(10000,this,[this,process,generation,microphone]{if(generation!=m_audioGeneration[process]||m_closing)return;if(c->m_state[microphone?"micApplying":"bassApplying"].toBool()){c->setState(microphone?"micApplying":"bassApplying",false);c->setState("audioStatus","The audio process started, but its virtual device is unavailable. Refresh audio and check your PipeWire session.");}});
@@ -450,7 +459,7 @@ void Platform::action(const QString& name,const QVariantMap& args){
 #endif
         return;
     }
-    if(name=="copySteam"){QGuiApplication::clipboard()->setText(launchCommand());c->notify("Steam launch options copied. Paste them into the game's Properties → Launch Options.");return;}
+    if(name=="copySteam"){if(c->m_options["linuxOverlayMode"].toInt()==2&&c->m_activeGameKey.isEmpty()){c->notify("Select your library game or its running window before copying its game-layer launch options.","warning");return;}QGuiApplication::clipboard()->setText(launchCommand());c->notify("Steam launch options copied. Paste them into the game's Properties → Launch Options.");return;}
     if(name=="noiseUpdate"){updateNoise(true);return;}
     if(name=="audioOpen"){if(c->m_options["autoNoise"].toBool())updateNoise(false);return;}
     if(name=="borderless"||name=="restore"){borderless(name=="restore");return;}
@@ -490,7 +499,7 @@ void Platform::shutdown(){
     if(m_passive)m_passive->stop();
     if(m_mango)m_mango->stop();
     stopFixtures();
-    for(auto process:m_commands){if(process->state()!=QProcess::NotRunning&&!process->waitForFinished(250)){process->kill();process->waitForFinished(100);}}
+    const auto commands=m_commands;for(auto process:commands){if(process->state()!=QProcess::NotRunning&&!process->waitForFinished(250)){process->kill();process->waitForFinished(100);}}
     // A user's game keeps running when the control application closes.
     m_game.disconnect(this);
 #endif

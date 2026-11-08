@@ -31,10 +31,14 @@ mkdir -p "$destination/lib" "$destination/bin" "$destination/layers" "$destinati
 find "$build/src" -maxdepth 1 -name 'libMangoHud*.so' -type f -exec cp {} "$destination/lib/" \;
 cp runtime/mangohud/mangohud "$destination/bin/mangohud"
 chmod 755 "$destination/bin/mangohud"
-python3 - "$build/src/MangoHud.x86_64.json" "$destination/layers/MangoHud.json" <<'PY'
+python3 - "$build/src/MangoHud.x86_64.json" "$destination/layers/Framoryx.json" <<'PY'
 import json, pathlib, sys
 data=json.loads(pathlib.Path(sys.argv[1]).read_text())
 data['layer']['library_path']='../lib/libMangoHud.so'
+data['layer']['name']='VK_LAYER_FRAMORYX_overlay_x86_64'
+data['layer']['description']='Framoryx overlay and frame pacing (MangoHud integration)'
+data['layer'].pop('enable_environment',None)
+data['layer']['disable_environment']={'DISABLE_FRAMORYX':'1'}
 pathlib.Path(sys.argv[2]).write_text(json.dumps(data, indent=2)+'\n')
 PY
 find "$source" -maxdepth 1 -iname '*license*' -type f -exec cp {} "$destination/licenses/" \;

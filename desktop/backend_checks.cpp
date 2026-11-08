@@ -37,7 +37,7 @@ class Checks : public QObject {
         if(stage==0&&scope=="audio")stage=5;
         else if(stage==4&&scope=="graphics")stage=13;
         else if(stage==10&&scope=="audio")stage=12;
-        else if(stage==12&&scope=="audio")stage=20;
+        else if(stage==12&&scope=="audio")stage=23;
         else ++stage;
 #else
         ++stage;
@@ -118,9 +118,9 @@ class Checks : public QObject {
         default:complete();break;
 #else
         case 5:
-            if(first)c->action("bassApply");await(state["bassConfigured"].toBool(),"PipeWire output filter starts",20000);break;
+            if(first){c->action("bassDisable");c->action("bassApply");}await(state["bassConfigured"].toBool(),"PipeWire output filter starts after an already-disabled bypass",20000);break;
         case 6:
-            if(first){c->setOption("noise",false);c->setOption("eq",true);c->setOption("voicePreset",4);c->action("micApply");}
+            if(first){c->action("micDisable");c->setOption("noise",false);c->setOption("eq",true);c->setOption("voicePreset",4);c->action("micApply");}
             await(state["micConfigured"].toBool(),"Physical microphone routes through the bassy EQ",20000);break;
         case 7:
             if(first)c->action("record");
@@ -156,6 +156,12 @@ class Checks : public QObject {
             await(state["fps"].toDouble()>54&&state["fps"].toDouble()<66&&phase.elapsed()>2500,"Vulkan limiter updates to 60 FPS without relaunch",15000);break;
         case 19:
             if(first){screenshot("hud-vulkan-telemetry.png");c->action("capture");}await(!state["capture"].toBool(),"Vulkan telemetry stops cleanly");break;
+        case 20:
+            if(first){c->action("capture");c->setOption("deny",QStringList{"FramoryxVulkanScene"});}await(!state["live"].toBool()&&state["appliedCap"].toInt()==0,"Blocking a running game stops its layer capture and limit");break;
+        case 21:
+            if(first)c->setOption("deny",QStringList{});await(state["live"].toBool()&&state["appliedCap"].toInt()==60,"Removing a process block restores the explicitly selected method");break;
+        case 22:
+            if(first)c->action("fixtureClose");await(!state["gameRunning"].toBool()&&!state["live"].toBool(),"Exiting the game clears live telemetry");break;
         default:complete();break;
 #endif
         }
