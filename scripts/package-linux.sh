@@ -24,9 +24,19 @@ export QMAKE="$QT_ROOT_DIR/bin/qmake"
 export QML_SOURCES_PATHS="$root/desktop/qml"
 export EXTRA_PLATFORM_PLUGINS='libqwayland-egl.so;libqwayland-generic.so'
 export PATH="$tools:$PATH"
+# The Qt deployer finds Wayland's platform, shell and decoration plugins but
+# omits its dynamically loaded EGL client integration. Keep these plugins in
+# their lookup directory and deploy their dependencies/rpaths explicitly.
+qt_plugins=$("$QMAKE" -query QT_INSTALL_PLUGINS)
+wayland_client="$qt_plugins/wayland-graphics-integration-client"
+[[ -f "$wayland_client/libqt-plugin-wayland-egl.so" ]] || { echo 'Qt Wayland EGL client integration is required.' >&2; exit 1; }
+mkdir -p "$appdir/usr/plugins/wayland-graphics-integration-client"
+for plugin in "$wayland_client/"*.so; do cp "$plugin" "$appdir/usr/plugins/wayland-graphics-integration-client/"; done
 arguments=(--appdir "$appdir" --executable "$appdir/usr/bin/Framoryx" --desktop-file "$appdir/usr/share/applications/io.framoryx.Framoryx.desktop" --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/io.framoryx.Framoryx.png" --plugin qt)
+arguments+=(--deploy-deps-only "$appdir/usr/plugins/wayland-graphics-integration-client")
 for library in "$appdir/usr/bin/runtime/mangohud/lib/"*.so; do arguments+=(--library "$library"); done
 "$tools/linuxdeploy-x86_64.AppImage" "${arguments[@]}"
+[[ -f "$appdir/usr/plugins/wayland-graphics-integration-client/libqt-plugin-wayland-egl.so" ]] || exit 1
 cat > "$appdir/AppRun.framoryx" <<'SH'
 #!/bin/sh
 set -eu
