@@ -140,7 +140,7 @@ class Checks : public QObject {
             if(first){c->setOption("startWithSystem",true);record("Sign-in entry is registered",lifecycle::startupEnabled());c->setOption("startWithSystem",false);record("Sign-in entry can be removed",!lifecycle::startupEnabled());next();}break;
         case 13:
             if(first){c->action("fixtureClose");c->setOption("linuxOverlayMode",2);c->setOption("cap",30);c->action("fixture");}
-            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34&&phase.elapsed()>2000,"OpenGL game layer streams real frames at 30 FPS",20000);break;
+            await(state["live"].toBool()&&!state["externalCapture"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34&&phase.elapsed()>2000,"OpenGL game layer streams real frames at 30 FPS",20000);if(stage==14)record("Game rendering resolution reaches automatic HUD sizing",state["gamePixelWidth"].toInt()>0&&state["gamePixelHeight"].toInt()>0);break;
         case 14:
             if(first){screenshot("hud-opengl-glass.png");c->setOption("cap",60);c->setOption("style",4);c->setOption("fields",65535);c->setOption("opacity",0);}
             await(state["fps"].toDouble()>54&&state["fps"].toDouble()<66&&phase.elapsed()>2500,"OpenGL limiter updates to 60 FPS without relaunch",15000);break;

@@ -140,6 +140,7 @@ void Platform::start(){
     connect(m_mango.get(),&MangoClient::frames,this,[this](const QList<double>& times,quint32 pid){if(m_monitoring&&!c->m_state["externalCapture"].toBool()&&gameLayerAllowed())c->sampleFrames(times,c->m_state["profileExe"].toString(),pid);});
     connect(m_mango.get(),&MangoClient::connectedToGame,this,[this](quint32 pid){c->setState("profilePid",pid);c->setState("gameRunning",true);const bool layer=gameLayerAllowed();if(layer){if(m_passive)m_passive->stop();c->setState("externalCapture",false);}m_mango->configure(c->m_options,c->m_state["overlay"].toBool()&&layer);c->setState("overlayHint","Connected to the game. Overlay and frame-limit changes apply live; frame telemetry stays in bounded memory.");});
     connect(m_mango.get(),&MangoClient::limitApplied,this,[this](int cap){c->setState("appliedCap",cap);});
+    connect(m_mango.get(),&MangoClient::surfaceSize,this,[this](int width,int height){c->setState("gamePixelWidth",width);c->setState("gamePixelHeight",height);applyOptions("surface");});
     connect(m_mango.get(),&MangoClient::disconnectedFromGame,this,[this]{c->setState("gameRunning",false);});
     connect(m_mango.get(),&MangoClient::lostSamples,this,[this](quint64 count){c->setState("droppedFrameSamples",count);});
     c->setState("connected",true);linuxScan();
@@ -215,7 +216,7 @@ void Platform::select(const QString& id){
 #ifdef Q_OS_WIN
     QJsonObject request{{"action","select"},{"id",id}};for(const auto& item:c->m_games)if(item.toMap()["id"]==id)request["exe"]=QFileInfo(item.toMap()["executable"].toString()).fileName();send(request);
 #else
-    if(m_passive)m_passive->stop();if(m_mango)m_mango->stop();c->m_livePid=0;c->m_store.clear();c->m_graph.clear();c->m_state["gameForeground"]=false;c->m_state["live"]=false;c->m_state["fps"]=0.;c->m_state["average"]=0.;c->m_state["low"]=0.;c->setState("selectedWindow",id);
+    if(m_passive)m_passive->stop();if(m_mango)m_mango->stop();c->m_state["gamePixelWidth"]=0;c->m_state["gamePixelHeight"]=0;c->m_livePid=0;c->m_store.clear();c->m_graph.clear();c->m_state["gameForeground"]=false;c->m_state["live"]=false;c->m_state["fps"]=0.;c->m_state["average"]=0.;c->m_state["low"]=0.;c->setState("selectedWindow",id);
     for(const auto& value:c->m_games){const auto game=value.toMap();if(game["id"].toString()==id){c->m_state["profileExe"]=QFileInfo(game["executable"].toString()).fileName();c->m_state["profilePid"]=0;c->setState("game",game["name"]);if(c->m_options["linuxOverlayMode"].toInt()==2){if(m_mango)m_mango->start(mangoPrefix(),m_monitoring&&gameLayerAllowed());}else if(m_monitoring)attachPassive();return;}}
     for(const auto& value:c->m_state["windows"].toList()){const auto window=value.toMap();if(window["id"].toString()==id)c->setState("game",window["name"]);}if(m_monitoring)attachPassive();
 #endif
@@ -267,8 +268,11 @@ bool Platform::gameLayerAllowed()const{
 }
 int Platform::mangoFontPixels()const{
     const auto& options=c->m_options;const auto screen=QGuiApplication::primaryScreen();
-    const double scale=options["overlayScale"].toInt()?options["overlayScale"].toInt()/100.:qBound(.85,screen?screen->size().height()*screen->devicePixelRatio()/1080.:1.,2.5);
-    return qBound(12,qRound(34*scale*options["fontScale"].toInt()/100.),200);
+    const double width=c->m_state["gamePixelWidth"].toInt()>0?c->m_state["gamePixelWidth"].toInt():screen?screen->size().width()*screen->devicePixelRatio():1920;
+    const double height=c->m_state["gamePixelHeight"].toInt()>0?c->m_state["gamePixelHeight"].toInt():screen?screen->size().height()*screen->devicePixelRatio():1080;
+    const double requested=(options["overlayScale"].toInt()?options["overlayScale"].toInt()/100.:qBound(.85,height/1080.,2.5))*options["fontScale"].toInt()/100.;
+    const auto layout=c->overlayLayout();const double scale=std::max(.1,std::min({requested,(width-30)/std::max(1.,layout["width"].toDouble()),(height-30)/std::max(1.,layout["height"].toDouble())}));
+    return qBound(12,qRound(34*scale),200);
 }
 QString Platform::mangoConfiguration()const{
     const bool layer=gameLayerAllowed();

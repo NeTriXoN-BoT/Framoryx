@@ -20,7 +20,7 @@ APO must also be enabled for that playback device in its device configurator. Fi
 
 ## Windows microphone: RNNoise and voice EQ
 
-1. Install Equalizer APO from its official project. In its device configurator, enable your intended **capture device**, then restart if requested. The default communications microphone is preferred in Framoryx's device list.
+1. Install Equalizer APO from its official project. In its device configurator, enable your intended **capture device**, then restart if requested. Select the intended physical microphone in Framoryx's device list.
 2. For RNNoise, choose a mono or stereo **48,000 Hz** microphone format in Windows Sound settings. Refresh the device list after changing it.
 3. Open **Microphone**. Framoryx checks the official [werman/noise-suppression-for-voice releases](https://github.com/werman/noise-suppression-for-voice/releases), downloads the stable Windows VST2 package and chooses mono/stereo automatically. No GitHub account is required.
 4. Select noise suppression and/or microphone EQ, then **Apply mic effects**. If the plugin is still downloading, the requested configuration is applied when it is ready, provided the selected microphone has not changed.

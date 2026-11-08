@@ -35,7 +35,7 @@
 #include <cmath>
 
 namespace {
-const QStringList labels{"Live FPS","Average FPS","1% low","Frame time","Frame graph","System CPU","System RAM","FPS limit","Renderer","Framoryx label","GPU usage","VRAM usage","GPU temperature","CPU temperature","GPU power","GPU clock"};
+const QStringList labels{"Live FPS","Average FPS","1% low","Frame time","Frame graph","System CPU","System RAM","Limit target","Renderer","Framoryx label","GPU usage","VRAM usage","GPU temperature","CPU temperature","GPU power","GPU clock"};
 const QVariantList defaultOrder{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 const QStringList visualKeys{"fields","order","style","opacity","overlayScale","fontScale","hudX","hudY","accent"};
 const QStringList gameKeys=visualKeys+QStringList{"cap","mode","linuxOverlayMode"};

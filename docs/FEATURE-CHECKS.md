@@ -1,4 +1,22 @@
-# Framoryx 0.2.3 feature verification
+# Framoryx 0.3 feature verification
+
+The shared Windows/Linux desktop and both portable packages passed the [6cb2efb deployment run](https://github.com/NeTriXoN-BoT/framoryx/actions/runs/42518071829). The [native engine/core run](https://github.com/NeTriXoN-BoT/framoryx/actions/runs/42518071802) also passed. Release preparation requires successful checks for the final source commit.
+
+| Area | Completed integration checks | Scope |
+| --- | --- | --- |
+| Shared interface | Seven cached pages, rapid slider gestures, retained settings, Auto/manual scaling, maximization and packaged QML | Isolated Windows and X11 desktops; physical multi-monitor transitions remain device-specific |
+| Windows monitoring | Real ETW frames, external HUD, borderless/restore, optional frontend limiter, hook disable and sign-in entry registration/removal | Native engine also checks x64 DX11/DX12 and x86 DX11 scenes |
+| Linux external path | X Present frames, foreground-only external HUD with the main window hidden, actual window-manager fullscreen and restoration | No game layer is loaded by external capture |
+| Linux game layer | Real OpenGL/Vulkan frames, custom HUD, 30→60 FPS live changes, capture pause/resume, block/unblock and game exit | Bundled 64-bit layer; a system MangoHud installation is present to exercise coexistence |
+| Process blocks | A running layer stops collecting and limiting when blocked; restarting capture cannot override the block | Other protected/system rules remain enforced |
+| Linux audio | Virtual bass output, Bassy Voice EQ, non-silent five-second recording, completed playback, official verified RNNoise, chain restart and bypass | Private synthesized microphone/audio server; no physical microphone certification |
+| Hardware | Unit/range checks, VRAM percentages, unavailable sensors and labelled GPU junction temperature | Actual availability depends on the installed driver or provider |
+| Portable packages | Windows ZIP and Linux AppImage run with build paths removed; both include required runtime files | Linux baseline is x86-64/glibc 2.35+, tested on X11; bundled Wayland plugins do not remove compositor restrictions |
+
+Core parsing, settings migration/recovery, profile persistence, command escaping, game-specific launch overrides and dependency checks also run headlessly. Source, secret and security checks are release gates. Commercial-game, anti-cheat-vendor and every-device certification are outside this fixture coverage.
+
+## Earlier Windows 0.2.3 coverage
+
 
 Reviewed on 8 November 2026. Native app/game windows were exercised only on isolated GitHub Windows runners. Local checks used compilation and headless console tests. No local volume, microphone, driver or security settings were changed.
 
@@ -46,4 +64,4 @@ Reviewed on 8 November 2026. Native app/game windows were exercised only on isol
 
 ## Practical limits
 
-Tests do not establish that every game, GPU driver, HDR mode or physical display arrangement works. Audible output gain and actual microphone processing require the user's Equalizer APO device configuration; automated tests verify the generated configuration and real offline RNNoise processing without changing system audio. No Linux desktop binary is included. Optional hooks can conflict with games or security tools, and no ban-free guarantee exists. The previously Defender-blocked optional injection soak remains incomplete and is not counted as a pass.
+Tests do not establish that every game, GPU driver, HDR mode or physical display arrangement works. Audible output gain and actual microphone processing require the user's Equalizer APO device configuration; automated tests verify the generated configuration and real offline RNNoise processing without changing system audio. The historical 0.2.3 release did not include a Linux desktop binary; native Linux coverage is listed in the 0.3 section above. Optional hooks can conflict with games or security tools, and no ban-free guarantee exists. The previously Defender-blocked optional injection soak remains incomplete and is not counted as a pass.

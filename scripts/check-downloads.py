@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import time
 from urllib import error, parse, request
@@ -21,6 +22,15 @@ def validate_url(url):
     parsed = parse.urlsplit(url)
     if parsed.scheme != "https" or parsed.hostname not in ALLOWED_HOSTS or parsed.username or parsed.password:
         raise RuntimeError("Unexpected download destination")
+
+
+def canonical_route(url):
+    parsed = parse.urlsplit(url)
+    parts = parsed.path.split("/")
+    if parsed.netloc.lower() == "github.com" and len(parts) >= 3:
+        parts[1:3] = [part.lower() for part in parts[1:3]]
+        return parsed._replace(netloc="github.com", path="/".join(parts)).geturl()
+    return url
 
 
 def download(url, limit):
@@ -89,15 +99,16 @@ def main():
         if required not in assets:
             raise RuntimeError("Latest release is missing " + required)
     readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    routes = {canonical_route(url) for url in re.findall(r'href="([^"]+)"', readme)}
     windows = base + "/releases/latest/download/" + ASSET
     latest = base + "/releases/latest"
-    if f'href="{windows}"' not in readme or f'href="{latest}"' not in readme:
+    if canonical_route(windows) not in routes or canonical_route(latest) not in routes:
         raise RuntimeError("README buttons must use the stable latest-release routes")
     download(latest, 5_000_000)
     verified = []
     for name in expected_assets:
         url = base + "/releases/latest/download/" + name
-        if args.all_assets and name.endswith(".AppImage") and f'href="{url}"' not in readme:
+        if args.all_assets and name.endswith(".AppImage") and canonical_route(url) not in routes:
             raise RuntimeError("README Linux button must use the latest AppImage route")
         checksum = download(url + ".sha256", 4096).decode("utf-8").split()[0].lower()
         size, digest = asset_digest(url)

@@ -33,7 +33,7 @@ ColumnLayout {
             Layout.fillWidth: true
             Text { text: "Ready to hear it?"; color: Theme.text; font.pixelSize: Theme.font(20); font.weight: Font.DemiBold }
             Text { text: app.platformName==="Windows"?"Windows volume works immediately. Bass, microphone processing and extra gain need Equalizer APO enabled for your devices.":"Volume works through PipeWire. Bass creates a Framoryx Output device; choose it to route playback through the effect."; color: Theme.muted; font.pixelSize: Theme.font(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Flow { Layout.fillWidth: true; spacing: Theme.px(8); FButton { text: "Audio setup"; onClicked: shell.page=5 } FButton { text: "System sound settings"; onClicked: app.action("soundSettings") } }
+            Flow { Layout.fillWidth: true; spacing: Theme.px(8); FButton { text: "Audio setup"; onClicked: shell.page=5 } FButton { text: app.platformName==="Windows"?"System sound settings":"Audio guide"; onClicked: app.action("soundSettings") } }
         }
     }
     FCard {

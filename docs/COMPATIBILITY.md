@@ -13,9 +13,9 @@ Framoryx provides a non-injecting monitoring path and a separate experimental in
 | Borderless | Saved Win32 styles, placement and identity | Games may reject/reset changes; true exclusive fullscreen is not universally convertible |
 | Audio effects | Endpoint-specific Equalizer APO configuration; optional external RNNoise VST2 | Requires capture/playback APO setup; raw/exclusive paths can bypass effects. No virtual microphone driver is bundled. |
 
-## Linux 0.3 development paths
+## Linux 0.3 paths
 
-The table above describes Windows. The native Linux package is in validation; see [release status](LINUX.md). Linux uses X Present for default external capture and an explicitly enabled, bundled 64-bit Vulkan/OpenGL layer for the in-game HUD and limiter. Sixteen fields, five layouts, font/size controls, accents and opacity settings are shared across implementations.
+The table above describes Windows. See [Linux support](LINUX.md) for its tested baseline and limits. Linux uses X Present for default external capture and an explicitly enabled, bundled 64-bit Vulkan/OpenGL layer for the in-game HUD and limiter. Sixteen fields, five layouts, font/size controls, accents and opacity settings are shared across implementations.
 
 Native Wayland restricts external positioning and passive capture. Gamescope and the Framoryx layer are currently alternative launch methods. Proton, sandboxed Steam installations, 32-bit games and individual drivers can need additional support; this is not a universal Linux compatibility claim.
 

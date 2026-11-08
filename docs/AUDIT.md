@@ -1,3 +1,15 @@
+# Framoryx 0.3 audit additions
+
+The shared desktop, Linux integration and bundled graphics runtime were added to the audit. The expanded C++ scan initially found 25 upstream findings. Source changes removed unused upload/shell helpers, fixed formatting and parsing, bounded font allocation arithmetic and used reentrant time conversion. The [expanded a8669f1 scan](https://github.com/NeTriXoN-BoT/framoryx/actions/runs/42513798080) completed with zero findings across its Windows, Linux and native analyses, without exclusions or dismissals. The final release commit is scanned again.
+
+Integration checks found and corrected saved-game restoration order, out-of-order volume writes, malformed-preference replacement, startup command limits, quiet-start behavior, older PipeWire graph ordering/routing, duplicate Vulkan layer activation and running-game rule enforcement. The Linux test microphone now verifies its synthesized signal before testing effects. Failed or incomplete runs remain visible and are not treated as passes.
+
+Default monitoring loads no game layer. Explicit game-layer launches wait for pending compatibility inspection, known indicators select external monitoring, and loaded code still requires a game restart to remove fully. Audio remains opt-in, microphone samples stay in memory, and downloaded plugins are verified before use.
+
+See [feature verification](FEATURE-CHECKS.md) for current integration scope and [runtime sources](RUNTIME-SOURCES.md) for dependencies and licenses. No universal game, ban-free, zero-overhead or physical-device certification is claimed.
+
+## Earlier audit records
+
 # 0.2.3 feature audit
 
 Reviewed on 8 November 2026. Scope: capture and overlay state, optional renderer/limiter paths, UI/profile/scaling controls, borderless/rules, audio workers and updater, CSV export, lifecycle, packaging and public downloads. The [feature verification matrix](FEATURE-CHECKS.md) records the scope and limits.

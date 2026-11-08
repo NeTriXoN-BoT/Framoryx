@@ -1,6 +1,6 @@
 # Building and testing
 
-The 0.3 desktop uses C++20 and Qt Quick on Windows and Linux. Its Windows monitoring engine is built separately and runs privately behind the shared interface. The public stable release remains 0.2.3 until the 0.3 release checks pass.
+The 0.3 desktop uses C++20 and Qt Quick on Windows and Linux. Its Windows monitoring engine is built separately and runs privately behind the shared interface.
 
 ## Shared desktop
 

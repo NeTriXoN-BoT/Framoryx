@@ -85,14 +85,14 @@ index 1bb509d..8981a79 100644
 +// Framoryx supplies launch parameters and typed live controls, not arbitrary files.
 +void parseConfigFile(overlay_params&) {}
 diff --git a/src/control.cpp b/src/control.cpp
-index 9d99708..c3a58c0 100644
+index 9d99708..0bb9c05 100644
 --- a/src/control.cpp
 +++ b/src/control.cpp
 @@ -9,0 +10,3 @@
 +#include "framoryx_stream.hpp"
 +#include "framoryx_hud.hpp"
 +#include <unistd.h>
-@@ -18 +21,24 @@ static void parse_command(overlay_params &params,
+@@ -18 +21,26 @@ static void parse_command(overlay_params &params,
 -   if (!strncmp(cmd, "hud", cmdlen)) {
 +   if (!strcmp(cmd, "framoryx_hud")) {
 +      framoryx_hud::configure(std::string_view(param, paramlen ? paramlen - 1 : 0));
@@ -101,7 +101,8 @@ index 9d99708..c3a58c0 100644
 +   } else if (!strcmp(cmd, "framoryx_frames")) {
 +      const auto packet = framoryx_stream::take();
 +      if (!packet.empty()) {
-+         const std::string response = ":FramoryxFrames=" + packet + ";";
++         const auto size = framoryx_hud::surface();
++         const std::string response = ":FramoryxFrames=" + packet + ";:FramoryxSurface=" + std::to_string(size[0]) + "|" + std::to_string(size[1]) + ";";
 +         if (os_socket_send(global_control_client, response.data(), response.size(), MSG_NOSIGNAL | MSG_DONTWAIT) != ssize_t(response.size())) {
 +            framoryx_stream::reset(false);
 +            shutdown(global_control_client, SHUT_RDWR);
@@ -113,12 +114,13 @@ index 9d99708..c3a58c0 100644
 +      std::array<int,2> values{};
 +      if (framoryx_hud::numbers(std::string_view(param, paramlen ? paramlen - 1 : 0), values) && values[0] >= 0 && values[0] <= 1000 && values[1] >= 12 && values[1] <= 200) {
 +         framoryx_update_limit(params, values[0], values[1]);
-+         const std::string response = ":FramoryxLimit=" + std::to_string(values[0]) + ";";
++         const auto size = framoryx_hud::surface();
++         const std::string response = ":FramoryxLimit=" + std::to_string(values[0]) + ";:FramoryxSurface=" + std::to_string(size[0]) + "|" + std::to_string(size[1]) + ";";
 +         if (os_socket_send(global_control_client, response.data(), response.size(), MSG_NOSIGNAL | MSG_DONTWAIT) != ssize_t(response.size()))
 +            shutdown(global_control_client, SHUT_RDWR);
 +      }
 +   } else if (!strncmp(cmd, "hud", cmdlen)) {
-@@ -168,0 +195,7 @@ void control_client_check(int control, int& control_client, const std::string& d
+@@ -168,0 +197,7 @@ void control_client_check(int control, int& control_client, const std::string& d
 +      // The application control channel is restricted to this user's session.
 +      struct ucred peer = {};
 +      socklen_t peer_size = sizeof(peer);
@@ -126,21 +128,21 @@ index 9d99708..c3a58c0 100644
 +         os_socket_close(socket);
 +         return;
 +      }
-@@ -175 +208 @@ void control_client_check(int control, int& control_client, const std::string& d
+@@ -175 +210 @@ void control_client_check(int control, int& control_client, const std::string& d
 -static void control_client_disconnected(int& control_client)
 +static void control_client_disconnected(int& control_client, overlay_params& params)
-@@ -176,0 +210,5 @@ static void control_client_disconnected(int& control_client)
+@@ -176,0 +212,5 @@ static void control_client_disconnected(int& control_client)
 +   framoryx_stream::reset(false);
 +   if (framoryx_hud::requested()) {
 +      framoryx_hud::hide();
 +      framoryx_update_limit(params, 0, std::clamp(int(get_params()->font_size),12,200));
 +   }
-@@ -183,0 +222 @@ void process_control_socket(int& control_client, overlay_params &params)
+@@ -183,0 +224 @@ void process_control_socket(int& control_client, overlay_params &params)
 +      global_control_client = control_client;
-@@ -198 +237 @@ void process_control_socket(int& control_client, overlay_params &params)
+@@ -198 +239 @@ void process_control_socket(int& control_client, overlay_params &params)
 -            control_client_disconnected(control_client);
 +            control_client_disconnected(control_client, params);
-@@ -201 +240 @@ void process_control_socket(int& control_client, overlay_params &params)
+@@ -201 +242 @@ void process_control_socket(int& control_client, overlay_params &params)
 -            control_client_disconnected(control_client);
 +            control_client_disconnected(control_client, params);
 diff --git a/src/cpu.cpp b/src/cpu.cpp
@@ -190,10 +192,16 @@ index 0abde08..ef3fb2c 100644
 -    sscanf(version, "%d.%d", &major, &minor);
 +    if (sscanf(version, "%d.%d", &major, &minor) != 2) return;
 diff --git a/src/gl/shim.c b/src/gl/shim.c
-index 3b039ef..a67254c 100644
+index 3b039ef..34bbc1b 100644
 --- a/src/gl/shim.c
 +++ b/src/gl/shim.c
-@@ -87,25 +87 @@ static void loadMangoHud() {
+@@ -53,0 +54,5 @@ static bool load_adjacent_opengl_lib(void)
++    if (location == NULL)
++    {
++        fprintf(stderr, "shim: Unable to resolve my own library location: %s\n", strerror(errno));
++        return false;
++    }
+@@ -87,25 +92 @@ static void loadMangoHud() {
 -    // allow user to load custom mangohud libs (useful for testing)
 -    char *libs = getenv("MANGOHUD_OPENGL_LIBS");
 -    char *lib = NULL;
@@ -261,8 +269,36 @@ index 8083591..4a69a60 100644
 -#endif
 -}
 +void HudElements::update_exec() { /* Shell-command readouts are outside the Framoryx runtime profile. */ }
+diff --git a/src/keybinds.cpp b/src/keybinds.cpp
+index 28b4f55..65d4919 100644
+--- a/src/keybinds.cpp
++++ b/src/keybinds.cpp
+@@ -12,0 +13 @@
++#include "framoryx_hud.hpp"
+@@ -14 +15 @@
+-Clock::time_point last_f2_press, toggle_fps_limit_press, toggle_preset_press, last_f12_press, reload_cfg_press, last_upload_press;
++Clock::time_point last_f2_press, toggle_fps_limit_press, toggle_preset_press, last_f12_press, reload_cfg_press;
+@@ -16,0 +18,3 @@ void check_keybinds(struct overlay_params& params){
++   // The controller owns Framoryx controls. Do not reserve hidden upstream
++   // shortcuts or start diagnostic logging from a game's key combinations.
++   if (framoryx_hud::requested()) return;
+@@ -25 +28,0 @@ void check_keybinds(struct overlay_params& params){
+-   auto elapsedUpload = now - last_upload_press;
+@@ -76,12 +78,0 @@ void check_keybinds(struct overlay_params& params){
+-   if (real_params->permit_upload && elapsedUpload >= keyPressDelay &&
+-       keys_are_pressed(real_params->upload_log)) {
+-      last_upload_press = now;
+-      logger->upload_last_log();
+-   }
+-
+-   if (real_params->permit_upload && elapsedUpload >= keyPressDelay &&
+-       keys_are_pressed(real_params->upload_logs)) {
+-      last_upload_press = now;
+-      logger->upload_last_logs();
+-   }
+-
 diff --git a/src/logging.cpp b/src/logging.cpp
-index f542fcf..5ac2fc6 100644
+index f542fcf..8ab50c0 100644
 --- a/src/logging.cpp
 +++ b/src/logging.cpp
 @@ -25,37 +25 @@ std::thread log_thread;
@@ -315,7 +351,7 @@ index f542fcf..5ac2fc6 100644
 @@ -241 +210 @@ static string get_log_suffix(){
 -  buffer << std::put_time(log_time, "%Y-%m-%d_%H-%M-%S") << ".csv";
 +  buffer << std::put_time(&log_time, "%Y-%m-%d_%H-%M-%S") << ".csv";
-@@ -344,15 +313,2 @@ void Logger::notify_data_valid() {
+@@ -344,15 +312,0 @@ void Logger::notify_data_valid() {
 -void Logger::upload_last_log() {
 -  if(m_log_files.empty()) return;
 -  std::thread(upload_file, m_log_files.back()).detach();
@@ -331,13 +367,14 @@ index f542fcf..5ac2fc6 100644
 -  this_thread::sleep_for(chrono::seconds(sleep));
 -  logger->start_logging();
 -}
-+void Logger::upload_last_log() {}
-+void Logger::upload_last_logs() {}
 diff --git a/src/logging.h b/src/logging.h
-index 62d34c7..14c2e24 100644
+index 62d34c7..9e3b8d9 100644
 --- a/src/logging.h
 +++ b/src/logging.h
-@@ -87 +87 @@ extern logData currentLogData;
+@@ -59,2 +58,0 @@ public:
+-  void upload_last_log();
+-  void upload_last_logs();
+@@ -87 +85 @@ extern logData currentLogData;
 -std::string exec(std::string command);
 +
 diff --git a/src/overlay.cpp b/src/overlay.cpp

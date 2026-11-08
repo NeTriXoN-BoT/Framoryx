@@ -2,7 +2,7 @@
 const uint32_t hudFields[]{fg::HudFps, fg::HudAverage, fg::HudLow, fg::HudTime, fg::HudGraph,
                            fg::HudCpu, fg::HudRam, fg::HudCap, fg::HudApi, fg::HudBrand, fg::HudGpu, fg::HudVram, fg::HudGpuTemp, fg::HudCpuTemp, fg::HudPower, fg::HudClock};
 const wchar_t* hudTitles[]{L"Live FPS",    L"Average FPS",   L"1% low",     L"Frame time",
-                           L"Frame graph", L"System CPU",    L"System RAM", L"FPS limit",
+                           L"Frame graph", L"System CPU",    L"System RAM", L"Limit target",
                            L"Renderer", L"Framoryx label", L"GPU usage", L"VRAM usage", L"GPU temp", L"CPU temp", L"GPU power", L"GPU clock"};
 Color hudAccent(int index) {
     const auto rgb=fg::accentColors[std::clamp(index,0,9)];

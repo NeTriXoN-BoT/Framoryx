@@ -1,103 +1,108 @@
 <div align="center">
   <img src="docs/images/hero.png" alt="Framoryx — Every frame. Under control." width="100%">
-  <p>A native Windows toolkit for performance overlays, frame pacing, borderless play, and audio control.</p>
-  <a href="https://github.com/NeTriXoN-BoT/Framoryx/releases/latest/download/Framoryx-Windows-x64.zip"><img src="docs/badges/download-windows.svg" alt="Download Framoryx for Windows x64" height="94"></a>
+  <p>A native Windows and Linux toolkit for performance overlays, frame pacing, borderless play and audio control.</p>
+  <a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest/download/Framoryx-Windows-x64.zip"><img src="docs/badges/download-windows.svg" alt="Download Framoryx for Windows x64" height="94"></a>
   &nbsp;
-  <a href="https://github.com/NeTriXoN-BoT/Framoryx/releases/latest"><img src="docs/badges/releases.svg" alt="Latest release notes and checksums" height="94"></a>
-  &nbsp;
-  <a href="docs/LINUX.md"><img src="docs/badges/linux.svg" alt="Linux roadmap — no Linux application release yet" height="94"></a>
-  <p><sub><strong>UNSIGNED WINDOWS BUILD</strong> · No Authenticode publisher certificate.<br>Windows may display an unknown-publisher or SmartScreen warning. Check the release SHA-256 before use.</sub></p>
+  <a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest/download/Framoryx-Linux-x86_64.AppImage"><img src="docs/badges/linux.svg" alt="Download Framoryx for Linux x86-64" height="94"></a>
+  <p><a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest">Release notes &amp; checksums</a> · <a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest/download/Framoryx-Linux-x86_64.tar.gz">Portable Linux archive</a> · <a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest/download/Framoryx-Source.zip">Source</a></p>
+  <p><sub><strong>UNSIGNED WINDOWS BUILD</strong> · No Authenticode publisher certificate.<br>Windows may display an unknown-publisher or SmartScreen warning. Verify the release SHA-256 before use.</sub></p>
 </div>
 
 ## Your game. Your overlay.
 
-Keep an eye on real frame data, make the HUD your own, and get back to playing. Framoryx uses Windows ETW events through PresentMon for its default monitoring mode. In-game hooks are a separate, explicit choice.
+Measure real frame data, choose the information that matters, and make the HUD fit your setup. Framoryx uses a shared C++ and Qt interface with native monitoring and audio integrations for each platform. Default capture loads no code into your game; game layers and hooks are a separate, explicit choice.
 
-| Measure | Customize | Take control |
+| Measure | Make it yours | Take control |
 | --- | --- | --- |
-| Live FPS, average FPS, 1% lows and frame times | Glass, Compact and Telemetry Bar layouts | Optional DX11/DX12 frame limiter |
-| Rolling frame graph and CSV export | Ten independently selectable readouts | Borderless play with window restoration |
-| System CPU and memory readouts | Per-game style, accent, opacity and corner | Output volume, compensated bass, mic EQ and optional RNNoise |
-| Automatic desktop HUD fallback | Automatic sizing and percentage overrides | Tray controls, hotkeys and desktop shortcuts |
+| Live FPS, average FPS, 1% lows, frame times and a rolling graph | Five HUD layouts and sixteen independent readouts | Optional frame limiting and reversible borderless play |
+| CPU, GPU, RAM and VRAM usage, with available temperatures, clocks and power | Ten accents, transparent backgrounds, font sizing and draggable positioning | Searchable process rules, per-game settings and a game library |
+| Local capture history and CSV export | Automatic display/DPI sizing and percentage overrides for app and HUD | Output up to 200%, compensated bass, microphone EQ and verified RNNoise |
+| Missing hardware readings stay unavailable | Named presets, ordering and preset import/export | Tray access, sign-in launch, quiet startup and optional auto capture |
 
-<img src="docs/images/studio-glass.png" alt="Overlay Studio with the Glass layout and clearly labelled sample preview values" width="100%">
+<img src="docs/images/desktop-studio.png" alt="Framoryx Overlay Studio with the Glass layout and explicitly labelled sample preview values" width="100%">
 
 <details>
-<summary>Compare Compact and Telemetry Bar</summary>
+<summary>More layouts, the Linux desktop and maximized scaling</summary>
 
-**Compact** keeps the same selectable information in a smaller footprint.
+**Compact** keeps the selected information in a smaller footprint.
 
-![Compact layout in Overlay Studio](docs/images/studio-compact.png)
+![Compact HUD layout](docs/images/studio-compact.png)
 
-**Telemetry Bar** arranges the selected readouts horizontally.
+**Telemetry Bar** spreads the readouts horizontally.
 
-![Telemetry Bar in Overlay Studio](docs/images/studio-telemetry.png)
+![Telemetry Bar HUD layout](docs/images/studio-telemetry.png)
+
+**Dashboard** gives metrics more room. **Minimal** removes extra decoration.
+
+![Dashboard HUD layout](docs/images/studio-dashboard.png)
+
+The Linux application uses the same interface and artwork, with native Linux controls.
+
+![Native Linux desktop application](docs/images/desktop-linux.png)
+
+Automatic DPI rendering and percentage controls keep the design aligned when maximized.
+
+![Maximized Framoryx interface at 125 percent](docs/images/desktop-maximized.png)
 
 </details>
 
 <details>
-<summary>Frame limiter and process rules</summary>
+<summary>Game controls and process rules</summary>
 
-![Frame limiter with a rounded FPS stepper](docs/images/limiter.png)
+![Frame pacing, borderless controls and the game library](docs/images/desktop-games.png)
 
-![Process rules with matching cards and inline validation](docs/images/rules.png)
+![Searchable process control with allow and block actions](docs/images/desktop-rules.png)
 
 </details>
 
 ## Get started
 
-1. Download the Windows ZIP and extract the whole folder.
-2. Open **Framoryx.exe**. Open your game, then choose its window or leave **Auto** selected.
-3. Click **Show overlay**. Capture starts automatically.
+1. Download the complete package. On Windows, extract the ZIP and open **Framoryx.exe**. On Linux, make the AppImage executable and open it, or extract the portable archive and run **AppRun**.
+2. Open your game, choose its running window or library entry, and select **Start capture**. On Windows, **Auto** follows the foreground game. On Linux, Auto follows allowed X11 games.
+3. Select **Show overlay**. Open **Overlay Studio** to choose readouts, layout, size, colors and position.
+4. Use **Games & pacing** for supported frame limits, borderless play and explicit library launches. Starting capture does not launch a second copy of your game.
 
-Open **Overlay Studio** to choose a layout, readouts, size, colors and opacity. The Studio preview labels sample values when a game is not reporting data. **Desktop app size → Auto** adapts to your resolution, DPI and work area; percentages give you manual control. Maximizing preserves your selected size and centers the design with consistent proportions. **Create shortcut** adds a desktop link to the extracted copy.
+**Interface size → Auto** adapts to your display, DPI and available work area. Manual percentages remain available. Maximizing preserves the layout; smaller windows scroll where needed. Ambient artwork, particles, the icon pulse and terminal cursor pause when the app is hidden, minimized or inactive.
 
-Keep the application folder together. No account, installer or background service is required for normal monitoring.
+Preferences, presets and captures stay local. Microphone recording is an opt-in five-second test held in memory. No account is required. Keep the extracted application folder together.
+
+## Graphics and platform support
+
+| Platform | Default monitoring | Optional in-game path |
+| --- | --- | --- |
+| Windows 10/11 x64 | PresentMon ETW for supported DXGI, D3D9, Vulkan and OpenGL presentations; external HUD | DX11/DX12 HUD and limiter, with x64 and x86 DX11 hooks |
+| Linux x86-64 | X Present capture and an external HUD on supported X11 windows | Bundled, explicitly enabled Vulkan/OpenGL layer with the same custom HUD and live limits |
+
+Windows Vulkan/OpenGL/DX9 use external monitoring; the Windows injected limiter supports DX11/DX12. Exclusive fullscreen can cover external overlays. The game's own borderless mode is a useful starting point.
+
+Linux packages target **glibc 2.35 or newer**, compatible graphics drivers and a working desktop session. Native Wayland limits external positioning and passive capture. Gamescope is optional for launch sizing and pacing and is currently an alternative to the Framoryx game layer. The bundled layer supports 64-bit games; 32-bit and sandboxed runtimes have additional limits. See [Linux support](docs/LINUX.md).
+
+A frame limiter cannot remove every engine hard cap. **Beyond the game's cap** uses a supported game launch option where one exists; other caps remain in force. Higher FPS can affect physics, animations or timing.
+
+## Your audio, with more presence
+
+Output volume reaches **200%**, with live percentage feedback. Bass enhancement reserves headroom rather than simply stacking gain. Microphone EQ includes Flat, Clarity, Warmth, Presence and **Bassy Voice** for a warmer balance on thin microphones.
+
+RNNoise is prepared automatically from the official compatible release, with integrity checks and manual update controls. Windows effects require a separately configured Equalizer APO. Linux uses PipeWire and offers selectable **Framoryx Output** and **Framoryx Microphone** devices. Changes require Apply. See [audio setup and privacy](docs/AUDIO.md).
+
+## Compatibility and responsibility
 
 **Use at your own risk.** Games with anti-cheat may restrict or penalize overlays and in-game hooks. You are responsible for checking and following each game's rules. Framoryx does not guarantee anti-cheat compatibility. Its maintainers accept no responsibility for bans, suspensions, lost access or other consequences arising from its use.
 
-## Compatibility, clearly stated
+Known anti-cheat indicators prevent game-layer/hook use and prefer external monitoring. A clear scan or allow-list entry is not game approval. In-game methods require opt-in, and process blocks take priority. Restart the game to remove previously loaded code fully. Framoryx does not change security settings or restore quarantined components. See [compatibility notes](docs/COMPATIBILITY.md).
 
-- **Windows 10/11 x64** is the application target. Optional hooks include x64 DX11/DX12 and x86 DX11 support.
-- The default **ETW + desktop overlay** path does not inject a DLL into the game.
-- The optional in-game HUD/limiter requires a specific process, allow-list approval and an explicit confirmation. Block rules take priority.
-- DX12 drawing uses an observed direct queue. Ambiguous queue configurations keep the limiter available and fall back to the desktop HUD in Auto mode.
-- Vulkan, OpenGL and DX9 use the desktop monitoring path. Exclusive fullscreen can cover desktop overlays; the game's own borderless mode often provides the best starting point.
-- Bass, microphone EQ and extra gain require a separately configured **Equalizer APO**. RNNoise downloads the official compatible x64 VST2 plugin automatically and needs a 48 kHz microphone. Normal output-volume control works immediately. See [audio setup](docs/AUDIO.md).
+## Build, verify and contribute
 
-**In-game hooks remain experimental.** They can conflict with games, overlays or security tools, and no ban-free guarantee is possible. Microsoft Defender quarantined the optional injection stress-test helper during development. That interrupted run is not counted as a pass, and Framoryx does not bypass security protections. See [compatibility and security notes](docs/COMPATIBILITY.md) before enabling hooks.
-
-## Build and verify
-
-From PowerShell in the repository root:
-
-```powershell
-./source/build.ps1
+```sh
+cmake -S . -B build/desktop -DFRAMORYX_BUILD_DESKTOP=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build/desktop --config Release --parallel 3
+ctest --test-dir build/desktop -C Release --output-on-failure
 ```
 
-The build script downloads a pinned, SHA-256-verified portable LLVM-MinGW toolchain when no compiler path is supplied. It builds the app and its test scenes, then runs deterministic core and isolated audio-configuration checks.
+The shared desktop requires Qt 6.8.3 and a C++20 compiler. Windows also uses the separately built monitoring engine; Linux packages include the pinned game runtime. See [building and testing](docs/BUILDING.md), [runtime sources and licenses](docs/RUNTIME-SOURCES.md) and [release notes](docs/releases/v0.3.0.md).
 
-```powershell
-# Reuse a toolchain and build directory
-./source/build.ps1 -ToolchainBin C:\llvm-mingw\bin -BuildDirectory C:\scratch\framoryx
+Isolated runners exercise actual Windows DX11/DX12 scenes, Linux OpenGL/Vulkan scenes, capture, live limits, process blocks, reversible window changes, synthetic microphone processing, fast slider input, scaling and deployed packages. These checks do not certify every commercial game, GPU or physical microphone. [Feature coverage](docs/FEATURE-CHECKS.md), [validation](docs/VALIDATION.md) and the [audit record](docs/AUDIT.md) describe the scope.
 
-# Non-injecting ETW/borderless soak
-./source/validate.ps1 -ToolchainBin C:\llvm-mingw\bin -SoakSeconds 120
+Please use the [bug-report template](.github/ISSUE_TEMPLATE/bug.yml) or [game-compatibility template](.github/ISSUE_TEMPLATE/game.yml) for reproducible reports. Include only relevant, sanitized diagnostics.
 
-# Explicit local graphics checks against bundled test scenes only
-./source/validate.ps1 -ToolchainBin C:\llvm-mingw\bin -IncludeGraphicsTests
-```
-
-See [building and testing](docs/BUILDING.md) for details. The Linux CI job checks the portable core and headless dependency regressions; it does **not** build a Linux desktop application.
-
-## Project status
-
-Version **0.2.3** improves audio request handling, slider commits, capture error reporting, CSV exports and page-transition memory use. Full control flows, native UI previews and graphics/window checks run on an isolated CI runner. The toolkit includes Bassy voice, microphone processing, Overlay Studio, three HUD layouts, per-game profiles, DPI/percentage scaling, frame limiting, borderless play and tray access.
-
-Bundled test scenes establish behavior on the tested configuration; they are not a commercial-game compatibility certification. [Feature checks](docs/FEATURE-CHECKS.md), [validation](docs/VALIDATION.md), the [audit record](docs/AUDIT.md) and [release notes](docs/releases/v0.2.3.md) describe completed checks and current limits. A native Linux application is [planned separately](docs/LINUX.md).
-
-## Contribute
-
-Please use the [bug-report template](.github/ISSUE_TEMPLATE/bug.yml) for reproducible issues and the [game-compatibility template](.github/ISSUE_TEMPLATE/game.yml) for renderer/window-mode reports. Include only relevant, sanitized diagnostics.
-
-Original project code is available under the [MIT license](LICENSE). Third-party components retain their own licenses; see [notices](THIRD-PARTY-NOTICES.txt).
+Original project code is [MIT licensed](LICENSE). Third-party components retain their own licenses; see [notices](THIRD-PARTY-NOTICES.txt).

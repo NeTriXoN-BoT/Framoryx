@@ -22,6 +22,7 @@ signals:
     void disconnectedFromGame();
     void lostSamples(quint64 count);
     void limitApplied(int cap);
+    void surfaceSize(int width,int height);
 private:
     QLocalSocket m_socket;
     QTimer m_timer;
@@ -31,6 +32,7 @@ private:
     QByteArray m_hudPacket,m_metricPacket,m_limitPacket;
     unsigned m_pollCount=0;
     quint32 m_pid=0;
+    int m_surfaceWidth=0,m_surfaceHeight=0;
     quint64 m_dropped=0;
     qint64 m_retry=0,m_connectTime=0;
     bool m_verified=false,m_supported=false,m_collecting=true;

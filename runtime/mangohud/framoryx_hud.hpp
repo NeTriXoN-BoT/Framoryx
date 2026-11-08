@@ -17,6 +17,7 @@ struct State {
     fg::HudOptions options;
     int cap=60;
     bool ready=false,visible=false;
+    int surfaceWidth=0,surfaceHeight=0;
     std::array<int,10> values{{-1,-1,-1,-1,-1,-1,-1,-1,-1,-1}};
     std::chrono::steady_clock::time_point updated;
     std::array<float,180> graph{};
@@ -25,6 +26,7 @@ struct State {
 inline State state;
 inline std::mutex mutex;
 inline void hide(){std::lock_guard<std::mutex> lock(mutex);state.visible=false;}
+inline std::array<int,2> surface(){std::unique_lock<std::mutex> lock(mutex,std::try_to_lock);return lock.owns_lock()?std::array<int,2>{state.surfaceWidth,state.surfaceHeight}:std::array<int,2>{};}
 inline bool requested(){static const bool value=[] {const auto text=std::getenv("FRAMORYX_HUD");return text&&std::strcmp(text,"1")==0;}();return value;}
 template<size_t N> bool numbers(std::string_view text,std::array<int,N>& output){
     if(text.size()>512)return false;
@@ -48,10 +50,11 @@ inline void frame(float milliseconds){
 }
 #ifdef FRAMORYX_HUD_RENDERER
 inline void draw(float fps,float milliseconds,bool vulkan){
+    const auto display=ImGui::GetIO().DisplaySize;
     thread_local State snapshot;
-    {std::unique_lock<std::mutex> lock(mutex,std::try_to_lock);if(lock.owns_lock())snapshot=state;}
+    {std::unique_lock<std::mutex> lock(mutex,std::try_to_lock);if(lock.owns_lock()){if(std::isfinite(display.x)&&std::isfinite(display.y)&&display.x>0&&display.y>0&&display.x<=32768&&display.y<=32768){state.surfaceWidth=int(std::round(display.x));state.surfaceHeight=int(std::round(display.y));}snapshot=state;}}
     if(!snapshot.ready||!snapshot.visible||!snapshot.options.fields)return;
-    const auto& options=snapshot.options;const auto layout=fg::hudLayout(options);const auto display=ImGui::GetIO().DisplaySize;
+    const auto& options=snapshot.options;const auto layout=fg::hudLayout(options);
     const float requestedScale=fg::overlayScale(options.scale,int(display.y))*options.fontScale/100.f;
     const float scale=std::max(.1f,std::min({requestedScale,(display.x-30)/layout.width,(display.y-30)/layout.height}));
     const float width=layout.width*scale,height=layout.height*scale;
@@ -63,7 +66,7 @@ inline void draw(float fps,float milliseconds,bool vulkan){
     const bool fresh=std::chrono::steady_clock::now()-snapshot.updated<std::chrono::seconds(3);
     const auto metric=[&](int index){return fresh&&snapshot.values[size_t(index)]>=0?snapshot.values[size_t(index)]/100.: -1.;};
     const auto label=[&](float x,float y,float size,ImU32 color,const char* value){list->AddText(font,size*scale,ImVec2(std::round(origin.x+x*scale),std::round(origin.y+y*scale)),color,value);};
-    static constexpr const char* labels[]{"Live FPS","Average FPS","1% low","Frame time","Frame graph","System CPU","System RAM","FPS limit","Renderer","Framoryx label","GPU usage","VRAM usage","GPU temperature","CPU temperature","GPU power","GPU clock"};
+    static constexpr const char* labels[]{"Live FPS","Average FPS","1% low","Frame time","Frame graph","System CPU","System RAM","Limit target","Renderer","Framoryx label","GPU usage","VRAM usage","GPU temperature","CPU temperature","GPU power","GPU clock"};
     for(size_t i=0;i<layout.count;++i){const auto& cell=layout.cells[i];unsigned index=0;for(auto bits=cell.field;bits>1;bits>>=1)++index;
         if(index==9){label(cell.x,cell.y,10,muted,"FRAMORYX");continue;}
         if(index==4){

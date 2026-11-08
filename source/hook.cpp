@@ -304,7 +304,7 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                     case fg::HudTime:title="Frame time";number=smoothedFps>0?1000./smoothedFps:0;break;
                     case fg::HudCpu:title="System CPU";number=fg::read32(&control->cpuHundredths)/100.;break;
                     case fg::HudRam:title="System RAM";number=fg::read32(&control->ramMiB)/1024.;break;
-                    case fg::HudCap:title="FPS limit";number=fg::read32(&control->cap);break;
+                    case fg::HudCap:title="Limit target";number=fg::read32(&control->cap);break;
                     case fg::HudApi:snprintf(output,length,"%s",guiIs12?"DX12":"DX11");return "Renderer";
                     default:
                         if(field>=fg::HudGpu){int sensor=0;while(sensor<6&&field!=(fg::HudGpu<<sensor))++sensor;static const char* titles[]{"GPU usage","VRAM usage","GPU temp","CPU temp","GPU power","GPU clock"};
