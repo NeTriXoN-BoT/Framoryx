@@ -13,11 +13,19 @@ Framoryx provides a non-injecting monitoring path and a separate experimental in
 | Borderless | Saved Win32 styles, placement and identity | Games may reject/reset changes; true exclusive fullscreen is not universally convertible |
 | Audio effects | Endpoint-specific Equalizer APO configuration; optional external RNNoise VST2 | Requires capture/playback APO setup; raw/exclusive paths can bypass effects. No virtual microphone driver is bundled. |
 
+## Linux 0.3 development paths
+
+The table above describes Windows. The native Linux package is in validation; see [release status](LINUX.md). Linux uses X Present for default external capture and an explicitly enabled, bundled 64-bit Vulkan/OpenGL layer for the in-game HUD and limiter. Sixteen fields, five layouts, font/size controls, accents and opacity settings are shared across implementations.
+
+Native Wayland restricts external positioning and passive capture. Gamescope and the Framoryx layer are currently alternative launch methods. Proton, sandboxed Steam installations, 32-bit games and individual drivers can need additional support; this is not a universal Linux compatibility claim.
+
+Known anti-cheat indicators disable the loaded Linux layer's drawing and limiting and select external monitoring. Restart without the layer launch options to remove loaded code. If its controller connection closes, the connected game layer hides its HUD and releases its limit. Stopping capture alone keeps the control connection, overlay and limiter available.
+
 ## Use at your own risk
 
 Games with anti-cheat may restrict or penalize overlays and in-game hooks. You are responsible for checking and following each game's rules. Framoryx does not guarantee anti-cheat compatibility. Its maintainers accept no responsibility for bans, suspensions, lost access or other consequences arising from its use.
 
-## Choosing a display method
+## Choosing a Windows display method
 
 Start with **Auto**. It uses a recently drawing attached HUD and otherwise uses the desktop HUD. **Desktop** forces the non-injecting counter. **In-game** requires explicit hook opt-in. Choosing it does not automatically inject anything.
 
@@ -41,4 +49,4 @@ Window restoration uses both process identity and a per-window marker. Normal ap
 
 ## Validation scope
 
-Local x64 DX11, x64 DX12 and x86 DX11 scenes exercise real presentations, live caps, HUD customization, font rebuilding, shader-state preservation, resizing and shutdown. A dedicated multi-queue DX12 scene exercises conservative HUD fallback. These are not commercial-game certification tests. Red Dead Redemption 2 and Sleeping Dogs have not been game-tested in this environment.
+Isolated-runner x64 DX11, x64 DX12 and x86 DX11 scenes exercise real presentations, live caps, HUD customization, font rebuilding, shader-state preservation, resizing and shutdown. A dedicated multi-queue DX12 scene exercises conservative HUD fallback. These are not commercial-game certification tests. Red Dead Redemption 2 and Sleeping Dogs have not been game-tested in this environment.

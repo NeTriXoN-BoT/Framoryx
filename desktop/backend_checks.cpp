@@ -113,6 +113,8 @@ class Checks : public QObject {
             if(first)c->action("disableHook");await(!state["hookActive"].toBool()&&phase.elapsed()>500,"Frontend hook disable completes");break;
         case 7:
             if(first)c->action("capture");await(!state["capture"].toBool(),"Capture stops through the frontend");break;
+        case 8:
+            if(first){c->setOption("startWithSystem",true);record("Windows sign-in entry is registered",lifecycle::startupEnabled());c->setOption("startWithSystem",false);record("Windows sign-in entry can be removed",!lifecycle::startupEnabled());next();}break;
         default:complete();break;
 #else
         case 5:

@@ -20,17 +20,18 @@ Rectangle {
             if(index===1)return (live?Math.round(app.state.average):hud.sample?141:"—")+" FPS";
             if(index===2)return (live?Math.round(app.state.low):hud.sample?120:"—")+" FPS";
             if(index===3)return (live?Number(app.state.frameTime).toFixed(2):hud.sample?"6.94":"—")+" ms";
-            if(index===5)return Math.round(app.state.cpu||0)+"%";
-            if(index===6)return Number(app.state.ram||0).toFixed(1)+" GB";
+            if(index===5)return (hud.sample&&!live?28:Math.round(app.state.cpu||0))+"%";
+            if(index===6)return (hud.sample&&!live?"11.2":Number(app.state.ram||0).toFixed(1))+" GB";
             if(index===7)return app.options.cap===0?"Uncapped":app.options.cap;
-            if(index===8)return live?app.state.renderer:hud.sample?"Renderer":"Waiting";
-            if(index>=10){const keys=["gpu","vramPercent","gpuTemp","cpuTemp","gpuPower","gpuClock"];const units=["%","%"," °C"," °C"," W"," MHz"];const value=app.state[keys[index-10]];return typeof value==="number"&&isFinite(value)?Number(value).toFixed(index===14?1:0)+units[index-10]:"—";}
+            if(index===8)return live?app.state.renderer:hud.sample?(app.platformName==="Windows"?"DirectX 12":"Vulkan"):"Waiting";
+            if(index>=10){const keys=["gpu","vramPercent","gpuTemp","cpuTemp","gpuPower","gpuClock"];const units=["%","%"," °C"," °C"," W"," MHz"];const values=[68,42,67,61,145,2100];const value=hud.sample&&!live?values[index-10]:app.state[keys[index-10]];return typeof value==="number"&&isFinite(value)?Number(value).toFixed(index===14?1:0)+units[index-10]:"—";}
             return "FRAMORYX";
         }
         Repeater {
             model: hud.geometry.cells
             Item {
                 required property var modelData
+                clip: true
                 x: hud.px(modelData.x); y: hud.px(modelData.y); width: hud.px(modelData.width); height: hud.px(modelData.height)
                 Text { visible: modelData.index===0||modelData.index===9; text: hud.reading(modelData.index); color: modelData.index===0?Theme.accent:Theme.muted; font.pixelSize: hud.px(modelData.index===0?(hud.compact?28:34):10); font.weight: modelData.index===0?Font.Bold:Font.DemiBold }
                 Text { visible: modelData.index!==0&&modelData.index!==4&&modelData.index!==9; text: modelData.name; color: Theme.muted; font.pixelSize: hud.px(modelData.column?10:hud.compact?11:12); width: modelData.column?parent.width:parent.width-hud.px(105); elide: Text.ElideRight }

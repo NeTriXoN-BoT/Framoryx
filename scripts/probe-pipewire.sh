@@ -4,6 +4,7 @@ set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true ]] || exit 2
 export XDG_RUNTIME_DIR="$RUNNER_TEMP/framoryx-audio-probe"
 export XDG_CONFIG_HOME="$RUNNER_TEMP/framoryx-audio-probe-config"
+export PULSE_SERVER="unix:$XDG_RUNTIME_DIR/pulse/native"
 mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" work/pipewire-diagnostics
 chmod 700 "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME"
 pids=()
@@ -13,7 +14,34 @@ pipewire --version
 env | sort | sed -n '/^PIPEWIRE_/p'
 PIPEWIRE_DEBUG=3 pipewire > work/pipewire-diagnostics/server.log 2>&1 & pids+=("$!")
 wireplumber > work/pipewire-diagnostics/session.log 2>&1 & pids+=("$!")
+pipewire-pulse > work/pipewire-diagnostics/pulse.log 2>&1 & pids+=("$!")
 sleep 2
+retry() { for attempt in {1..40}; do if "$@"; then return 0; fi; sleep .1; done; return 1; }
+retry pactl info >/dev/null
+retry pactl load-module module-null-sink sink_name=framoryx_ci_input sink_properties=device.description=Framoryx_CI_Input >/dev/null
+retry pactl load-module module-null-sink sink_name=framoryx_ci_output sink_properties=device.description=Framoryx_CI_Output >/dev/null
+retry pactl load-module module-remap-source master=framoryx_ci_input.monitor source_name=framoryx_ci_mic source_properties=device.description=Framoryx_CI_Microphone >/dev/null
+python3 - "$XDG_RUNTIME_DIR/tone.wav" <<'PY'
+import array, math, sys, wave
+samples=array.array('h',(int(6500*math.sin(2*math.pi*180*i/48000)) for i in range(48000)))
+with wave.open(sys.argv[1],'wb') as output:
+    output.setparams((1,2,48000,0,'NONE','not compressed'))
+    for _ in range(60): output.writeframes(samples.tobytes())
+PY
+paplay --device=framoryx_ci_input "$XDG_RUNTIME_DIR/tone.wav" > work/pipewire-diagnostics/tone.log 2>&1 & tone=$!;pids+=("$tone")
+sleep 1
+for device in framoryx_ci_input.monitor framoryx_ci_mic; do
+    pactl set-source-mute "$device" false
+    pactl set-source-volume "$device" 100%
+    timeout 2 parec --device="$device" --format=s16le --rate=48000 --channels=1 > "$XDG_RUNTIME_DIR/$device.raw" || [[ "$?" == 124 ]]
+    python3 - "$XDG_RUNTIME_DIR/$device.raw" <<'PY'
+import array,pathlib,sys
+samples=array.array('h');samples.frombytes(pathlib.Path(sys.argv[1]).read_bytes());print(pathlib.Path(sys.argv[1]).name,'samples',len(samples),'peak',max(map(abs,samples),default=0))
+PY
+done
+ps -p "$tone" -o pid,stat,args || true
+pactl list sink-inputs > work/pipewire-diagnostics/sink-inputs.log
+pw-dump > work/pipewire-diagnostics/fixture-nodes.json
 python3 - "$1" <<'PY'
 import json, pathlib, sys
 config=json.loads(pathlib.Path(sys.argv[1]).read_text())

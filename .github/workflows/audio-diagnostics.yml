@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - run: sudo apt-get update && sudo apt-get install -y pipewire pipewire-bin wireplumber dbus-x11
+      - run: sudo apt-get update && sudo apt-get install -y pipewire pipewire-bin pipewire-pulse pulseaudio-utils wireplumber dbus-x11
       - name: Fetch configuration from this repository's test run
         env:
           GH_TOKEN: ${{ github.token }}
