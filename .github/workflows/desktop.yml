@@ -1,0 +1,71 @@
+name: Shared desktop / Windows and Linux
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['desktop/**', 'CMakeLists.txt', '.github/workflows/desktop.yml']
+  pull_request:
+    paths: ['desktop/**', 'CMakeLists.txt', '.github/workflows/desktop.yml']
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: gcc_64
+            label: Linux-x64
+          - os: windows-latest
+            arch: win64_msvc2022_64
+            label: Windows-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install Linux graphics and audio test dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-image0 libxcb-render-util0 libxcb-xfixes0 libegl1 libpulse0 libasound2 xvfb openbox wmctrl mangohud pipewire pipewire-bin wireplumber mesa-utils
+      - uses: jurplel/install-qt-action@8a4de44c56f28df1e7cd6f9df2c9be6811d98fb2
+        with:
+          version: '6.8.3'
+          arch: ${{ matrix.arch }}
+          modules: qtmultimedia
+          cache: true
+      - name: Configure desktop application
+        shell: pwsh
+        run: cmake -S . -B build/desktop -DFRAMORYX_BUILD_DESKTOP=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build shared C++ and QML application
+        shell: pwsh
+        run: cmake --build build/desktop --config Release --parallel 3
+      - name: Headless model checks
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
+        run: ctest --test-dir build/desktop -C Release --output-on-failure
+      - name: Linux native UI and scaling previews
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: xvfb-run -a -s '-screen 0 1920x1080x24' ./build/desktop/desktop/Framoryx --ui-smoke --test-root "$RUNNER_TEMP/framoryx-ui" --snapshot-dir ./work/desktop-previews
+      - name: Windows native UI and scaling previews
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $app=(Resolve-Path './build/desktop/desktop/Release/Framoryx.exe').Path
+          $testRoot=Join-Path $env:RUNNER_TEMP 'framoryx-qt-ui'
+          $shots=Join-Path (Get-Location) 'work/desktop-previews'
+          $process=Start-Process -FilePath $app -ArgumentList @('--ui-smoke','--test-root',('"'+$testRoot+'"'),'--snapshot-dir',('"'+$shots+'"')) -WindowStyle Hidden -PassThru
+          if(!$process.WaitForExit(45000)){Stop-Process -Id $process.Id -Force;throw 'Desktop UI checks timed out.'}
+          if($process.ExitCode -ne 0){throw 'Desktop UI checks failed.'}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: Framoryx-Shared-UI-${{ matrix.label }}
+          path: work/desktop-previews
+          if-no-files-found: ignore
+          retention-days: 7

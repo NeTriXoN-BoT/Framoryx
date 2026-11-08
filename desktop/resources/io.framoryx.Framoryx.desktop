@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Framoryx
+Comment=Your frames, your sound, your game
+Exec=Framoryx
+Icon=io.framoryx.Framoryx
+Categories=Game;Utility;AudioVideo;
+Terminal=false
+StartupWMClass=Framoryx
