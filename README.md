@@ -54,6 +54,8 @@ Open **Overlay Studio** to choose a layout, readouts, size, colors and opacity. 
 
 Keep the application folder together. No account, installer or background service is required for normal monitoring.
 
+**Use at your own risk.** Games with anti-cheat may restrict or penalize overlays and in-game hooks. You are responsible for checking and following each game's rules. Framoryx does not guarantee anti-cheat compatibility. Its maintainers accept no responsibility for bans, suspensions, lost access or other consequences arising from its use.
+
 ## Compatibility, clearly stated
 
 - **Windows 10/11 x64** is the application target. Optional hooks include x64 DX11/DX12 and x86 DX11 support.

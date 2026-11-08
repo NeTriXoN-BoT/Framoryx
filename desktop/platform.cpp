@@ -122,7 +122,9 @@ void Platform::refresh(){
 void Platform::applyOptions(const QString& key){
     if(key=="volume"){m_volumeTimer.start();return;}
 #ifdef Q_OS_WIN
-    send({{"action","options"},{"key",key},{"options",QJsonObject::fromVariantMap(c->m_options)}});
+    auto values=c->m_options;values["micDevice"]=QString::fromUtf8(QByteArray::fromBase64(c->m_options["micId"].toByteArray()));
+    for(const auto& entry:c->m_devices)if(entry.toMap()["id"]==c->m_options["micId"])values["micName"]=entry.toMap()["name"];
+    send({{"action","options"},{"key",key},{"options",QJsonObject::fromVariantMap(values)}});
 #else
     QDir().mkpath(c->root()+"/logs");
     const auto& o=c->m_options;const int fields=o["fields"].toInt(),style=o["style"].toInt();
@@ -321,7 +323,8 @@ void Platform::action(const QString& name,const QVariantMap& args){
     if(name=="audioOpen"){if(c->m_options["autoNoise"].toBool())updateNoise(false);return;}
     if(name=="borderless"||name=="restore"){borderless(name=="restore");return;}
 #ifdef Q_OS_WIN
-    QJsonObject request=QJsonObject::fromVariantMap(args);request["action"]=name;send(request);
+    if(name=="launch"){for(const auto& entry:c->m_games){const auto game=entry.toMap();if(game["id"]!=c->m_options["selectedGame"])continue;const QFileInfo file(game["executable"].toString());if(!file.isFile()||denied(c->m_options,file.fileName())){c->notify("This game is unavailable or blocked by your process rules.","warning");return;}QProcess launch;launch.setProgram(file.absoluteFilePath());launch.setWorkingDirectory(file.absolutePath());launch.setArguments(QProcess::splitCommand(game["arguments"].toString()));if(!launch.startDetached())c->notify("The game could not be launched.","warning");else {c->notify("Game launched. Capture can follow its foreground window.");send({{"action","select"},{"id","auto"}});}return;}c->notify("Add and select a game in your library first.");return;}
+    QJsonObject request=QJsonObject::fromVariantMap(args);if(name=="apoConfig")request["path"]=QUrl(args["url"].toString()).toLocalFile();request["action"]=name;send(request);
 #else
     if(name=="capture"&&c->m_state["capture"].toBool()){m_monitoring=false;c->setState("capture",false);c->setState("live",false);c->notify("Capture stopped. Your game and its in-game overlay keep running.");return;}
     if(name=="launch"||name=="capture"){linuxLaunch();return;}

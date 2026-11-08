@@ -13,6 +13,10 @@ Framoryx provides a non-injecting monitoring path and a separate experimental in
 | Borderless | Saved Win32 styles, placement and identity | Games may reject/reset changes; true exclusive fullscreen is not universally convertible |
 | Audio effects | Endpoint-specific Equalizer APO configuration; optional external RNNoise VST2 | Requires capture/playback APO setup; raw/exclusive paths can bypass effects. No virtual microphone driver is bundled. |
 
+## Use at your own risk
+
+Games with anti-cheat may restrict or penalize overlays and in-game hooks. You are responsible for checking and following each game's rules. Framoryx does not guarantee anti-cheat compatibility. Its maintainers accept no responsibility for bans, suspensions, lost access or other consequences arising from its use.
+
 ## Choosing a display method
 
 Start with **Auto**. It uses a recently drawing attached HUD and otherwise uses the desktop HUD. **Desktop** forces the non-injecting counter. **In-game** requires explicit hook opt-in. Choosing it does not automatically inject anything.

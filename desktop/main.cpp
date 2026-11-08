@@ -8,6 +8,8 @@
 #include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
+#include <QSGRendererInterface>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QLockFile>
@@ -68,8 +70,8 @@ int main(int argc,char** argv){
     QLocalServer server;server.setSocketOptions(QLocalServer::UserAccessOption);
     if(!smoke){QLocalServer::removeServer(serverName);server.listen(serverName);QObject::connect(&server,&QLocalServer::newConnection,&controller,[&]{while(auto socket=server.nextPendingConnection()){QObject::connect(socket,&QLocalSocket::readyRead,socket,[&,socket]{if(socket->readAll().startsWith("show"))emit controller.showRequested();socket->disconnectFromServer();});QObject::connect(socket,&QLocalSocket::disconnected,socket,&QObject::deleteLater);}});}
     QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("app",&controller);
-    bool qmlFailure=false;
-    QObject::connect(&engine,&QQmlEngine::warnings,&application,[&](const QList<QQmlError>& warnings){for(const auto& warning:warnings)qWarning().noquote()<<warning.toString();qmlFailure=true;});
+    bool qmlFailure=false;QStringList qmlWarnings;
+    QObject::connect(&engine,&QQmlEngine::warnings,&application,[&](const QList<QQmlError>& warnings){for(const auto& warning:warnings){qWarning().noquote()<<warning.toString();qmlWarnings<<warning.toString();}qmlFailure=true;});
     engine.load(QUrl("qrc:/qml/Main.qml"));
     if(engine.rootObjects().isEmpty())return 1;
     auto window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());if(!window)return 1;
@@ -88,6 +90,11 @@ int main(int argc,char** argv){
     if(smoke){
         const QString destination=QFileInfo(parser.value("snapshot-dir")).absoluteFilePath();QDir().mkpath(destination);
         window->show();window->resize(1440,980);
+        window->setProperty("diagnosticAnimating",true);
+#ifdef Q_OS_WIN
+        ShowWindow(HWND(window->winId()),SW_SHOWNOACTIVATE);
+#endif
+        window->requestUpdate();
         auto timer=new QTimer(&application);timer->setInterval(950);int* step=new int(0);auto frames=std::make_shared<int>(0);
         QObject::connect(window,&QQuickWindow::frameSwapped,&application,[frames]{++*frames;});
         QObject::connect(timer,&QTimer::timeout,&application,[&,timer,step,frames,destination]{
@@ -100,7 +107,7 @@ int main(int argc,char** argv){
             else if(*step==16){window->grabWindow().save(destination+"/compact-auto.png");controller.setOption("motion",false);}
             else if(*step==17){
                 timer->stop();const bool pass=!qmlFailure&&*frames>10;
-                QSaveFile file(destination+"/ui-result.json");file.open(QIODevice::WriteOnly);file.write(QJsonDocument(QJsonObject{{"passed",pass},{"qmlWarnings",qmlFailure},{"frames",*frames},{"pages",6},{"screenshots",10},{"platform",controller.platformName()}}).toJson());file.commit();delete step;application.exit(pass?0:1);return;
+                QSaveFile file(destination+"/ui-result.json");file.open(QIODevice::WriteOnly);file.write(QJsonDocument(QJsonObject{{"passed",pass},{"qmlWarnings",qmlFailure},{"warnings",QJsonArray::fromStringList(qmlWarnings)},{"frames",*frames},{"exposed",window->isExposed()},{"visible",window->isVisible()},{"graphicsApi",int(window->rendererInterface()->graphicsApi())},{"pages",6},{"screenshots",10},{"platform",controller.platformName()}}).toJson());file.commit();delete step;application.exit(pass?0:1);return;
             }
             ++*step;
         });timer->start();

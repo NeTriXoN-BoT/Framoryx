@@ -86,6 +86,7 @@ private:
     QElapsedTimer m_clock;
     fg::Store m_store;
     double m_frameTime = 0;
+    qint64 m_volumeUntil = 0;
     quint32 m_livePid = 0;
     std::unique_ptr<Platform> m_platform;
     std::unique_ptr<AudioMonitor> m_audio;

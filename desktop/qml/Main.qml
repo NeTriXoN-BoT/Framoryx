@@ -13,13 +13,14 @@ ApplicationWindow {
     visible: !app.testMode
     color: Theme.background
     property int page: 0
+    property bool diagnosticAnimating: false
     property string chosenGamePath: ""
     readonly property var titles: ["Every frame. Under control.","Make it unmistakably yours.","Sound that pulls you in.","Find your smooth.","Your games. Your rules.","Ready when you are."]
     readonly property var subtitles: ["Measure performance. Shape your play.","Every readout. Every detail. Your choice.","Your audio. A little more presence.","Frame pacing, borderless play and your game library.","Clear preferences for the games you trust.","A comfortable fit, wherever you play."]
     readonly property var colors: ["#7df2c6","#59cfff","#c2a3ff","#f7be6f"]
     Binding { target: Theme; property: "accent"; value: window.colors[app.options.accent||0] }
     Binding { target: Theme; property: "scale"; value: app.options.uiScale>0?app.options.uiScale/100:Screen.width<1200?.9:Screen.width>2400?1.1:1 }
-    Binding { target: Theme; property: "motion"; value: app.options.motion&&window.active&&window.visibility!==Window.Minimized&&window.visible }
+    Binding { target: Theme; property: "motion"; value: app.options.motion&&(window.active||window.diagnosticAnimating)&&window.visibility!==Window.Minimized&&window.visible }
     function requestHook(){hookDialog.open()}
     function chooseGame(){gameFile.open()}
     function chooseApo(){apoFile.open()}
@@ -149,7 +150,7 @@ ApplicationWindow {
         title: "Enable experimental in-game features?"
         standardButtons: Dialog.Yes|Dialog.Cancel
         background: Rectangle { color: Theme.surface; radius: Theme.px(15); border.color: Theme.border }
-        contentItem: ScrollView { clip: true; Text { width: parent.width; text: "This loads the Framoryx DX11/DX12 module into the selected game for an in-game overlay and frame limiting.\n\nGame hooks can cause crashes or anti-cheat bans. An allow list or clear scan does not establish game approval. Use only where permitted.\n\nKnown anti-cheat/system blocks remain enforced. Disable restores hook entry points; restart the game to remove the module fully.\n\nEnable for this selected game now?"; color: Theme.text; font.pixelSize: Theme.px(13); wrapMode: Text.Wrap } }
+        contentItem: ScrollView { clip: true; Text { width: parent.width; text: "This loads the Framoryx DX11/DX12 module into the selected game for an in-game overlay and frame limiting.\n\nGame hooks can cause crashes or anti-cheat bans. An allow list or clear scan does not establish game approval. Use only where permitted.\n\nKnown anti-cheat/system blocks remain enforced. Disable restores hook entry points; restart the game to remove the module fully.\n\nUse at your own risk. You are responsible for checking the game’s rules. Framoryx’s maintainers accept no responsibility for bans, suspensions or other consequences of its use.\n\nEnable for this selected game now?"; color: Theme.text; font.pixelSize: Theme.px(13); wrapMode: Text.Wrap } }
         onAccepted: app.action("enableHook",{confirmed:true})
     }
     Popup {

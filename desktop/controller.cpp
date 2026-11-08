@@ -126,7 +126,8 @@ void Controller::setOption(const QString& key,const QVariant& value){
         const QList<QList<int>> presets{{0,0,0},{-3,0,3},{3,0,-3},{0,-3,6},{6,-3,0}};
         const int i=m_options[key].toInt();if(i<5){m_options["low"]=presets[i][0];m_options["mid"]=presets[i][1];m_options["high"]=presets[i][2];m_options["eq"]=true;}
     }
-    if(key=="volume")setState("volume",m_options["volume"]);
+    if(key=="volume"){m_volumeUntil=m_clock.elapsed()+700;setState("volume",m_options["volume"]);}
+    if(key=="micId"||key=="noise"||key=="eq"||key=="noisePreset"||key=="voicePreset"||key=="low"||key=="mid"||key=="high")setState("pendingMic",false);
     emit optionsChanged();scheduleSave();
     if(!m_test)m_platform->applyOptions(key);
 }
@@ -140,9 +141,9 @@ void Controller::setReadout(int index,bool visible){if(index<0||index>=10)return
 void Controller::moveReadout(int index,int direction){auto order=m_options["order"].toList();const int at=order.indexOf(index),to=at+(direction<0?-1:1);if(at<0||to<0||to>=order.size())return;order.swapItemsAt(at,to);setOption("order",order);}
 void Controller::selectGame(const QString& id){setOption("selectedGame",id);if(!m_test)m_platform->select(id);}
 void Controller::addGame(const QUrl& url,const QString& label,const QString& arguments){
-    const QString path=QFileInfo(url.toLocalFile()).absoluteFilePath();
+    const QString path=QFileInfo(url.toLocalFile()).canonicalFilePath();
     const QFileInfo info(path);
-    if(!url.isLocalFile()||!info.isFile()||info.isSymLink()||arguments.size()>4096){notify("Choose a local game executable and valid arguments.","warning");return;}
+    if(!url.isLocalFile()||path.isEmpty()||!info.isFile()||arguments.size()>4096){notify("Choose a local game executable and valid arguments.","warning");return;}
     if(m_games.size()>=128){notify("The game library is full.","warning");return;}
     for(const auto& entry:m_games)if(entry.toMap()["executable"].toString()==path){selectGame(entry.toMap()["id"].toString());notify("That game is already in your library.");return;}
     const QString name=label.trimmed().isEmpty()?info.completeBaseName():label.trimmed().left(80);
@@ -162,10 +163,12 @@ void Controller::setWindowActive(bool active){m_active=active;}
 void Controller::refreshDevices(){
     QVariantList out;for(const auto& device:QMediaDevices::audioInputs())out<<QVariantMap{{"id",QString::fromLatin1(device.id().toBase64())},{"name",device.description()},{"rate",device.preferredFormat().sampleRate()},{"channels",device.preferredFormat().channelCount()}};
     m_devices=out;emit devicesChanged();
+    if(m_options["micId"].toString().isEmpty()&&!out.isEmpty())setOption("micId",QString::fromLatin1(QMediaDevices::defaultAudioInput().id().toBase64()));
 }
 void Controller::refreshCapabilities(){if(!m_test)m_platform->refresh();}
 void Controller::receive(const QJsonObject& incoming){
     auto next=incoming.toVariantMap();
+    if(next.contains("volume")&&m_clock.elapsed()>m_volumeUntil){m_options["volume"]=qBound(0,next["volume"].toInt(),200);emit optionsChanged();}
     if(next.contains("games")){m_state["windows"]=next.take("games");}
     if(next.contains("microphones")){const auto list=next.take("microphones").toList();m_state["engineMicrophones"]=list;}
     if(next.contains("graph"))m_graph=next.take("graph").toList();

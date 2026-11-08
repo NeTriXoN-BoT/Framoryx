@@ -30,6 +30,8 @@ ColumnLayout {
             FToggle { text: "Auto borderless for allowed games"; checked: app.options.autoBorderless; onToggled: app.setOption("autoBorderless",checked) }
             FToggle { visible: app.platformName==="Linux"; text: "Launch games inside Gamescope"; checked: app.options.gamescope; onToggled: app.setOption("gamescope",checked) }
             Text { text: "Automatic changes only affect games on your allow list. Original window state is restored when Framoryx closes."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Text { text: "USE AT YOUR OWN RISK"; color: Theme.amber; font.pixelSize: Theme.px(11); font.weight: Font.DemiBold }
+            Text { text: "Games with anti-cheat may restrict or penalize overlays and in-game hooks. You are responsible for checking and following each game's rules. Framoryx does not guarantee anti-cheat compatibility. Its maintainers accept no responsibility for bans, suspensions, lost access or other consequences arising from its use."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
             FButton { text: "Edit game rules"; quiet: true; onClicked: shell.page=4 }
         }
     }
