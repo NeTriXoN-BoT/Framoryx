@@ -10,14 +10,14 @@ ApplicationWindow {
     title: "Framoryx — Your game, your way"
     width: 1360; height: 900
     minimumWidth: 820; minimumHeight: 600
-    visible: !app.testMode
+    visible: false
     color: Theme.background
     property int page: 0
     property bool diagnosticAnimating: false
     property string chosenGamePath: ""
-    readonly property var titles: ["Every frame. Under control.","Make it unmistakably yours.","Sound that pulls you in.","Find your smooth.","Your games. Your rules.","Ready when you are."]
-    readonly property var subtitles: ["Measure performance. Shape your play.","Every readout. Every detail. Your choice.","Your audio. A little more presence.","Frame pacing, borderless play and your game library.","Clear preferences for the games you trust.","A comfortable fit, wherever you play."]
-    readonly property var colors: ["#7df2c6","#59cfff","#c2a3ff","#f7be6f"]
+    readonly property var titles: ["Every frame. Under control.","Make it unmistakably yours.","Sound that pulls you in.","Find your smooth.","Your games. Your rules.","Ready when you are.","The next frame starts here."]
+    readonly property var subtitles: ["Measure performance. Shape your play.","Every readout. Every detail. Your choice.","Your audio. A little more presence.","Frame pacing, borderless play and your game library.","Clear preferences for the games you trust.","A comfortable fit, wherever you play.","Every release. Every improvement. All in one place."]
+    readonly property var colors: ["#7df2c6","#59cfff","#c2a3ff","#f7be6f","#ff8baf","#63dfdf","#f4e478","#a3e56d","#ff9d72","#d5e4f5"]
     Binding { target: Theme; property: "accent"; value: window.colors[app.options.accent||0] }
     Binding { target: Theme; property: "scale"; value: app.options.uiScale>0?app.options.uiScale/100:Screen.width<1200?.9:Screen.width>2400?1.1:1 }
     Binding { target: Theme; property: "motion"; value: app.options.motion&&(window.active||window.diagnosticAnimating)&&window.visibility!==Window.Minimized&&window.visible }
@@ -29,7 +29,10 @@ ApplicationWindow {
     function importPresets(){loadPresetFile.open()}
     function choosePage(index){page=index}
     onActiveChanged: app.setWindowActive(active)
-    onClosing: {app.action("quit")}
+    onClosing: function(close){if(!app.testMode&&app.options.closeToTray&&app.state.trayAvailable){close.accepted=false;app.action("hideToTray")}else app.action("quit")}
+    onVisibilityChanged: if(visibility===Window.Minimized&&!app.testMode&&app.options.minimizeToTray&&app.state.trayAvailable)app.action("hideToTray")
+    property int warmedPages: 0
+    Timer { interval: 220; repeat: true; running: window.warmedPages<7; onTriggered: window.warmedPages++ }
     RowLayout {
         anchors.fill: parent; spacing: 0
         Rectangle {
@@ -53,7 +56,7 @@ ApplicationWindow {
                     Text { text: "PLAY AT YOUR BEST"; x: Theme.px(5); y: Theme.px(109); color: Theme.muted; font.pixelSize: Theme.px(8); font.letterSpacing: 1.2 }
                 }
                 Repeater {
-                    model: ["Overview","Overlay Studio","Audio","Games & pacing","Game rules","Settings & setup"]
+                    model: ["Overview","Overlay Studio","Audio","Games & pacing","Process control","Settings & setup","What’s new"]
                     FButton {
                         required property int index
                         required property string modelData
@@ -61,7 +64,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         implicitHeight: Theme.px(46)
                         quiet: window.page!==index
-                        onClicked: {window.page=index;if(index===2)app.action("audioOpen")}
+                        onClicked: {window.page=index;if(index===2)app.action("audioOpen");if(index===4)app.refreshProcesses()}
                         background: Rectangle { color: window.page===index?"#1b3b35":parent.hovered?"#172934":"transparent"; radius: Theme.px(10); border.width: parent.visualFocus?2:0; border.color: Theme.accent; Rectangle { visible: window.page===index; x: 0; y: 10; width: 3; height: parent.height-20; radius: 2; color: Theme.accent } Behavior on color { ColorAnimation { duration: Theme.duration } } }
                     }
                 }
@@ -85,7 +88,16 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true; implicitHeight: Theme.px(152); radius: Theme.px(17); color: "#14232c"; border.color: Theme.border
                     Backdrop { anchors.fill: parent; anchors.margins: 1 }
-                    ColumnLayout { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Theme.px(28); width: parent.width-Theme.px(50); spacing: Theme.px(10); Text { text: window.titles[window.page]; color: Theme.text; font.pixelSize: Theme.px(30); font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.Wrap } Text { text: window.subtitles[window.page]; color: Theme.muted; font.pixelSize: Theme.px(13); Layout.fillWidth: true; wrapMode: Text.Wrap } }
+                    ColumnLayout { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Theme.px(28); width: parent.width-Theme.px(50); spacing: Theme.px(10)
+                        Text { text: "FRAMORYX // PERFORMANCE SYSTEM"; color: Theme.accent; font.family: "monospace"; font.pixelSize: Theme.px(9); font.letterSpacing: 1.4 }
+                        Item { Layout.fillWidth: true; implicitHeight: headline.implicitHeight
+                            Text { id: headline; width: parent.width-Theme.px(20); text: window.titles[window.page].toUpperCase(); color: Theme.text; font.family: app.platformName==="Windows"?"Cascadia Mono":"monospace"; font.pixelSize: Theme.px(25); font.weight: Font.DemiBold; font.letterSpacing: -.5; wrapMode: Text.Wrap }
+                            Rectangle { x: Math.min(headline.contentWidth,headline.width)+Theme.px(7); y: headline.height-Theme.px(25); width: Theme.px(11); height: Theme.px(24); color: Theme.accent; opacity: 1
+                                SequentialAnimation on opacity { running: Theme.motion&&visible; loops: Animation.Infinite; PauseAnimation { duration: 560 } NumberAnimation { to: 0; duration: 80 } PauseAnimation { duration: 360 } NumberAnimation { to: 1; duration: 80 } }
+                            }
+                        }
+                        Text { text: window.subtitles[window.page]; color: Theme.muted; font.pixelSize: Theme.px(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                    }
                 }
                 FCard {
                     Layout.fillWidth: true
@@ -105,13 +117,25 @@ ApplicationWindow {
                         FButton { text: app.state.capture?"Stop capture":app.platformName==="Linux"?"Launch & capture":"Start capture"; primary: true; onClicked: app.action("capture") }
                     }
                 }
-                Loader {
-                    id: content
+                Item {
+                    id: pageHost
                     Layout.fillWidth: true
-                    Layout.preferredHeight: item?item.implicitHeight:0
-                    sourceComponent: [overview,studio,audio,games,rules,settings][window.page]
-                    onLoaded: {enter.restart();scroll.contentItem.contentY=0}
-                    NumberAnimation { id: enter; target: content; property: "opacity"; from: Theme.motion?.25:1; to: 1; duration: Theme.duration; easing.type: Easing.OutCubic }
+                    implicitHeight: {const loader=pages.itemAt(window.page);return loader&&loader.item?loader.item.implicitHeight:Theme.px(300)}
+                    Repeater {
+                        id: pages
+                        model: 7
+                        Loader {
+                            required property int index
+                            width: pageHost.width
+                            asynchronous: true
+                            active: index===window.page||index<window.warmedPages
+                            visible: index===window.page
+                            sourceComponent: [overview,studio,audio,games,rules,settings,changes][index]
+                        }
+                    }
+                    Text { anchors.centerIn: parent; visible: {const loader=pages.itemAt(window.page);return !loader||loader.status!==Loader.Ready}; text: "Preparing your workspace…"; color: Theme.muted; font.pixelSize: Theme.px(13) }
+                    Connections { target: window; function onPageChanged(){scroll.contentItem.contentY=0;pageEnter.restart()} }
+                    NumberAnimation { id: pageEnter; target: pageHost; property: "opacity"; from: Theme.motion?.7:1; to: 1; duration: Theme.duration; easing.type: Easing.OutCubic }
                 }
                 Text { text: app.state.notice||"Ready when you are."; color: Theme.muted; font.pixelSize: Theme.px(12); Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.bottomMargin: Theme.px(32) }
             }
@@ -124,6 +148,7 @@ ApplicationWindow {
     Component { id: games; GamesPage { shell: window } }
     Component { id: rules; RulesPage { shell: window } }
     Component { id: settings; SettingsPage { shell: window } }
+    Component { id: changes; ChangesPage { shell: window } }
     FileDialog { id: gameFile; title: "Choose a game executable"; onAccepted: {window.chosenGamePath=selectedFile;addGameDialog.open()} }
     FileDialog { id: apoFile; title: "Choose Equalizer APO config.txt"; nameFilters: ["APO configuration (config.txt)"]; onAccepted: app.action("apoConfig",{url:String(selectedFile)}) }
     FileDialog { id: captureFile; title: "Export rolling capture"; fileMode: FileDialog.SaveFile; defaultSuffix: "csv"; nameFilters: ["CSV capture (*.csv)"]; onAccepted: app.action("export",{url:String(selectedFile)}) }

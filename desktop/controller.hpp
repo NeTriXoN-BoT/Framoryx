@@ -21,10 +21,14 @@ class Controller : public QObject {
     Q_PROPERTY(QVariantMap state READ state NOTIFY stateChanged)
     Q_PROPERTY(QVariantMap options READ options NOTIFY optionsChanged)
     Q_PROPERTY(QVariantList games READ games NOTIFY gamesChanged)
+    Q_PROPERTY(QVariantList processes READ processes NOTIFY processesChanged)
+    Q_PROPERTY(QVariantList changelog READ changelog CONSTANT)
+    Q_PROPERTY(QVariantMap unlockSupport READ unlockSupport NOTIFY optionsChanged)
     Q_PROPERTY(QVariantList profiles READ profiles NOTIFY profilesChanged)
     Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantList capabilities READ capabilities NOTIFY capabilitiesChanged)
-    Q_PROPERTY(QVariantList readouts READ readouts NOTIFY optionsChanged)
+    Q_PROPERTY(QVariantList readouts READ readouts NOTIFY overlayChanged)
+    Q_PROPERTY(QVariantMap overlayLayout READ overlayLayout NOTIFY overlayChanged)
     Q_PROPERTY(QVariantList graph READ graph NOTIFY stateChanged)
     Q_PROPERTY(QString platformName READ platformName CONSTANT)
     Q_PROPERTY(bool testMode READ testMode CONSTANT)
@@ -34,10 +38,15 @@ public:
     QVariantMap state() const {return m_state;}
     QVariantMap options() const {return m_options;}
     QVariantList games() const {return m_games;}
+    QVariantList processes() const {return m_processes;}
+    QVariantList changelog() const;
+    Q_INVOKABLE QString processRuleStatus(const QString& name) const;
+    QVariantMap unlockSupport() const;
     QVariantList profiles() const {return m_profiles;}
     QVariantList devices() const {return m_devices;}
     QVariantList capabilities() const {return m_capabilities;}
     QVariantList readouts() const;
+    QVariantMap overlayLayout() const;
     QVariantList graph() const {return m_graph;}
     QString platformName() const;
     bool testMode() const {return m_test;}
@@ -47,6 +56,9 @@ public:
     Q_INVOKABLE void moveReadout(int index, int direction);
     Q_INVOKABLE void selectGame(const QString& id);
     Q_INVOKABLE void addGame(const QUrl& executable, const QString& name, const QString& arguments);
+    Q_INVOKABLE void refreshProcesses();
+    Q_INVOKABLE void addProcessRule(const QString& name, bool block);
+    Q_INVOKABLE void setGameUnlock(bool enabled, bool confirmed = false);
     Q_INVOKABLE void removeGame(const QString& id);
     Q_INVOKABLE void saveProfile(const QString& name);
     Q_INVOKABLE void applyProfile(int index);
@@ -67,7 +79,10 @@ public:
 signals:
     void stateChanged();
     void optionsChanged();
+    void overlayChanged();
     void gamesChanged();
+    void processesChanged();
+    void hideRequested();
     void profilesChanged();
     void devicesChanged();
     void capabilitiesChanged();
@@ -78,9 +93,9 @@ private:
     friend class Platform;
     friend class AudioMonitor;
     QString m_root;
-    bool m_test = false, m_active = true;
+    bool m_test = false, m_active = true, m_scanningProcesses = false;
     QVariantMap m_state, m_options;
-    QVariantList m_games, m_profiles, m_devices, m_capabilities, m_graph;
+    QVariantList m_processes, m_games, m_profiles, m_devices, m_capabilities, m_graph;
     QMediaDevices m_media;
     QTimer m_poll, m_saveTimer;
     QElapsedTimer m_clock;

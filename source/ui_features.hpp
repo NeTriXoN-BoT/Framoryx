@@ -5,8 +5,8 @@ const wchar_t* hudTitles[]{L"Live FPS",    L"Average FPS",   L"1% low",     L"Fr
                            L"Frame graph", L"System CPU",    L"System RAM", L"FPS limit",
                            L"Renderer",    L"Framoryx label"};
 Color hudAccent(int index) {
-    const Color palette[]{mint, Color(255, 89, 207, 255), Color(255, 194, 163, 255), amber};
-    return palette[std::clamp(index, 0, 3)];
+    const auto rgb=fg::accentColors[std::clamp(index,0,9)];
+    return Color(255,BYTE(rgb>>16),BYTE(rgb>>8),BYTE(rgb));
 }
 void showAppWindow() {
     ShowWindow(app.window, IsIconic(app.window) ? SW_RESTORE : SW_SHOW);
@@ -220,92 +220,36 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
         label(g, L"Choose at least one readout", 12, 20, 250, 40, 14, muted);
         return;
     }
-    auto accent = hudAccent(options.accent);
-    float width = fg::hudWidth(options), height = fg::hudHeight(options);
-    bool compact = options.style == 1, bar = options.style == 2;
-    rounded(g, RectF(0, 0, width, height), Color(BYTE(255 * options.opacity / 100), 12, 19, 26),
-            compact ? 8 : 14);
-    line(g, 14, 1, width - 14, 1, accent, 2);
-    float padding = compact ? 12 : 16, y = compact ? 10 : 13;
-    auto fields = options.fields;
-    if (fields & fg::HudBrand) {
-        label(g, L"FRAMORYX", padding, y, width - padding * 2, 18, compact ? 9 : 10, muted, true);
-        y += compact ? 16 : bar ? 18 : 21;
-    }
-    std::wstring fps = preview && !stats.live ? L"144 FPS"
-                       : stats.live           ? value(stats.fps) + L" FPS"
-                                              : L"— FPS";
-    struct Metric {
-        uint32_t field;
-        std::wstring title, number;
+    auto accent=hudAccent(options.accent);const auto layout=fg::hudLayout(options);
+    const bool compact=options.style==1||options.style==3,minimal=options.style==3;
+    if(options.opacity>0)rounded(g,RectF(0,0,layout.width,layout.height),Color(BYTE(255*options.opacity/100),12,19,26),compact?8:14);
+    if(!minimal&&options.opacity>0)line(g,14,1,layout.width-14,1,accent,2);
+    auto number=[&](uint32_t field)->std::wstring{
+        switch(field){
+        case fg::HudFps:return stats.live?value(stats.fps)+L" FPS":preview?L"144 FPS":L"— FPS";
+        case fg::HudAverage:return !stats.frames.empty()?value(stats.average)+L" FPS":preview?L"141 FPS":L"—";
+        case fg::HudLow:return stats.frames.size()>=100?value(stats.low)+L" FPS":preview?L"120 FPS":L"—";
+        case fg::HudTime:return stats.live?value(stats.ms,2)+L" ms":preview?L"6.94 ms":L"—";
+        case fg::HudCpu:return app.cpuReady?value(app.cpu)+L"%":L"—";
+        case fg::HudRam:return app.memoryReady?value(app.ramGB,1)+L" GB":L"—";
+        case fg::HudCap:return preview?L"144":app.hook.active()&&app.hook.pid()==app.selectedPid?(app.cap?value(app.cap):L"Uncapped"):L"Off";
+        case fg::HudApi:return L"Desktop / ETW";
+        default:return L"FRAMORYX";
+        }
     };
-    Metric metrics[]{
-        {fg::HudAverage, L"Average",
-         stats.frames.empty() ? (preview ? L"141 FPS" : L"—") : value(stats.average) + L" FPS"},
-        {fg::HudLow, L"1% low",
-         stats.frames.size() < 100 ? (preview ? L"120 FPS" : L"—") : value(stats.low) + L" FPS"},
-        {fg::HudTime, L"Frame time",
-         stats.live ? value(stats.ms, 2) + L" ms"
-         : preview  ? L"6.94 ms"
-                    : L"—"},
-        {fg::HudCpu, L"System CPU", app.cpuReady ? value(app.cpu) + L"%" : L"—"},
-        {fg::HudRam, L"System RAM", app.memoryReady ? value(app.ramGB, 1) + L" GB" : L"—"},
-        {fg::HudCap, L"FPS limit",
-         preview ? L"144"
-         : app.hook.active() && app.hook.pid() == app.selectedPid
-             ? (app.cap ? value(app.cap) : L"Uncapped")
-             : L"Off"},
-        {fg::HudApi, L"Renderer", L"Desktop / ETW"}};
-    if (bar) {
-        float x = padding;
-        if (fields & fg::HudFps) {
-            label(g, fps, x, y + 3, 145, 42, 28, accent, true);
-            x += 152;
+    for(size_t n=0;n<layout.count;++n){const auto& cell=layout.cells[n];
+        if(cell.field==fg::HudGraph){
+            const float graphHeight=cell.height-10;
+            if(stats.frames.empty()&&preview){std::vector<PointF> path;path.reserve(110);for(int i=0;i<110;++i)path.emplace_back(cell.x+i*cell.width/109,cell.y+graphHeight-8-float(std::sin(i*.27)*3+(i%43==0?14:0)));Pen trace(accent,1.4f);g.DrawLines(&trace,path.data(),int(path.size()));}
+            else graph(g,RectF(cell.x,cell.y+4,cell.width,graphHeight),stats,true,accent);
+            continue;
         }
-        bool any = (fields & ~uint32_t(fg::HudBrand | fg::HudGraph)) != 0;
-        for (auto& metric : metrics)
-            if (fields & metric.field) {
-                label(g, metric.title, x, y, 99, 18, 10, muted);
-                label(g, metric.number, x, y + 21, 99, 27, metric.field == fg::HudApi ? 11 : 17,
-                      text, true);
-                x += 104;
-            }
-        if (any)
-            y += 50;
-    } else {
-        if (fields & fg::HudFps) {
-            label(g, fps, padding - 2, y - 3, width - padding * 2 + 2, compact ? 39 : 48,
-                  compact ? 28 : 34, accent, true);
-            y += compact ? 39 : 49;
-        }
-        for (auto& metric : metrics)
-            if (fields & metric.field) {
-                label(g, metric.title, padding, y, width - 136, 20, compact ? 11 : 12, muted);
-                SolidBrush brush(text);
-                StringFormat format;
-                format.SetAlignment(StringAlignmentFar);
-                g.DrawString(metric.number.c_str(), -1,
-                             uiFont(metric.field == fg::HudApi ? 10
-                                    : compact                  ? 12
-                                                               : 13,
-                                    true),
-                             RectF(width - 121, y, 105, 20), &format, &brush);
-                y += compact ? 18 : 21;
-            }
-    }
-    if (fields & fg::HudGraph) {
-        float graphHeight = compact ? 25 : 34;
-        if (stats.frames.empty() && preview) {
-            std::vector<PointF> path;
-            path.reserve(110);
-            for (int i = 0; i < 110; ++i)
-                path.emplace_back(padding + i * (width - padding * 2) / 109,
-                                  y + graphHeight - 8 -
-                                      float(std::sin(i * .27) * 3 + (i % 43 == 0 ? 14 : 0)));
-            Pen trace(accent, 1.4f);
-            g.DrawLines(&trace, path.data(), int(path.size()));
-        } else
-            graph(g, RectF(padding, y + 4, width - padding * 2, graphHeight), stats, true, accent);
+        if(cell.field==fg::HudFps){label(g,number(cell.field),cell.x,cell.y-3,cell.width,cell.height,compact?28:34,accent,true);continue;}
+        if(cell.field==fg::HudBrand){label(g,L"FRAMORYX",cell.x,cell.y,cell.width,18,compact?9:10,muted,true);continue;}
+        int index=0;while(index<10&&hudFields[index]!=cell.field)++index;
+        const auto title=index<10?hudTitles[index]:L"";
+        if(cell.column){label(g,title,cell.x,cell.y,cell.width-5,17,10,muted);label(g,number(cell.field),cell.x,cell.y+19,cell.width-5,25,cell.field==fg::HudApi?11:17,text,true);}
+        else {label(g,title,cell.x,cell.y,cell.width-110,20,compact?11:12,muted);SolidBrush brush(text);StringFormat format;format.SetAlignment(StringAlignmentFar);g.DrawString(number(cell.field).c_str(),-1,uiFont(cell.field==fg::HudApi?10:compact?12:13,true),RectF(cell.x+cell.width-105,cell.y,105,20),&format,&brush);}
     }
 }
 void paintStudio(Graphics& g) {

@@ -28,6 +28,21 @@ ColumnLayout {
     }
     FCard {
         Layout.fillWidth: true
+        Text { text: "There when you need it."; color: Theme.text; font.pixelSize: Theme.px(22); font.weight: Font.DemiBold }
+        GridLayout {
+            Layout.fillWidth: true; columns: page.width>Theme.px(850)?2:1; columnSpacing: Theme.px(24); rowSpacing: Theme.px(14)
+            FToggle { text: app.platformName==="Windows"?"Start with Windows":"Start at sign-in"; checked: app.options.startWithSystem; onToggled: app.setOption("startWithSystem",checked) }
+            FToggle { text: "Start quietly in the system tray"; checked: app.options.startHidden; onToggled: app.setOption("startHidden",checked) }
+            FToggle { text: "Minimize to the system tray"; checked: app.options.minimizeToTray; onToggled: app.setOption("minimizeToTray",checked) }
+            FToggle { text: "Close button hides to tray"; checked: app.options.closeToTray; onToggled: app.setOption("closeToTray",checked) }
+            FToggle { text: "Start capture automatically"; checked: app.options.autoCapture; onToggled: app.setOption("autoCapture",checked) }
+            FButton { text: "Hide to tray now"; onClicked: app.action("hideToTray") }
+        }
+        Text { text: app.platformName==="Windows"?"Automatic capture starts passive monitoring on app launch and follows foreground game frames. It never enables an in-game hook automatically.":"Automatic capture waits for monitored game launches. Games are never launched automatically at sign-in."; color: Theme.muted; font.pixelSize: Theme.px(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Text { text: app.state.trayAvailable?"Open Framoryx from its tray icon. Use Quit Framoryx in the tray menu to stop it completely.":"This desktop has no available system tray. Framoryx stays accessible in the taskbar instead."; color: Theme.muted; font.pixelSize: Theme.px(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
+    }
+    FCard {
+        Layout.fillWidth: true
         RowLayout { Layout.fillWidth: true; Text { text: "Components and compatibility"; color: Theme.text; font.pixelSize: Theme.px(21); font.weight: Font.DemiBold; Layout.fillWidth: true } FButton { text: "Refresh status"; onClicked: app.action("refresh") } }
         Repeater { model: app.capabilities; Rectangle {
             required property var modelData

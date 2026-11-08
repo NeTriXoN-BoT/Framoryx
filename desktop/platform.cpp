@@ -1,5 +1,6 @@
 #include "platform.hpp"
 #include "controller.hpp"
+#include "unlock.hpp"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDesktopServices>
@@ -40,6 +41,7 @@ bool denied(const QVariantMap& options,const QString& name){
 bool allowed(const QVariantMap& options,const QString& name){if(denied(options,name))return false;for(const auto& pattern:options["allow"].toStringList())if(fg::wildcard(pattern.toStdString(),name.toStdString()))return true;return false;}
 }
 Platform::Platform(Controller* controller):QObject(controller),c(controller){
+    m_optionTimer.setInterval(50);m_optionTimer.setSingleShot(true);connect(&m_optionTimer,&QTimer::timeout,this,&Platform::flushOptions);
     m_volumeTimer.setSingleShot(true);m_volumeTimer.setInterval(45);
     connect(&m_volumeTimer,&QTimer::timeout,this,[this]{
 #ifdef Q_OS_WIN
@@ -80,7 +82,7 @@ void Platform::start(){
         int end;while((end=m_incoming.indexOf('\n'))>=0){const auto line=m_incoming.left(end);m_incoming.remove(0,end+1);const auto doc=QJsonDocument::fromJson(line);if(doc.isObject())c->receive(doc.object());}
     });
     connect(&m_engine,&QProcess::readyReadStandardError,this,[this]{c->setState("engineDiagnostic",QString::fromUtf8(m_engine.readAllStandardError()).right(4096));});
-    connect(&m_engine,&QProcess::started,this,[this]{send({{"action","options"},{"options",QJsonObject::fromVariantMap(c->m_options)}});});
+    connect(&m_engine,&QProcess::started,this,[this]{applyOptions();flushOptions();if(c->m_options["autoCapture"].toBool())send({{"action","captureStart"}});});
     connect(&m_engine,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this](int,QProcess::ExitStatus){c->setState("connected",false);if(!m_closing)c->notify("The Windows engine closed. Restart Framoryx to reconnect.","error");});
     m_engine.start(path,{"--engine-server",m_token,"--settings-file",c->root()+"/engine.ini"});
 #else
@@ -93,6 +95,9 @@ void Platform::start(){
     applyOptions();
 #endif
     refresh();
+#ifndef Q_OS_WIN
+    if(c->m_options["autoCapture"].toBool()){m_monitoring=true;c->setState("capture",true);c->notify("Automatic capture is armed for monitored game launches. No game is launched automatically.");}
+#endif
 }
 void Platform::send(const QJsonObject& input){
 #ifdef Q_OS_WIN
@@ -121,14 +126,19 @@ void Platform::refresh(){
 }
 void Platform::applyOptions(const QString& key){
     if(key=="volume"){m_volumeTimer.start();return;}
+    m_pendingOptions.insert(key);if(!m_optionTimer.isActive())m_optionTimer.start();
+}
+void Platform::flushOptions(){
+    m_optionTimer.stop();const auto keys=m_pendingOptions.values();m_pendingOptions.clear();const QString key=keys.size()==1?keys.first():QString();
+    if(key=="volume"){m_volumeTimer.start();return;}
 #ifdef Q_OS_WIN
     auto values=c->m_options;values["micDevice"]=QString::fromUtf8(QByteArray::fromBase64(c->m_options["micId"].toByteArray()));
     for(const auto& entry:c->m_devices)if(entry.toMap()["id"]==c->m_options["micId"])values["micName"]=entry.toMap()["name"];
-    send({{"action","options"},{"key",key},{"options",QJsonObject::fromVariantMap(values)}});
+    send({{"action","options"},{"key",key},{"keys",QJsonArray::fromStringList(keys)},{"options",QJsonObject::fromVariantMap(values)}});
 #else
     QDir().mkpath(c->root()+"/logs");
     const auto& o=c->m_options;const int fields=o["fields"].toInt(),style=o["style"].toInt();
-    const QStringList colors{"7df2c6","59cfff","c2a3ff","f7be6f"};
+    const QStringList colors{"7df2c6","59cfff","c2a3ff","f7be6f","ff8baf","63dfdf","f4e478","a3e56d","ff9d72","d5e4f5"};
     const double scale=o["overlayScale"].toInt()?o["overlayScale"].toInt()/100.:qBound(.85,QGuiApplication::primaryScreen()?QGuiApplication::primaryScreen()->size().height()/1080.:1.,2.5);
     QByteArray config="legacy_layout=0\nbackground_color=0c131a\ntext_color=e9f2f6\nround_corners=12\n";
     config+="background_alpha="+QByteArray::number(o["opacity"].toInt()/100.,'f',2)+"\n";
@@ -139,11 +149,13 @@ void Platform::applyOptions(const QString& key){
     config+="autostart_log=1\nlog_interval=0\noutput_folder="+QFile::encodeName(c->root()+"/logs")+"\n";
     if(!c->m_state["overlay"].toBool()||!fields)config+="no_display\n";
     if(style==2)config+="horizontal\ntable_columns=10\n";
+    if(style==3)config+="round_corners=0\nfont_size="+QByteArray::number(qRound(18*scale*o["fontScale"].toInt()/100.))+"\n";
+    if(style==4)config+="table_columns=4\nwidth=390\n";
     const QStringList values{"fps","fps_metrics=avg","fps_metrics=0.01","frametime","frame_timing","cpu_stats","ram","show_fps_limit","engine_version","custom_text=FRAMORYX"};
     bool metricsWritten=false;
     for(const auto& index:o["order"].toList()){const int i=index.toInt();if(!(fields&(1<<i)))continue;if(i==1||i==2){if(!metricsWritten){QStringList metrics;if(fields&2)metrics<<"avg";if(fields&4)metrics<<"0.01";config+="fps_metrics="+metrics.join(',').toUtf8()+'\n';metricsWritten=true;}}else config+=values.value(i).toUtf8()+'\n';}
     if(!writeFile(c->root()+"/MangoHud.conf",config))c->notify("The overlay configuration could not be written.","warning");
-    if(key=="cap"||key=="style"||key=="fields"||key=="opacity"||key=="overlayScale"||key=="accent"||key=="order"||key=="hudX"||key=="hudY"||key=="fontScale"){
+    if(key.isEmpty()||key=="cap"||key=="style"||key=="fields"||key=="opacity"||key=="overlayScale"||key=="accent"||key=="order"||key=="hudX"||key=="hudY"||key=="fontScale"){
         if(c->m_state["gameRunning"].toBool())c->setState("overlayHint","Saved. Use MangoHud's reload shortcut (Shift+F4) in the game, or relaunch for all changes.");
     }
 #endif
@@ -175,7 +187,7 @@ void Platform::linuxScan(){
         c->setState("windows",windows);
         if(c->m_options["autoBorderless"].toBool())for(const auto& value:windows){const auto window=value.toMap();if(window["id"]==c->m_options["selectedGame"]&&allowed(c->m_options,window["exe"].toString())&&!m_windowRestores.contains(window["id"].toString()))borderless(false);}
     });
-    if(!exe("wpctl").isEmpty())command(exe("wpctl"),{"get-volume","@DEFAULT_AUDIO_SINK@"},[this](int code,QByteArray output){if(code)return;const auto parts=output.simplified().split(' ');if(parts.size()>1){const int value=qBound(0,qRound(parts[1].toDouble()*100),200);if(!m_volumeTimer.isActive()){c->m_state["volume"]=value;c->m_options["volume"]=value;emit c->optionsChanged();}c->m_state["muted"]=output.contains("MUTED");}});
+    if(!exe("wpctl").isEmpty())command(exe("wpctl"),{"get-volume","@DEFAULT_AUDIO_SINK@"},[this](int code,QByteArray output){if(code)return;const auto parts=output.simplified().split(' ');if(parts.size()>1){const int value=qBound(0,qRound(parts[1].toDouble()*100),200);if(!m_volumeTimer.isActive()&&c->m_clock.elapsed()>c->m_volumeUntil){c->m_state["volume"]=value;c->m_options["volume"]=value;emit c->optionsChanged();}c->m_state["muted"]=output.contains("MUTED");}});
     if(!exe("pw-dump").isEmpty())command(exe("pw-dump"),{},[this](int code,QByteArray output){
         m_refreshing=false;if(code)return;const auto array=QJsonDocument::fromJson(output).array();QVariantList nodes;
         for(const auto& item:array){const auto object=item.toObject();if(object["type"]!="PipeWire:Interface:Node")continue;const auto props=object["info"].toObject()["props"].toObject();const auto media=props["media.class"].toString();if(media!="Audio/Source"&&media!="Audio/Sink")continue;nodes<<QVariantMap{{"id",object["id"].toInt()},{"name",props["node.name"].toString()},{"description",props["node.description"].toString()},{"media",media},{"rate",props["audio.rate"].toInt()}};}
@@ -198,10 +210,10 @@ void Platform::linuxLaunch(){
     if(denied(c->m_options,file.fileName())){c->notify("This executable is blocked by your process rules.","warning");return;}
     if(exe("mangohud").isEmpty()){c->notify("Install MangoHud to launch with monitoring and the in-game overlay. Setup shows the required packages.","warning");return;}
     if(c->m_options["gamescope"].toBool()&&exe("gamescope").isEmpty()){c->notify("Gamescope is unavailable. Disable its launch option or install it in Setup.","warning");return;}
-    applyOptions();m_logFile.clear();m_logOffset=0;m_logPending.clear();m_logHeaders.clear();c->m_store.clear();c->m_frameTime=0;
+    applyOptions();flushOptions();m_logFile.clear();m_logOffset=0;m_logPending.clear();m_logHeaders.clear();c->m_store.clear();c->m_frameTime=0;
     QProcessEnvironment env=QProcessEnvironment::systemEnvironment();env.insert("MANGOHUD_CONFIGFILE",c->root()+"/MangoHud.conf");env.insert("MANGOHUD_DLSYM","1");m_game.setProcessEnvironment(env);
     QStringList args{"--dlsym"};if(c->m_options["gamescope"].toBool())args<<exe("gamescope")<<"-b"<<"-r"<<QString::number(c->m_options["cap"].toInt())<<"--";
-    args<<file.absoluteFilePath();args+=QProcess::splitCommand(game["arguments"].toString());
+    args<<file.absoluteFilePath();args+=unlock::arguments(QProcess::splitCommand(game["arguments"].toString()),game["unlock"].toBool()&&unlock::supported(file.absoluteFilePath()));
     m_game.setWorkingDirectory(file.absolutePath());m_game.setProgram(exe("mangohud"));m_game.setArguments(args);m_game.setStandardOutputFile(QProcess::nullDevice());m_game.setStandardErrorFile(c->root()+"/game-launch.log");if(!m_game.startDetached(&m_launchedPid)){c->notify("The game could not start. Check its executable and launch arguments.","error");return;}m_monitoring=true;c->m_state["gameRunning"]=true;c->m_state["capture"]=true;c->m_state["game"]=game["name"];c->m_state["renderer"]="MangoHud · Vulkan / OpenGL";c->m_state["launchTime"]=QDateTime::currentMSecsSinceEpoch();
     c->notify("Launching with your overlay and frame-limit settings.");
 #endif
@@ -323,7 +335,7 @@ void Platform::action(const QString& name,const QVariantMap& args){
     if(name=="audioOpen"){if(c->m_options["autoNoise"].toBool())updateNoise(false);return;}
     if(name=="borderless"||name=="restore"){borderless(name=="restore");return;}
 #ifdef Q_OS_WIN
-    if(name=="launch"){for(const auto& entry:c->m_games){const auto game=entry.toMap();if(game["id"]!=c->m_options["selectedGame"])continue;const QFileInfo file(game["executable"].toString());if(!file.isFile()||denied(c->m_options,file.fileName())){c->notify("This game is unavailable or blocked by your process rules.","warning");return;}QProcess launch;launch.setProgram(file.absoluteFilePath());launch.setWorkingDirectory(file.absolutePath());launch.setArguments(QProcess::splitCommand(game["arguments"].toString()));if(!launch.startDetached())c->notify("The game could not be launched.","warning");else {c->notify("Game launched. Capture can follow its foreground window.");send({{"action","select"},{"id","auto"}});}return;}c->notify("Add and select a game in your library first.");return;}
+    if(name=="launch"){for(const auto& entry:c->m_games){const auto game=entry.toMap();if(game["id"]!=c->m_options["selectedGame"])continue;const QFileInfo file(game["executable"].toString());if(!file.isFile()||denied(c->m_options,file.fileName())){c->notify("This game is unavailable or blocked by your process rules.","warning");return;}QProcess launch;launch.setProgram(file.absoluteFilePath());launch.setWorkingDirectory(file.absolutePath());launch.setArguments(unlock::arguments(QProcess::splitCommand(game["arguments"].toString()),game["unlock"].toBool()&&unlock::supported(file.absoluteFilePath())));if(!launch.startDetached())c->notify("The game could not be launched.","warning");else {c->notify("Game launched. Capture can follow its foreground window.");send({{"action","select"},{"id","auto"}});}return;}c->notify("Add and select a game in your library first.");return;}
     QJsonObject request=QJsonObject::fromVariantMap(args);if(name=="apoConfig")request["path"]=QUrl(args["url"].toString()).toLocalFile();request["action"]=name;send(request);
 #else
     if(name=="capture"&&c->m_state["capture"].toBool()){m_monitoring=false;c->setState("capture",false);c->setState("live",false);c->notify("Capture stopped. Your game and its in-game overlay keep running.");return;}
@@ -340,7 +352,7 @@ void Platform::action(const QString& name,const QVariantMap& args){
 #endif
 }
 void Platform::shutdown(){
-    if(m_closing)return;m_closing=true;m_scanTimer.stop();m_volumeTimer.stop();
+    if(m_closing)return;m_closing=true;m_scanTimer.stop();m_volumeTimer.stop();m_optionTimer.stop();
 #ifdef Q_OS_WIN
     send({{"action","quit"}});m_engine.closeWriteChannel();if(!m_engine.waitForFinished(2500)){m_engine.terminate();if(!m_engine.waitForFinished(500))m_engine.kill();}
 #else

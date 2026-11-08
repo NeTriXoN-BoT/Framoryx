@@ -25,10 +25,11 @@ struct alignas(8) HookControl {
     volatile LONG64 lastHudQpc;
     HookFrame ring[hookRingSize];
     volatile LONG hudFields, hudScale, hudOpacity, hudAccent, cpuHundredths, ramMiB, hudStyle;
+    volatile LONG hudOrderLo, hudOrderHi, hudX, hudY, hudFontScale;
 };
 static_assert(sizeof(HookFrame) == 24);
 static_assert(offsetof(HookControl, ring) == 80);
-static_assert(sizeof(HookControl) == 196720);
+static_assert(sizeof(HookControl) == 196736);
 inline std::wstring mappingName(DWORD pid) {
     return L"Local\\Framoryx.Control." + std::to_wstring(pid);
 }

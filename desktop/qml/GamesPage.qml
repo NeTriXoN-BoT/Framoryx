@@ -37,6 +37,19 @@ ColumnLayout {
     }
     FCard {
         Layout.fillWidth: true
+        RowLayout { Layout.fillWidth: true; Text { text: "Beyond the game's cap"; color: Theme.text; font.pixelSize: Theme.px(21); font.weight: Font.DemiBold; Layout.fillWidth: true } Text { text: app.unlockSupport.supported?"SUPPORTED LAUNCH OPTION":"GAME-SPECIFIC SUPPORT"; color: app.unlockSupport.supported?Theme.accent:Theme.muted; font.pixelSize: Theme.px(10) } }
+        Text { text: app.unlockSupport.supported?app.unlockSupport.name+" · "+app.unlockSupport.method:"Select a library game. Only games with a supported cap override can use this option; an internal hard cap cannot be removed by a general FPS limiter."; color: Theme.muted; font.pixelSize: Theme.px(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        FToggle { text: "Use game-supported FPS cap override"; enabled: app.unlockSupport.supported; checked: app.unlockSupport.enabled; onToggled: {if(checked)unlockDialog.open();else app.setGameUnlock(false)} }
+        Text { text: "Applies on the next library launch. Higher FPS can affect physics, animations, timing, stability or power usage. V-sync, drivers and the game engine may impose other limits."; color: Theme.amber; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Dialog {
+            id: unlockDialog; anchors.centerIn: Overlay.overlay; width: Math.min(page.width,Theme.px(540)); height: Theme.px(305); modal: true; title: "Apply the game's FPS override?"; standardButtons: Dialog.Yes|Dialog.Cancel
+            background: Rectangle { color: Theme.surface; radius: Theme.px(14); border.color: Theme.border }
+            contentItem: Text { text: "Framoryx will add the game's supported launch command and set its own limiter to Uncapped. No game files are patched.\n\nHigher frame rates can break physics, animations or game timing. Test carefully and disable this option if problems occur.\n\nThis affects the next launch from your Framoryx library."; color: Theme.text; font.pixelSize: Theme.px(13); wrapMode: Text.Wrap }
+            onAccepted: app.setGameUnlock(true,true)
+        }
+    }
+    FCard {
+        Layout.fillWidth: true
         RowLayout { Layout.fillWidth: true; Text { text: "Your game library"; color: Theme.text; font.pixelSize: Theme.px(22); font.weight: Font.DemiBold; Layout.fillWidth: true } FButton { text: "Add game"; primary: true; onClicked: shell.chooseGame() } }
         Text { visible: app.games.length===0; text: "Add an executable for quick launches with your Framoryx settings."; color: Theme.muted; font.pixelSize: Theme.px(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
         Repeater { model: app.games; Rectangle {

@@ -5,6 +5,8 @@ Slider {
     implicitHeight: Theme.px(34)
     implicitWidth: Theme.px(220)
     padding: Theme.px(8)
+    live: true
+    // Keep hit geometry constant while dragging; only the visual focus ring grows.
     Accessible.name: "Level"
     background: Rectangle {
         x: control.leftPadding; y: control.topPadding+(control.availableHeight-height)/2
@@ -15,9 +17,9 @@ Slider {
     handle: Rectangle {
         x: control.leftPadding + control.visualPosition*(control.availableWidth-width)
         y: control.topPadding+(control.availableHeight-height)/2
-        width: Theme.px(control.pressed ? 18 : 14); height: width; radius: width/2
+        width: Theme.px(16); height: width; radius: width/2
         color: Theme.accent
         border.width: control.visualFocus ? 2 : 0; border.color: Theme.text
-        Behavior on width { NumberAnimation { duration: Theme.duration } }
+        Rectangle { anchors.centerIn: parent; width: parent.width+Theme.px(10); height: width; radius: width/2; color: "transparent"; border.color: Theme.accent; opacity: control.pressed?.3:0 }
     }
 }

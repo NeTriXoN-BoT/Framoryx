@@ -140,6 +140,10 @@ class HookClient {
         InterlockedExchange(&ipc->hudOpacity, options.opacity);
         InterlockedExchange(&ipc->hudAccent, options.accent);
         InterlockedExchange(&ipc->hudStyle, options.style);
+        InterlockedExchange(&ipc->hudOrderLo,LONG(options.order&0xffffffffu));
+        InterlockedExchange(&ipc->hudOrderHi,LONG(options.order>>32));
+        InterlockedExchange(&ipc->hudX,options.x);InterlockedExchange(&ipc->hudY,options.y);
+        InterlockedExchange(&ipc->hudFontScale,options.fontScale);
     }
     void systemMetrics(double cpu, double ramGB) {
         if (ipc) {
@@ -277,7 +281,7 @@ class HookClient {
             return L"Cannot map hook controls: " + winError();
         ZeroMemory(view, sizeof(*view));
         view->magic = ipcMagic;
-        view->version = 6;
+        view->version = 7;
         view->ownerPid = GetCurrentProcessId();
         view->targetPid = pid;
         view->creationTime = birth;
@@ -285,6 +289,8 @@ class HookClient {
         view->overlay = 1;
         view->hudFields = HudOptions{}.fields;
         view->hudOpacity = 90;
+        view->hudOrderLo=LONG(HudOptions::defaultOrder&0xffffffffu);view->hudOrderHi=LONG(HudOptions::defaultOrder>>32);
+        view->hudX=-1;view->hudY=-1;view->hudFontScale=100;
         InterlockedExchange64(&view->heartbeat, GetTickCount64());
         std::wstring dll =
             executableDir() + (legacy ? L"\\FramoryxHook32.dll" : L"\\FramoryxHook.dll");

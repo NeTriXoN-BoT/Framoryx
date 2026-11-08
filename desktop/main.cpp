@@ -35,6 +35,7 @@ int main(int argc,char** argv){
 #endif
     QQuickStyle::setStyle("Basic");
     QApplication application(argc,argv);
+    application.setQuitOnLastWindowClosed(false);
     QCoreApplication::setApplicationName("Framoryx");
     QCoreApplication::setApplicationVersion("0.3.0");
     QCoreApplication::setOrganizationName("Framoryx");
@@ -49,6 +50,8 @@ int main(int argc,char** argv){
 #endif
     );font.setPixelSize(14);application.setFont(font);
     QCommandLineParser parser;parser.setApplicationDescription("Framoryx gaming toolkit");parser.addHelpOption();parser.addVersionOption();
+    parser.addOption({"background","Start in the system tray when available."});
+    parser.addOption({"startup","Sign-in launch; do not activate an existing window."});
     parser.addOption({"test-root","Use an isolated configuration directory.","path"});
     parser.addOption({"self-test","Run headless model checks without audio or game changes."});
     parser.addOption({"ui-smoke","Run bounded UI checks on the isolated CI runner."});
@@ -63,7 +66,7 @@ int main(int argc,char** argv){
     const auto key=QCryptographicHash::hash(root.toUtf8(),QCryptographicHash::Sha256).toHex().left(24);
     const QString serverName="Framoryx.Desktop."+QString::fromLatin1(key);
     if(!modelTest&&!smoke&&!lock.tryLock()){
-        QLocalSocket other;other.connectToServer(serverName);if(other.waitForConnected(800)){other.write("show\n");other.waitForBytesWritten(200);}return 0;
+        QLocalSocket other;other.connectToServer(serverName);if(!parser.isSet("startup")&&other.waitForConnected(800)){other.write("show\n");other.waitForBytesWritten(200);}return 0;
     }
     Controller controller(root,modelTest||smoke);
     if(modelTest){QString error;if(!controller.selfTest(&error)){qCritical("FAIL: %s",qPrintable(error));return 1;}return 0;}
@@ -81,12 +84,18 @@ int main(int argc,char** argv){
     QObject::connect(&controller,&Controller::quitRequested,&application,&QApplication::quit);
     QSystemTrayIcon tray(QIcon(":/art/icon.png"));QMenu menu;
     auto show=menu.addAction("Open Framoryx");QObject::connect(show,&QAction::triggered,&controller,[&]{emit controller.showRequested();});
-    auto hide=menu.addAction("Hide window");QObject::connect(hide,&QAction::triggered,window,&QWindow::hide);
-    menu.addSeparator();auto overlay=menu.addAction("Toggle overlay");QObject::connect(overlay,&QAction::triggered,&controller,[&]{controller.action("overlay");});
+    auto hide=menu.addAction("Hide to tray");QObject::connect(hide,&QAction::triggered,&controller,[&]{controller.action("hideToTray");});
+    menu.addSeparator();auto capture=menu.addAction("Start capture");QObject::connect(capture,&QAction::triggered,&controller,[&]{controller.action("capture");});
+    QObject::connect(&controller,&Controller::stateChanged,&menu,[&]{capture->setText(controller.state()["capture"].toBool()?"Stop capture":"Start capture");});
+    auto overlay=menu.addAction("Toggle overlay");QObject::connect(overlay,&QAction::triggered,&controller,[&]{controller.action("overlay");});
     auto quit=menu.addAction("Quit Framoryx");QObject::connect(quit,&QAction::triggered,&application,&QApplication::quit);
     tray.setContextMenu(&menu);tray.setToolTip("Framoryx — Play at your best");
     QObject::connect(&tray,&QSystemTrayIcon::activated,&controller,[&](QSystemTrayIcon::ActivationReason reason){if(reason==QSystemTrayIcon::Trigger||reason==QSystemTrayIcon::DoubleClick)emit controller.showRequested();});
-    if(QSystemTrayIcon::isSystemTrayAvailable()&&!smoke)tray.show();
+    auto syncTray=[&]{const bool available=QSystemTrayIcon::isSystemTrayAvailable();controller.setState("trayAvailable",available);if(available&&!smoke)tray.show();else {tray.hide();if(!smoke&&!window->isVisible())window->show();}};
+    syncTray();
+    QObject::connect(&controller,&Controller::hideRequested,window,[&]{if(tray.isVisible())window->hide();else {window->showMinimized();controller.notify("This desktop has no system tray. Framoryx was minimized to the taskbar.");}});
+    auto trayTimer=new QTimer(&application);trayTimer->setInterval(5000);QObject::connect(trayTimer,&QTimer::timeout,&application,syncTray);if(!smoke)trayTimer->start();
+    if(!smoke){const bool background=parser.isSet("background")||controller.options()["startHidden"].toBool();if(!background||!tray.isVisible())window->show();else window->hide();}
     if(smoke){
         const QString destination=QFileInfo(parser.value("snapshot-dir")).absoluteFilePath();QDir().mkpath(destination);
         window->show();window->resize(1440,980);
@@ -98,16 +107,18 @@ int main(int argc,char** argv){
         auto timer=new QTimer(&application);timer->setInterval(950);int* step=new int(0);auto frames=std::make_shared<int>(0);
         QObject::connect(window,&QQuickWindow::frameSwapped,&application,[frames]{++*frames;});
         QObject::connect(timer,&QTimer::timeout,&application,[&,timer,step,frames,destination]{
-            if(*step<6){window->setProperty("page",*step);}
-            else if(*step<12){const int page=*step-6;window->setProperty("page",page);if(!window->grabWindow().save(destination+QString("/page-%1.png").arg(page)))qmlFailure=true;}
-            else if(*step==12){controller.setOption("style",1);window->setProperty("page",1);}
-            else if(*step==13){window->grabWindow().save(destination+"/studio-compact.png");controller.setOption("style",2);}
-            else if(*step==14){window->grabWindow().save(destination+"/studio-telemetry.png");controller.setOption("uiScale",125);window->showMaximized();}
-            else if(*step==15){window->grabWindow().save(destination+"/maximized-125.png");window->showNormal();window->resize(900,700);controller.setOption("uiScale",0);}
-            else if(*step==16){window->grabWindow().save(destination+"/compact-auto.png");controller.setOption("motion",false);}
-            else if(*step==17){
-                timer->stop();const bool pass=!qmlFailure&&*frames>10;
-                QSaveFile file(destination+"/ui-result.json");file.open(QIODevice::WriteOnly);file.write(QJsonDocument(QJsonObject{{"passed",pass},{"qmlWarnings",qmlFailure},{"warnings",QJsonArray::fromStringList(qmlWarnings)},{"frames",*frames},{"exposed",window->isExposed()},{"visible",window->isVisible()},{"graphicsApi",int(window->rendererInterface()->graphicsApi())},{"pages",6},{"screenshots",10},{"platform",controller.platformName()}}).toJson());file.commit();delete step;application.exit(pass?0:1);return;
+            if(*step<7){window->setProperty("page",*step);}
+            else if(*step<14){const int page=*step-7;window->setProperty("page",page);if(!window->grabWindow().save(destination+QString("/page-%1.png").arg(page)))qmlFailure=true;}
+            else if(*step==14){controller.setOption("style",1);window->setProperty("page",1);}
+            else if(*step==15){window->grabWindow().save(destination+"/studio-compact.png");controller.setOption("style",2);}
+            else if(*step==16){window->grabWindow().save(destination+"/studio-telemetry.png");controller.setOption("uiScale",125);window->showMaximized();}
+            else if(*step==17){window->grabWindow().save(destination+"/maximized-125.png");window->showNormal();window->resize(900,700);controller.setOption("uiScale",0);}
+            else if(*step==18){window->grabWindow().save(destination+"/compact-auto.png");controller.setOption("motion",false);}
+            else if(*step==19){window->resize(1440,980);window->setProperty("page",1);controller.setOption("style",3);controller.setOption("opacity",0);}
+            else if(*step==20){window->grabWindow().save(destination+"/studio-transparent.png");controller.setOption("style",4);controller.setOption("opacity",90);controller.setOption("accent",4);}
+            else if(*step==21){
+                timer->stop();window->grabWindow().save(destination+"/studio-dashboard.png");const bool pass=!qmlFailure&&*frames>10;
+                QSaveFile file(destination+"/ui-result.json");file.open(QIODevice::WriteOnly);file.write(QJsonDocument(QJsonObject{{"passed",pass},{"qmlWarnings",qmlFailure},{"warnings",QJsonArray::fromStringList(qmlWarnings)},{"frames",*frames},{"exposed",window->isExposed()},{"visible",window->isVisible()},{"graphicsApi",int(window->rendererInterface()->graphicsApi())},{"pages",7},{"screenshots",13},{"platform",controller.platformName()}}).toJson());file.commit();delete step;application.exit(pass?0:1);return;
             }
             ++*step;
         });timer->start();

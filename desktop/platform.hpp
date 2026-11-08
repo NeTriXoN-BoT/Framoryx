@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QSet>
 #include <QProcess>
 #include <QTimer>
 #include <QFile>
@@ -28,11 +29,13 @@ private:
     QByteArray m_incoming;
     QString m_token, m_logFile;
     qint64 m_launchedPid = 0;
-    bool m_monitoring = true;
+    bool m_monitoring = false;
     qint64 m_logOffset = 0;
     QByteArray m_logPending;
     QStringList m_logHeaders;
-    QTimer m_scanTimer, m_volumeTimer;
+    QTimer m_scanTimer, m_volumeTimer, m_optionTimer;
+    QSet<QString> m_pendingOptions;
+    void flushOptions();
     QVariantMap m_windowRestores;
     QNetworkAccessManager m_network;
     bool m_closing = false, m_refreshing = false;

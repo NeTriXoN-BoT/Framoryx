@@ -57,18 +57,24 @@ void engineSelect(const nlohmann::json& request){
 }
 void engineOptions(const nlohmann::json& request){
     const auto options=request.value("options",nlohmann::json::object());const auto key=request.value("key",std::string());
+    auto changed=[&](const std::string& name){if(key==name)return true;if(request.contains("keys")&&request["keys"].is_array())for(const auto& item:request["keys"])if(item.is_string()&&item.get<std::string>()==name)return true;return false;};
+    const auto previousAllow=app.rules.allow,previousDeny=app.rules.deny;
     auto integer=[&](const char* name,int fallback,int low,int high){const auto value=options.find(name);if(value==options.end()||!value->is_number_integer())return fallback;const auto n=value->get<int64_t>();return int(std::clamp<int64_t>(n,low,high));};
     auto boolean=[&](const char* name,bool fallback){const auto value=options.find(name);return value!=options.end()&&value->is_boolean()?value->get<bool>():fallback;};
     app.cap=integer("cap",app.cap,0,1000);if(app.cap>0&&app.cap<10)app.cap=10;SetWindowTextW(app.controls[CapValue],std::to_wstring(app.cap).c_str());updateCap(false);
     app.hudOptions.fields=uint32_t(integer("fields",int(app.hudOptions.fields),0,1023));
-    app.hudOptions.scale=integer("overlayScale",app.hudOptions.scale,0,300);app.hudOptions.opacity=integer("opacity",app.hudOptions.opacity,30,100);app.hudOptions.style=integer("style",app.hudOptions.style,0,2);app.hudOptions.accent=integer("accent",app.hudOptions.accent,0,3);app.hudMode=integer("mode",app.hudMode,0,2);
+    app.hudOptions.scale=integer("overlayScale",app.hudOptions.scale,0,300);app.hudOptions.opacity=integer("opacity",app.hudOptions.opacity,0,100);app.hudOptions.style=integer("style",app.hudOptions.style,0,4);app.hudOptions.accent=integer("accent",app.hudOptions.accent,0,9);app.hudMode=integer("mode",app.hudMode,0,2);
+    app.hudOptions.fontScale=integer("fontScale",app.hudOptions.fontScale,80,140);
+    if(options.contains("order")&&options["order"].is_array()&&options["order"].size()==10){uint64_t order=0;bool valid=true;for(int i=0;i<10;++i){if(!options["order"][i].is_number_integer()){valid=false;break;}const int n=options["order"][i].get<int>();if(n<0||n>9){valid=false;break;}order|=uint64_t(n)<<(i*4);}if(valid)app.hudOptions.order=order;}
+    auto coordinate=[&](const char* name,int fallback){if(!options.contains(name)||!options[name].is_number())return fallback;const double n=options[name].get<double>();return std::isfinite(n)?int(std::clamp(n,0.,1.)*10000):fallback;};
+    app.hudOptions.x=coordinate("hudX",app.hudOptions.x);app.hudOptions.y=coordinate("hudY",app.hudOptions.y);
     app.autoBorderless=boolean("autoBorderless",app.autoBorderless);app.autoNoiseUpdates=boolean("autoNoise",app.autoNoiseUpdates);
     if(options.contains("allow")&&options["allow"].is_array()){app.rules.allow.clear();for(const auto& value:options["allow"])if(value.is_string()&&fg::validRule(value.get<std::string>()))app.rules.allow.push_back(value.get<std::string>());}
     if(options.contains("deny")&&options["deny"].is_array()){app.rules.deny.clear();for(const auto& value:options["deny"])if(value.is_string()&&fg::validRule(value.get<std::string>()))app.rules.deny.push_back(value.get<std::string>());}
-    if(key=="allow"||key=="deny"){app.capture.setRules(app.rules);refreshTargets();app.borderless.restoreAll();if(app.hook.active()&&!app.rules.hookAllowed(app.hook.name()))app.hook.disable();}
-    if(key=="micId"||key=="noise"||key=="eq"||key=="low"||key=="mid"||key=="high"||key=="voicePreset"||key=="noisePreset")cancelPendingMicrophoneEdit();
+    if(previousAllow!=app.rules.allow||previousDeny!=app.rules.deny){app.capture.setRules(app.rules);refreshTargets();app.borderless.restoreAll();if(app.hook.active()&&!app.rules.hookAllowed(app.hook.name()))app.hook.disable();}
+    if(changed("micId")||changed("noise")||changed("eq")||changed("low")||changed("mid")||changed("high")||changed("voicePreset")||changed("noisePreset"))cancelPendingMicrophoneEdit();
     if(options.contains("micDevice")&&options["micDevice"].is_string()){
-        const auto device=fg::wide(options["micDevice"].get<std::string>());for(size_t i=0;i<app.microphones.size();++i)if(app.microphones[i].id==device){SendMessageW(app.controls[MicDevice],CB_SETCURSEL,i,0);app.microphoneId=device;selectAutomaticNoisePlugin();break;}
+        const auto device=fg::wide(options["micDevice"].get<std::string>());const auto name=fg::wide(options.value("micName",std::string()));int match=-1;for(size_t i=0;i<app.microphones.size();++i)if(app.microphones[i].id==device)match=int(i);if(match<0&&!name.empty()){int count=0;for(size_t i=0;i<app.microphones.size();++i)if(app.microphones[i].name==name){match=int(i);++count;}if(count!=1)match=-1;}if(match>=0){SendMessageW(app.controls[MicDevice],CB_SETCURSEL,match,0);app.microphoneId=app.microphones[match].id;selectAutomaticNoisePlugin();}else if(!device.empty()){SendMessageW(app.controls[MicDevice],CB_SETCURSEL,-1,0);app.microphoneId.clear();app.audioNotice=L"The selected microphone is unavailable. Refresh devices before applying effects.";}
     }
     app.microphoneOptions.noise=boolean("noise",app.microphoneOptions.noise);app.microphoneOptions.equalizer=boolean("eq",app.microphoneOptions.equalizer);
     app.microphoneOptions.preset=integer("noisePreset",app.microphoneOptions.preset,0,2);app.microphoneOptions.low=integer("low",app.microphoneOptions.low,-12,12);app.microphoneOptions.mid=integer("mid",app.microphoneOptions.mid,-12,12);app.microphoneOptions.high=integer("high",app.microphoneOptions.high,-12,12);
@@ -84,6 +90,7 @@ void engineCommands(){
         if(action=="options")engineOptions(request);
         else if(action=="select")engineSelect(request);
         else if(action=="refresh"){refreshTargets();refreshMicrophones();refreshAudioStatus();}
+        else if(action=="captureStart"){if(!app.capture.running())SendMessageW(app.window,WM_COMMAND,Capture,0);}
         else if(action=="capture")SendMessageW(app.window,WM_COMMAND,Capture,0);
         else if(action=="overlay")SendMessageW(app.window,WM_COMMAND,Overlay,0);
         else if(action=="disableHook")SendMessageW(app.window,WM_COMMAND,Disable,0);

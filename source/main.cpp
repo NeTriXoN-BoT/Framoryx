@@ -286,7 +286,8 @@ std::string encodeHud(const fg::HudProfile& profile) {
     std::ostringstream out;
     out << profile.options.fields << '|' << profile.options.scale << '|' << profile.options.opacity
         << '|' << profile.options.accent << '|' << profile.corner << '|' << profile.mode << '|'
-        << profile.options.style;
+        << profile.options.style << '|' << profile.options.fontScale << '|' << profile.options.x+1 << '|' << profile.options.y+1;
+    for(int i=0;i<10;++i)out << '|' << ((profile.options.order>>(4*i))&15);
     return out.str();
 }
 std::optional<fg::HudProfile> decodeHud(const std::string& value) {
@@ -295,16 +296,17 @@ std::optional<fg::HudProfile> decodeHud(const std::string& value) {
     std::vector<int> numbers;
     while (std::getline(in, part, '|')) {
         auto n = fg::number(part);
-        if (!n || *n < 0 || *n > 10000 || std::floor(*n) != *n)
+        if (!n || *n < 0 || *n > 10001 || std::floor(*n) != *n)
             return {};
         numbers.push_back(int(*n));
     }
-    if (numbers.size() != 6 && numbers.size() != 7)
+    if (numbers.size() != 6 && numbers.size() != 7 && numbers.size() != 20)
         return {};
     fg::HudProfile profile;
     profile.options = {uint32_t(numbers[0]), numbers[1], numbers[2], numbers[3]};
-    if (numbers.size() == 7)
+    if (numbers.size() >= 7)
         profile.options.style = numbers[6];
+    if(numbers.size()==20){profile.options.fontScale=numbers[7];profile.options.x=numbers[8]-1;profile.options.y=numbers[9]-1;profile.options.order=0;for(int i=0;i<10;++i){if(numbers[10+i]>9)return {};profile.options.order|=uint64_t(numbers[10+i])<<(4*i);}}
     profile.options.validate();
     profile.corner = std::clamp(numbers[4], 0, 3);
     profile.mode = std::clamp(numbers[5], 0, 2);
@@ -688,6 +690,9 @@ void attachHook(bool confirmed = false) {
         L"?\n\nThis loads a DLL into that process to limit DX11/DX12 frames and draw an in-game "
         L"overlay. It can cause crashes or anti-cheat bans. A clear scan does not mean a game is "
         L"safe. Use only in games that permit it.\n\n";
+    prompt += L"Use at your own risk. You are responsible for checking the game’s rules. "
+              L"Framoryx’s maintainers accept no responsibility for bans, suspensions or other "
+              L"consequences arising from its use.\n\n";
     prompt += L"Windows security can also flag or quarantine injection components. If blocked, use "
               L"Desktop mode. Framoryx does not bypass security tools.\n\n";
     if (!app.rules.hookAllowed(t->exe))
@@ -1372,7 +1377,7 @@ void positionHud() {
         return;
     }
     RECT r = selectedMonitor(target);
-    float scale = fg::overlayScale(app.hudOptions.scale, r.bottom - r.top);
+    float scale = fg::overlayScale(app.hudOptions.scale, r.bottom - r.top)*app.hudOptions.fontScale/100.f;
     scale = std::min(scale, std::min((r.right - r.left - 44) / fg::hudWidth(app.hudOptions),
                                      (r.bottom - r.top - 44) / fg::hudHeight(app.hudOptions)));
     app.hudRenderScale = scale;
@@ -1382,6 +1387,8 @@ void positionHud() {
     app.hudHeight = h;
     int x = (app.corner % 2) ? r.right - w - 22 : r.left + 22;
     int y = app.corner >= 2 ? r.bottom - h - 22 : r.top + 22;
+    if(app.hudOptions.x>=0)x=r.left+int(std::max(0L,r.right-r.left-w)*app.hudOptions.x/10000.);
+    if(app.hudOptions.y>=0)y=r.top+int(std::max(0L,r.bottom-r.top-h)*app.hudOptions.y/10000.);
     SetWindowPos(app.hud, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     InvalidateRect(app.hud, nullptr, FALSE);
 }

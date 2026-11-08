@@ -75,9 +75,9 @@ bool prepareHudFonts(float scale, int style) {
     config.OversampleH = 2;
     config.OversampleV = 2;
     io.FontDefault =
-        io.Fonts->AddFontFromFileTTF(regular.c_str(), (style == 1 ? 12 : 14) * scale, &config);
+        io.Fonts->AddFontFromFileTTF(regular.c_str(), ((style == 1||style==3) ? 12 : 14) * scale, &config);
     if (!io.FontDefault) {
-        config.SizePixels = (style == 1 ? 12 : 14) * scale;
+        config.SizePixels = ((style == 1||style==3) ? 12 : 14) * scale;
         io.FontDefault = io.Fonts->AddFontDefault(&config);
     }
     largeFont = io.Fonts->AddFontFromFileTTF(bold.c_str(), (style == 0 ? 34 : 28) * scale, &config);
@@ -205,8 +205,10 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                 uint32_t(fg::read32(&control->hudFields)), int(fg::read32(&control->hudScale)),
                 int(fg::read32(&control->hudOpacity)), int(fg::read32(&control->hudAccent)),
                 int(fg::read32(&control->hudStyle))};
+            presentation.order=uint64_t(uint32_t(fg::read32(&control->hudOrderLo)))|(uint64_t(uint32_t(fg::read32(&control->hudOrderHi)))<<32);
+            presentation.x=fg::read32(&control->hudX);presentation.y=fg::read32(&control->hudY);presentation.fontScale=fg::read32(&control->hudFontScale);
             presentation.validate();
-            float scale = fg::overlayScale(presentation.scale, int(desc.Height));
+            float scale = fg::overlayScale(presentation.scale, int(desc.Height))*presentation.fontScale/100.f;
             scale = std::min(scale, std::min((desc.Width - 32.f) / fg::hudWidth(presentation),
                                              (desc.Height - 32.f) / fg::hudHeight(presentation)));
             if (desc.Width >= 160 && desc.Height >= 120 &&
@@ -271,117 +273,57 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                 io.DeltaTime = float(std::max(0.00001, dt));
                 ImGui_ImplDX11_NewFrame();
                 ImGui::NewFrame();
-                auto fields = presentation.fields;
-                bool compact = presentation.style == 1, bar = presentation.style == 2;
-                const ImVec4 colors[]{ImVec4(.49f, .95f, .78f, 1), ImVec4(.35f, .81f, 1, 1),
-                                      ImVec4(.76f, .64f, 1, 1), ImVec4(1, .77f, .43f, 1)};
-                auto accent = colors[presentation.accent];
-                auto& style = ImGui::GetStyle();
-                float padding = compact ? 12 : 16;
-                style.WindowPadding = ImVec2(padding * scale, (compact ? 10 : 13) * scale);
-                style.WindowRounding = (compact ? 8 : 14) * scale;
-                style.ItemSpacing = ImVec2(8 * scale, (compact ? 3 : 4) * scale);
-                style.Colors[ImGuiCol_PlotLines] = accent;
-                int corner = fg::read32(&control->corner);
-                bool right = corner % 2 != 0, bottom = corner >= 2;
-                float margin = 22 * scale;
-                ImGui::SetNextWindowPos(ImVec2(right ? io.DisplaySize.x - margin : margin,
-                                               bottom ? io.DisplaySize.y - margin : margin),
-                                        ImGuiCond_Always,
-                                        ImVec2(right ? 1.f : 0.f, bottom ? 1.f : 0.f));
-                ImGui::SetNextWindowSize(ImVec2(fg::hudWidth(presentation) * scale, 0));
-                ImGui::SetNextWindowBgAlpha(presentation.opacity / 100.f);
-                ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(accent.x, accent.y, accent.z, .25f));
-                ImGui::Begin("Framoryx HUD", nullptr,
-                             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
-                                 ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings |
-                                 ImGuiWindowFlags_NoFocusOnAppearing);
-                auto pos = ImGui::GetWindowPos();
-                ImGui::GetWindowDrawList()->AddLine(
-                    ImVec2(pos.x + 14 * scale, pos.y + 1),
-                    ImVec2(pos.x + (fg::hudWidth(presentation) - 14) * scale, pos.y + 1),
-                    ImGui::ColorConvertFloat4ToU32(accent), 2 * scale);
-                if (fields & fg::HudBrand)
-                    ImGui::TextColored(ImVec4(.56f, .66f, .72f, 1), "FRAMORYX");
-                float nextColumn = padding;
-                bool emitted = false;
-                auto column = [&] {
-                    if (emitted)
-                        ImGui::SameLine(nextColumn * scale);
-                    ImGui::BeginGroup();
-                };
-                auto endColumn = [&](float width) {
-                    ImGui::EndGroup();
-                    nextColumn += width;
-                    emitted = true;
-                };
-                if (fields & fg::HudFps) {
-                    if (bar)
-                        column();
-                    ImGui::PushFont(largeFont);
-                    ImGui::TextColored(accent, smoothedFps > 0 ? "%.0f FPS" : "-- FPS",
-                                       smoothedFps);
-                    ImGui::PopFont();
-                    if (bar)
-                        endColumn(152);
-                }
-                auto row = [&](const char* title, const char* format, double number) {
-                    if (bar)
-                        column();
-                    ImGui::TextDisabled("%s", title);
-                    if (!bar)
-                        ImGui::SameLine((fg::hudWidth(presentation) - 108) * scale);
-                    if (number > 0)
-                        ImGui::Text(format, number);
-                    else
-                        ImGui::TextUnformatted("--");
-                    if (bar)
-                        endColumn(104);
-                };
-                if (fields & fg::HudAverage)
-                    row("Average", "%.0f FPS", rollingAverage);
-                if (fields & fg::HudLow)
-                    row("1% low", "%.0f FPS", rollingLow);
-                if (fields & fg::HudTime)
-                    row("Frame time", "%.2f ms", smoothedFps > 0 ? 1000. / smoothedFps : 0);
-                if (fields & fg::HudCpu)
-                    row("System CPU", "%.0f%%", fg::read32(&control->cpuHundredths) / 100.);
-                if (fields & fg::HudRam)
-                    row("System RAM", "%.1f GB", fg::read32(&control->ramMiB) / 1024.);
-                if (fields & fg::HudCap) {
-                    int cap = fg::read32(&control->cap);
-                    if (cap)
-                        row("FPS limit", "%.0f", cap);
-                    else {
-                        if (bar)
-                            column();
-                        ImGui::TextDisabled("FPS limit");
-                        if (!bar)
-                            ImGui::SameLine((fg::hudWidth(presentation) - 108) * scale);
-                        ImGui::TextUnformatted("Uncapped");
-                        if (bar)
-                            endColumn(104);
+                const auto layout=fg::hudLayout(presentation);
+                const bool compact=presentation.style==1||presentation.style==3,minimal=presentation.style==3;
+                const auto rgb=fg::accentColors[presentation.accent];
+                const ImVec4 accent(float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255,1);
+                auto& style=ImGui::GetStyle();style.WindowPadding=ImVec2(0,0);style.WindowRounding=(compact?8:14)*scale;
+                style.Colors[ImGuiCol_PlotLines]=accent;
+                const int corner=fg::read32(&control->corner);const float margin=22*scale;
+                const float width=layout.width*scale,height=layout.height*scale;
+                float x=corner%2?io.DisplaySize.x-margin-width:margin,y=corner>=2?io.DisplaySize.y-margin-height:margin;
+                if(presentation.x>=0)x=std::max(0.f,io.DisplaySize.x-width)*presentation.x/10000.f;
+                if(presentation.y>=0)y=std::max(0.f,io.DisplaySize.y-height)*presentation.y/10000.f;
+                ImGui::SetNextWindowPos(ImVec2(x,y),ImGuiCond_Always);ImGui::SetNextWindowSize(ImVec2(width,height));
+                ImGui::SetNextWindowBgAlpha(presentation.opacity/100.f);
+                ImGui::PushStyleColor(ImGuiCol_Border,ImVec4(accent.x,accent.y,accent.z,presentation.opacity>0&&!minimal?.25f:0.f));
+                ImGui::Begin("Framoryx HUD",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoInputs|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoFocusOnAppearing);
+                const auto pos=ImGui::GetWindowPos();
+                if(!minimal&&presentation.opacity>0)ImGui::GetWindowDrawList()->AddLine(ImVec2(pos.x+14*scale,pos.y+1),ImVec2(pos.x+width-14*scale,pos.y+1),ImGui::ColorConvertFloat4ToU32(accent),2*scale);
+                auto reading=[&](uint32_t field,char* output,size_t length){
+                    const char* title="";double number=0;
+                    switch(field){
+                    case fg::HudFps:number=smoothedFps;break;
+                    case fg::HudAverage:title="Average";number=rollingAverage;break;
+                    case fg::HudLow:title="1% low";number=rollingLow;break;
+                    case fg::HudTime:title="Frame time";number=smoothedFps>0?1000./smoothedFps:0;break;
+                    case fg::HudCpu:title="System CPU";number=fg::read32(&control->cpuHundredths)/100.;break;
+                    case fg::HudRam:title="System RAM";number=fg::read32(&control->ramMiB)/1024.;break;
+                    case fg::HudCap:title="FPS limit";number=fg::read32(&control->cap);break;
+                    case fg::HudApi:snprintf(output,length,"%s",guiIs12?"DX12":"DX11");return "Renderer";
+                    default:snprintf(output,length,"FRAMORYX");return "";
                     }
-                }
-                if (fields & fg::HudApi) {
-                    if (bar)
-                        column();
-                    ImGui::TextDisabled("Renderer");
-                    if (!bar)
-                        ImGui::SameLine((fg::hudWidth(presentation) - 108) * scale);
-                    ImGui::TextUnformatted(guiIs12 ? "DX12" : "DX11");
-                    if (bar)
-                        endColumn(104);
-                }
-                if ((fields & fg::HudGraph) && hudCount) {
-                    float maximum = 33.4f;
-                    for (size_t i = 0; i < hudCount; ++i)
-                        maximum = std::max(maximum, std::min(100.f, hudTimes[i]));
-                    ImGui::PlotLines("##FrameTime", hudTimes.data(), int(hudCount),
-                                     hudCount == hudTimes.size() ? int(hudHead) : 0, nullptr, 0,
-                                     maximum,
-                                     ImVec2((fg::hudWidth(presentation) - padding * 2) * scale,
-                                            (compact ? 25 : 34) * scale));
+                    if(field==fg::HudCap&&!number)snprintf(output,length,"Uncapped");
+                    else if(number>0||field==fg::HudCpu||field==fg::HudRam){
+                        if(field==fg::HudTime)snprintf(output,length,"%.2f ms",number);
+                        else if(field==fg::HudCpu)snprintf(output,length,"%.0f%%",number);
+                        else if(field==fg::HudRam)snprintf(output,length,"%.1f GB",number);
+                        else if(field==fg::HudCap||field==fg::HudFps)snprintf(output,length,"%.0f",number);
+                        else snprintf(output,length,"%.0f FPS",number);
+                    }
+                    else snprintf(output,length,"--");return title;
+                };
+                for(size_t n=0;n<layout.count;++n){const auto& cell=layout.cells[n];
+                    ImGui::SetCursorPos(ImVec2(cell.x*scale,cell.y*scale));
+                    if(cell.field==fg::HudGraph){
+                        if(hudCount){float maximum=33.4f;for(size_t i=0;i<hudCount;++i)maximum=std::max(maximum,std::min(100.f,hudTimes[i]));ImGui::PlotLines("##FrameTime",hudTimes.data(),int(hudCount),hudCount==hudTimes.size()?int(hudHead):0,nullptr,0,maximum,ImVec2(cell.width*scale,(cell.height-10)*scale));}continue;
+                    }
+                    char number[80]{};const char* title=reading(cell.field,number,sizeof(number));
+                    if(cell.field==fg::HudFps){ImGui::PushFont(largeFont);ImGui::TextColored(accent,"%s FPS",number);ImGui::PopFont();continue;}
+                    if(cell.field==fg::HudBrand){ImGui::TextDisabled("FRAMORYX");continue;}
+                    ImGui::TextDisabled("%s",title);
+                    const float numberX=cell.column?cell.x:cell.x+cell.width-105;
+                    ImGui::SetCursorPos(ImVec2(numberX*scale,(cell.y+(cell.column?19:0))*scale));ImGui::TextUnformatted(number);
                 }
                 ImGui::End();
                 ImGui::PopStyleColor();
@@ -547,7 +489,7 @@ DWORD WINAPI worker(void*) {
         return 0;
     control = static_cast<fg::HookControl*>(
         MapViewOfFile(map, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(fg::HookControl)));
-    if (!control || control->magic != fg::ipcMagic || control->version != 6 ||
+    if (!control || control->magic != fg::ipcMagic || control->version != 7 ||
         control->targetPid != GetCurrentProcessId() ||
         control->creationTime != fg::creationTime(GetCurrentProcess())) {
         if (control)

@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <array>
 
 namespace fg {
 enum HudField : uint32_t {
@@ -18,16 +19,22 @@ enum HudField : uint32_t {
     HudAll = 1023
 };
 struct HudOptions {
+    static constexpr uint64_t defaultOrder = 0x4876532109ull;
     uint32_t fields = HudFps | HudLow | HudTime | HudGraph | HudBrand;
     int scale = 0, opacity = 90, accent = 0, style = 0;
+    uint64_t order = defaultOrder;
+    int x = -1, y = -1, fontScale = 100;
     void validate() {
         fields &= HudAll;
         scale = scale == 0 ? 0 : std::clamp(scale, 50, 300);
-        opacity = std::clamp(opacity, 30, 100);
-        accent = std::clamp(accent, 0, 3);
-        style = std::clamp(style, 0, 2);
+        opacity = std::clamp(opacity, 0, 100);
+        accent = std::clamp(accent, 0, 9);
+        style = std::clamp(style, 0, 4);
+        x = std::clamp(x,-1,10000);y = std::clamp(y,-1,10000);fontScale = std::clamp(fontScale,80,140);
+        uint32_t seen=0;for(int i=0;i<10;++i){const auto item=uint32_t((order>>(4*i))&15);if(item>9||(seen&(1u<<item))){order=defaultOrder;break;}seen|=1u<<item;}
     }
 };
+inline std::array<uint32_t,10> orderedFields(const HudOptions& options){auto copy=options;copy.validate();std::array<uint32_t,10> fields{};for(int i=0;i<10;++i)fields[i]=1u<<((copy.order>>(4*i))&15);return fields;}
 struct HudProfile {
     HudOptions options;
     int corner = 0, mode = 0;
@@ -68,38 +75,44 @@ inline float hudHeight(uint32_t fields) {
         height += 47;
     return height;
 }
+inline constexpr std::array<uint32_t,10> accentColors{
+    0x7df2c6,0x59cfff,0xc2a3ff,0xf7be6f,0xff8baf,0x63dfdf,0xf4e478,0xa3e56d,0xff9d72,0xd5e4f5};
 inline float hudWidth(const HudOptions& options) {
-    if (options.style == 1)
-        return 230;
-    if (options.style != 2)
-        return 260;
-    float width = 28;
-    if (options.fields & HudFps)
-        width += 152;
-    for (auto field : {HudAverage, HudLow, HudTime, HudCpu, HudRam, HudCap, HudApi})
-        if (options.fields & field)
-            width += 104;
-    return std::max(260.f, width);
+    if(options.style==1||options.style==3)return 230;
+    if(options.style==4)return 390;
+    if(options.style!=2)return 260;
+    float width=28;
+    for(auto field:orderedFields(options))if((options.fields&field)&&field!=HudGraph)width+=field==HudFps?152:104;
+    return std::max(260.f,width);
 }
-inline float hudHeight(const HudOptions& options) {
-    if (options.style == 0)
-        return hudHeight(options.fields);
-    if (options.style == 2)
-        return 26 + ((options.fields & HudBrand) ? 18 : 0) +
-               ((options.fields & ~uint32_t(HudBrand | HudGraph)) ? 50 : 0) +
-               ((options.fields & HudGraph) ? 42 : 0);
-    float height = 20;
-    if (options.fields & HudBrand)
-        height += 16;
-    if (options.fields & HudFps)
-        height += 39;
-    for (auto field : {HudAverage, HudLow, HudTime, HudCpu, HudRam, HudCap, HudApi})
-        if (options.fields & field)
-            height += 18;
-    if (options.fields & HudGraph)
-        height += 36;
-    return height;
+struct HudCell {uint32_t field=0;float x=0,y=0,width=0,height=0;bool column=false;};
+struct HudLayout {std::array<HudCell,10> cells{};size_t count=0;float width=0,height=0;};
+inline HudLayout hudLayout(HudOptions options){
+    options.validate();HudLayout result;result.width=hudWidth(options);
+    const bool compact=options.style==1||options.style==3,bar=options.style==2,dashboard=options.style==4;
+    const float padding=compact?12.f:16.f;float x=padding,y=compact?10.f:13.f;int gridColumn=0;
+    for(auto field:orderedFields(options)){
+        if(!(options.fields&field)||(bar&&field==HudGraph))continue;
+        const bool metric=field!=HudFps&&field!=HudBrand&&field!=HudGraph;
+        if(dashboard&&!metric&&gridColumn){y+=44;gridColumn=0;}
+        float width=result.width-2*padding,height=compact?18.f:21.f;
+        if(field==HudFps)height=compact?39.f:49.f;
+        if(field==HudBrand)height=compact?16.f:21.f;
+        if(field==HudGraph)height=compact?36.f:47.f;
+        float cellX=padding;
+        if(bar){cellX=x;width=field==HudFps?152.f:104.f;height=50;x+=width;}
+        if(dashboard&&metric){width=(result.width-2*padding-12)/2;cellX=padding+gridColumn*(width+12);height=44;}
+        result.cells[result.count++]={field,cellX,y,width,height,bar||(dashboard&&metric)};
+        if(bar)continue;
+        if(dashboard&&metric){if(gridColumn){y+=height;gridColumn=0;}else gridColumn=1;}
+        else y+=height;
+    }
+    if(gridColumn)y+=44;
+    if(bar){if(result.count)y+=50;if(options.fields&HudGraph){result.cells[result.count++]={HudGraph,padding,y,result.width-2*padding,42,false};y+=42;}}
+    result.height=y+(compact?10:13);
+    return result;
 }
+inline float hudHeight(const HudOptions& options){return hudLayout(options).height;}
 inline double easeOut(double t) {
     t = std::clamp(t, 0., 1.);
     return 1 - std::pow(1 - t, 3);

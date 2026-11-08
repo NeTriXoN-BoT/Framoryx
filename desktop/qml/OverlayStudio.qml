@@ -14,12 +14,12 @@ ColumnLayout {
                 Layout.fillWidth: true; columns: 2; columnSpacing: Theme.px(12); rowSpacing: Theme.px(10)
                 Text { text: "LAYOUT"; color: Theme.muted; font.pixelSize: Theme.px(10) }
                 Text { text: "ACCENT"; color: Theme.muted; font.pixelSize: Theme.px(10) }
-                FCombo { Layout.fillWidth: true; model: ["Glass","Compact","Telemetry bar"]; currentIndex: app.options.style; onActivated: app.setOption("style",currentIndex) }
-                FCombo { Layout.fillWidth: true; model: ["Mint","Ice","Violet","Amber"]; currentIndex: app.options.accent; onActivated: app.setOption("accent",currentIndex) }
+                FCombo { Layout.fillWidth: true; model: ["Glass","Compact","Telemetry bar","Minimal","Dashboard"]; currentIndex: app.options.style; onActivated: app.setOption("style",currentIndex) }
+                FCombo { Layout.fillWidth: true; model: ["Mint","Ice","Violet","Amber","Rose","Cyan","Solar","Lime","Coral","Silver"]; currentIndex: app.options.accent; onActivated: app.setOption("accent",currentIndex) }
                 Text { text: "OVERLAY SIZE"; color: Theme.muted; font.pixelSize: Theme.px(10) }
-                Text { text: "OPACITY"; color: Theme.muted; font.pixelSize: Theme.px(10) }
+                Text { text: "BACKGROUND"; color: Theme.muted; font.pixelSize: Theme.px(10) }
                 FCombo { Layout.fillWidth: true; property var sizes: [0,50,75,100,125,150,200,250,300]; model: ["Auto","50%","75%","100%","125%","150%","200%","250%","300%"]; currentIndex: Math.max(0,sizes.indexOf(app.options.overlayScale)); onActivated: app.setOption("overlayScale",sizes[currentIndex]) }
-                RowLayout { Layout.fillWidth: true; FSlider { Layout.fillWidth: true; from: 30; to: 100; stepSize: 1; value: app.options.opacity; Accessible.name: "Overlay opacity"; onMoved: app.setOption("opacity",Math.round(value)) } Text { text: app.options.opacity+"%"; color: Theme.text; font.pixelSize: Theme.px(12); Layout.preferredWidth: Theme.px(38) } }
+                RowLayout { Layout.fillWidth: true; FSlider { Layout.fillWidth: true; from: 0; to: 100; stepSize: 1; value: app.options.opacity; Accessible.name: "Overlay background opacity"; onMoved: app.setOption("opacity",Math.round(value)) } Text { text: app.options.opacity+"%"; color: Theme.text; font.pixelSize: Theme.px(12); Layout.preferredWidth: Theme.px(38) } }
             }
             Text { text: "TEXT SIZE · "+app.options.fontScale+"%"; color: Theme.muted; font.pixelSize: Theme.px(10) }
             FSlider { Layout.fillWidth: true; from: 80; to: 140; stepSize: 5; value: app.options.fontScale; Accessible.name: "Overlay text size"; onMoved: app.setOption("fontScale",Math.round(value)) }

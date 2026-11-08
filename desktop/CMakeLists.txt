@@ -1,15 +1,15 @@
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network Multimedia Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network Multimedia Widgets Concurrent)
 qt_standard_project_setup()
-qt_add_executable(FramoryxDesktop WIN32 main.cpp controller.cpp audio_monitor.cpp platform.cpp)
+qt_add_executable(FramoryxDesktop WIN32 main.cpp controller.cpp audio_monitor.cpp platform.cpp lifecycle.cpp process_catalog.cpp)
 target_compile_features(FramoryxDesktop PRIVATE cxx_std_20)
 target_compile_definitions(FramoryxDesktop PRIVATE NOMINMAX)
 target_include_directories(FramoryxDesktop PRIVATE ../source)
-target_link_libraries(FramoryxDesktop PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::Multimedia Qt6::Widgets)
+target_link_libraries(FramoryxDesktop PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::Multimedia Qt6::Widgets Qt6::Concurrent)
 set_target_properties(FramoryxDesktop PROPERTIES OUTPUT_NAME Framoryx)
 qt_add_resources(FramoryxDesktop framoryx_ui PREFIX / FILES
     qml/Main.qml qml/Theme.qml qml/FButton.qml qml/FCard.qml qml/FCombo.qml qml/FToggle.qml
     qml/FSlider.qml qml/Metric.qml qml/FrameGraph.qml qml/OverlayPreview.qml qml/Backdrop.qml
-    qml/Overview.qml qml/OverlayStudio.qml qml/AudioPage.qml qml/GamesPage.qml qml/RulesPage.qml qml/SettingsPage.qml
+    qml/Overview.qml qml/OverlayStudio.qml qml/AudioPage.qml qml/GamesPage.qml qml/RulesPage.qml qml/SettingsPage.qml qml/ChangesPage.qml
     qml/qmldir)
 qt_add_resources(FramoryxDesktop framoryx_art PREFIX /art BASE ../assets FILES ../assets/icon.png ../assets/artwork.png ../assets/Framoryx.ico)
 if(MSVC)
@@ -36,3 +36,7 @@ if(UNIX AND NOT APPLE)
 endif()
 add_test(NAME desktop-model COMMAND FramoryxDesktop --self-test --test-root ${CMAKE_CURRENT_BINARY_DIR}/model-test)
 set_tests_properties(desktop-model PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software" TIMEOUT 30)
+
+qt_add_resources(FramoryxDesktop framoryx_changes PREFIX /releases BASE ../docs/releases FILES
+    ../docs/releases/v0.3.0.md ../docs/releases/v0.2.3.md ../docs/releases/v0.2.2.md
+    ../docs/releases/v0.2.1.md ../docs/releases/v0.2.0.md)

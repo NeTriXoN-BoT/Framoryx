@@ -82,9 +82,14 @@ int main() {
               "desktop percentages fit a smaller work area");
         fg::HudOptions invalid{0xffffffffu, 900, -10, 20};
         invalid.validate();
-        check(invalid.fields == fg::HudAll && invalid.scale == 300 && invalid.opacity == 30 &&
-                  invalid.accent == 3,
+        check(invalid.fields == fg::HudAll && invalid.scale == 300 && invalid.opacity == 0 &&
+                  invalid.accent == 9,
               "invalid saved overlay styles are constrained before crossing IPC");
+        fg::HudOptions custom;custom.order=0;custom.x=20000;custom.y=-8;custom.fontScale=500;custom.validate();
+        check(custom.order==fg::HudOptions::defaultOrder&&custom.x==10000&&custom.y==-1&&custom.fontScale==140,"repair malformed order, coordinates and text size");
+        custom.order=0x9876543210ull;custom.opacity=0;custom.validate();
+        check(fg::orderedFields(custom)[0]==fg::HudFps&&fg::orderedFields(custom)[9]==fg::HudBrand&&custom.opacity==0,"readout order and fully transparent background are retained");
+        for(int style=0;style<5;++style)for(uint32_t fields=0;fields<=fg::HudAll;++fields){custom.style=style;custom.fields=fields;const auto layout=fg::hudLayout(custom);size_t count=0;for(int bit=0;bit<10;++bit)if(fields&(1u<<bit))++count;bool fits=layout.count==count;for(size_t i=0;i<layout.count;++i){const auto& cell=layout.cells[i];fits&=cell.x>=0&&cell.y>=0&&cell.x+cell.width<=layout.width+.1f&&cell.y+cell.height<=layout.height+.1f;}check(fits,"every readout combination fits all five layouts");}
         double fast = 0, slow = 0;
         for (int i = 0; i < 20; ++i)
             fast = fg::approach(fast, 100, .016);
