@@ -48,7 +48,9 @@ private:
     void stopFixtures();
     bool m_monitoring = false;
     bool m_volumeWriting = false, m_volumePending = false;
-    QTimer m_scanTimer, m_volumeTimer, m_optionTimer;
+    QTimer m_scanTimer, m_volumeTimer, m_optionTimer, m_launchTimer;
+    QString m_deferredLaunch;
+    qint64 m_deferredAt=0;
     QSet<QString> m_pendingOptions;
     void flushOptions();
     void flushVolume();
@@ -64,6 +66,7 @@ private:
     void linuxScan();
     void linuxLaunch();
     QString mangoPrefix() const;
+    bool gameLayerAllowed() const;
     QString mangoConfiguration() const;
     int mangoFontPixels() const;
     QString mangoExecutable() const;

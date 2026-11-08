@@ -37,7 +37,7 @@ class Checks : public QObject {
         if(stage==0&&scope=="audio")stage=5;
         else if(stage==4&&scope=="graphics")stage=13;
         else if(stage==10&&scope=="audio")stage=12;
-        else if(stage==12&&scope=="audio")stage=23;
+        else if(stage==12&&scope=="audio")stage=24;
         else ++stage;
 #else
         ++stage;
@@ -159,8 +159,10 @@ class Checks : public QObject {
         case 20:
             if(first){c->action("capture");c->setOption("deny",QStringList{"FramoryxVulkanScene"});}await(!state["live"].toBool()&&state["appliedCap"].toInt()==0,"Blocking a running game stops its layer capture and limit");break;
         case 21:
-            if(first)c->setOption("deny",QStringList{});await(state["live"].toBool()&&state["appliedCap"].toInt()==60,"Removing a process block restores the explicitly selected method");break;
+            if(first){c->action("capture");c->action("capture");}await(!state["live"].toBool()&&state["appliedCap"].toInt()==0&&phase.elapsed()>1200,"Restarting capture does not override a process block");break;
         case 22:
+            if(first)c->setOption("deny",QStringList{});await(state["live"].toBool()&&state["appliedCap"].toInt()==60,"Removing a process block restores the explicitly selected method");break;
+        case 23:
             if(first)c->action("fixtureClose");await(!state["gameRunning"].toBool()&&!state["live"].toBool(),"Exiting the game clears live telemetry");break;
         default:complete();break;
 #endif

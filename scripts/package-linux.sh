@@ -27,7 +27,7 @@ export PATH="$tools:$PATH"
 arguments=(--appdir "$appdir" --executable "$appdir/usr/bin/Framoryx" --desktop-file "$appdir/usr/share/applications/io.framoryx.Framoryx.desktop" --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/io.framoryx.Framoryx.png" --plugin qt)
 for library in "$appdir/usr/bin/runtime/mangohud/lib/"*.so; do arguments+=(--library "$library"); done
 "$tools/linuxdeploy-x86_64.AppImage" "${arguments[@]}"
-cat > "$appdir/AppRun" <<'SH'
+cat > "$appdir/AppRun.framoryx" <<'SH'
 #!/bin/sh
 set -eu
 APPDIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
@@ -36,8 +36,9 @@ export FRAMORYX_ORIGINAL_LD_LIBRARY_PATH="${LD_LIBRARY_PATH-}"
 export LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$APPDIR/usr/bin/Framoryx" "$@"
 SH
+mv -fT -- "$appdir/AppRun.framoryx" "$appdir/AppRun"
 chmod 755 "$appdir/AppRun"
-cp "$appdir/usr/share/icons/hicolor/256x256/apps/io.framoryx.Framoryx.png" "$appdir/io.framoryx.Framoryx.png"
+if [[ ! -e "$appdir/io.framoryx.Framoryx.png" ]]; then cp "$appdir/usr/share/icons/hicolor/256x256/apps/io.framoryx.Framoryx.png" "$appdir/io.framoryx.Framoryx.png"; fi
 (cd "$appdir" && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
 ARCH=x86_64 "$tools/appimagetool-x86_64.AppImage" "$appdir" "$destination/Framoryx-Linux-x86_64.AppImage"
 tar -C "$destination" -czf "$destination/Framoryx-Linux-x86_64.tar.gz" Framoryx.AppDir
