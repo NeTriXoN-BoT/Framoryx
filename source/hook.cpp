@@ -283,7 +283,7 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                 const auto rgb=fg::accentColors[presentation.accent];
                 const ImVec4 accent(float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255,1);
                 auto& style=ImGui::GetStyle();style.WindowPadding=ImVec2(0,0);style.WindowRounding=(compact?8:14)*scale;
-                style.Colors[ImGuiCol_PlotLines]=accent;
+                style.Colors[ImGuiCol_PlotLines]=accent;style.Colors[ImGuiCol_FrameBg]=ImVec4(0,0,0,0);
                 const int corner=fg::read32(&control->corner);const float margin=22*scale;
                 const float width=layout.width*scale,height=layout.height*scale;
                 float x=corner%2?io.DisplaySize.x-margin-width:margin,y=corner>=2?io.DisplaySize.y-margin-height:margin;

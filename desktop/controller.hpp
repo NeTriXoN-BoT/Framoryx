@@ -21,6 +21,7 @@ class Controller : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap state READ state NOTIFY stateChanged)
     Q_PROPERTY(QVariantMap options READ options NOTIFY optionsChanged)
+    Q_PROPERTY(int volume READ volume NOTIFY volumeChanged)
     Q_PROPERTY(QVariantList games READ games NOTIFY gamesChanged)
     Q_PROPERTY(QVariantList processes READ processes NOTIFY processesChanged)
     Q_PROPERTY(QVariantList changelog READ changelog CONSTANT)
@@ -28,8 +29,8 @@ class Controller : public QObject {
     Q_PROPERTY(QVariantList profiles READ profiles NOTIFY profilesChanged)
     Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantList capabilities READ capabilities NOTIFY capabilitiesChanged)
-    Q_PROPERTY(QVariantList readouts READ readouts NOTIFY overlayChanged)
-    Q_PROPERTY(QVariantMap overlayLayout READ overlayLayout NOTIFY overlayChanged)
+    Q_PROPERTY(QVariantList readouts READ readouts NOTIFY readoutsChanged)
+    Q_PROPERTY(QVariantMap overlayLayout READ overlayLayout NOTIFY overlayGeometryChanged)
     Q_PROPERTY(QVariantList graph READ graph NOTIFY stateChanged)
     Q_PROPERTY(QString platformName READ platformName CONSTANT)
     Q_PROPERTY(bool testMode READ testMode CONSTANT)
@@ -38,6 +39,7 @@ public:
     ~Controller() override;
     QVariantMap state() const {return m_state;}
     QVariantMap options() const {return m_options;}
+    int volume() const {return m_options.value("volume",100).toInt();}
     QVariantList games() const {return m_games;}
     QVariantList processes() const {return m_processes;}
     QVariantList changelog() const;
@@ -80,7 +82,9 @@ public:
 signals:
     void stateChanged();
     void optionsChanged();
-    void overlayChanged();
+    void readoutsChanged();
+    void overlayGeometryChanged();
+    void volumeChanged();
     void gamesChanged();
     void processesChanged();
     void hideRequested();

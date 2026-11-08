@@ -54,3 +54,10 @@ set_tests_properties(desktop-model PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offsc
 qt_add_resources(FramoryxDesktop framoryx_changes PREFIX /releases BASE ../docs/releases FILES
     ../docs/releases/v0.3.0.md ../docs/releases/v0.2.3.md ../docs/releases/v0.2.2.md
     ../docs/releases/v0.2.1.md ../docs/releases/v0.2.0.md)
+
+option(FRAMORYX_BUILD_DIAGNOSTICS "Build the isolated UI input driver" OFF)
+if(FRAMORYX_BUILD_DIAGNOSTICS)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    qt_add_library(FramoryxUiChecks SHARED tests/input_driver.cpp)
+    target_link_libraries(FramoryxUiChecks PRIVATE Qt6::Gui Qt6::Test)
+endif()

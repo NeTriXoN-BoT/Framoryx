@@ -9,17 +9,18 @@ ApplicationWindow {
     objectName: "FramoryxWindow"
     title: "Framoryx — Your game, your way"
     width: 1360; height: 900
-    minimumWidth: 820; minimumHeight: 600
+    minimumWidth: 640; minimumHeight: 460
     visible: false
     color: Theme.background
     property int page: 0
+    property real autoUiScale: 1
     property bool diagnosticAnimating: false
     property string chosenGamePath: ""
     readonly property var titles: ["Every frame. Under control.","Make it unmistakably yours.","Sound that pulls you in.","Find your smooth.","Your games. Your rules.","Ready when you are.","The next frame starts here."]
     readonly property var subtitles: ["Measure performance. Shape your play.","Every readout. Every detail. Your choice.","Your audio. A little more presence.","Frame pacing, borderless play and your game library.","Clear preferences for the games you trust.","A comfortable fit, wherever you play.","Every release. Every improvement. All in one place."]
     readonly property var colors: ["#7df2c6","#59cfff","#c2a3ff","#f7be6f","#ff8baf","#63dfdf","#f4e478","#a3e56d","#ff9d72","#d5e4f5"]
     Binding { target: Theme; property: "accent"; value: window.colors[app.options.accent||0] }
-    Binding { target: Theme; property: "scale"; value: app.options.uiScale>0?app.options.uiScale/100:Screen.width<1200?.9:Screen.width>2400?1.1:1 }
+    Binding { target: Theme; property: "scale"; value: app.options.uiScale>0?app.options.uiScale/100:Math.max(.6,Math.min(window.autoUiScale,window.width/1100,window.height/760)) }
     Binding { target: Theme; property: "motion"; value: app.options.motion&&(window.active||window.diagnosticAnimating)&&window.visibility!==Window.Minimized&&window.visible }
     function requestHook(){if(app.state.inGameSupported===false){app.notify("This renderer uses the external overlay. Optional Windows in-game limiting supports DX11/DX12.");return}if(app.state.antiCheatStatus==="detected")app.notify("Known anti-cheat indicators are present. In-game hooks are blocked; use the external overlay.","warning");else hookDialog.open()}
     function chooseGame(){gameFile.open()}

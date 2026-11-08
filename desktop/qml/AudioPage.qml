@@ -13,8 +13,8 @@ ColumnLayout {
         Text { text: app.state.outputName||"Default playback device"; color: Theme.muted; font.pixelSize: Theme.px(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
         RowLayout {
             Layout.fillWidth: true
-            FSlider { objectName: "output-volume-slider"; Layout.fillWidth: true; from: 0; to: 200; stepSize: 1; value: app.options.volume; Accessible.name: "Output volume, zero to two hundred percent"; onMoved: app.setOption("volume",Math.round(value)) }
-            Text { text: app.options.volume+"%"; color: app.options.volume>100?Theme.amber:Theme.accent; font.pixelSize: Theme.px(32); font.weight: Font.DemiBold; Layout.preferredWidth: Theme.px(104); horizontalAlignment: Text.AlignRight }
+            FSlider { objectName: "output-volume-slider"; Layout.fillWidth: true; from: 0; to: 200; stepSize: 1; value: app.volume; Accessible.name: "Output volume, zero to two hundred percent"; onMoved: app.setOption("volume",Math.round(value)) }
+            Text { text: app.volume+"%"; color: app.volume>100?Theme.amber:Theme.accent; font.pixelSize: Theme.px(32); font.weight: Font.DemiBold; Layout.preferredWidth: Theme.px(104); horizontalAlignment: Text.AlignRight }
         }
         RowLayout { Layout.fillWidth: true; Text { text: "0%"; color: Theme.muted; font.pixelSize: Theme.px(10) } Item { Layout.fillWidth: true } Text { text: "100%"; color: Theme.muted; font.pixelSize: Theme.px(10) } Item { Layout.fillWidth: true } Text { text: "200%"; color: Theme.amber; font.pixelSize: Theme.px(10) } }
         Text { text: "Extra gain can clip loud audio. Start gently and reduce the level if it distorts."; color: Theme.muted; font.pixelSize: Theme.px(12); Layout.fillWidth: true; wrapMode: Text.Wrap }

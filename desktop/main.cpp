@@ -22,10 +22,12 @@
 #include <QQuickItem>
 #include <QMouseEvent>
 #include <QSaveFile>
+#include <QScreen>
 #include <QStandardPaths>
 #include <QSystemTrayIcon>
 #include <QTimer>
 #include <QCryptographicHash>
+#include <QLibrary>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <dwmapi.h>
@@ -68,6 +70,7 @@ int main(int argc,char** argv){
     if((modelTest||smoke)&&!parser.isSet("test-root")){qCritical("Diagnostics require --test-root.");return 2;}
     if(smoke&&qEnvironmentVariable("GITHUB_ACTIONS")!="true"){qCritical("UI diagnostics are restricted to the isolated CI runner.");return 2;}
     const QString root=parser.isSet("test-root")?QFileInfo(parser.value("test-root")).absoluteFilePath():QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    for(const auto character:root)if(character.unicode()<32){qCritical("Configuration paths cannot contain control characters.");return 2;}
     QDir().mkpath(root);
     QLockFile lock(root+"/desktop.lock");lock.setStaleLockTime(0);
     const auto key=QCryptographicHash::hash(root.toUtf8(),QCryptographicHash::Sha256).toHex().left(24);
@@ -85,6 +88,10 @@ int main(int argc,char** argv){
     engine.load(QUrl("qrc:/qml/Main.qml"));
     if(engine.rootObjects().isEmpty())return 1;
     auto window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());if(!window)return 1;
+    auto displayMetrics=[&]{auto screen=window->screen();if(!screen)screen=QGuiApplication::primaryScreen();if(screen){const auto area=screen->availableGeometry();window->setProperty("autoUiScale",qBound(.75,std::min(area.width()/1600.,area.height()/1000.),1.75));}};
+    displayMetrics();QObject::connect(window,&QWindow::screenChanged,window,[&](QScreen*){displayMetrics();});
+    if(!smoke){auto screen=window->screen();if(screen){const auto area=screen->availableGeometry();const auto scale=controller.options()["uiScale"].toInt()?controller.options()["uiScale"].toInt()/100.:window->property("autoUiScale").toDouble();const int width=qBound(640,qRound(1360*scale),std::max(640,area.width()-32)),height=qBound(460,qRound(900*scale),std::max(460,area.height()-48));window->resize(width,height);window->setPosition(area.center()-QPoint(width/2,height/2));}}
+
 #ifdef Q_OS_WIN
     BOOL dark=TRUE;DwmSetWindowAttribute(HWND(window->winId()),20,&dark,sizeof(dark));
 #endif
@@ -111,9 +118,10 @@ int main(int argc,char** argv){
         ShowWindow(HWND(window->winId()),SW_SHOWNOACTIVATE);
 #endif
         window->requestActivate();window->requestUpdate();
+        auto inputDriver=std::make_shared<QLibrary>(QCoreApplication::applicationDirPath()+"/FramoryxUiChecks");const bool driverLoaded=inputDriver->load();using Click=void(*)(QWindow*,int,int);const auto click=driverLoaded?reinterpret_cast<Click>(inputDriver->resolve("FramoryxTestClick")):nullptr;
         auto timer=new QTimer(&application);timer->setInterval(950);int* step=new int(0);auto frames=std::make_shared<int>(0);auto interactions=std::make_shared<QVariantMap>();
         QObject::connect(window,&QQuickWindow::frameSwapped,&application,[frames]{++*frames;});
-        QObject::connect(timer,&QTimer::timeout,&application,[&,timer,step,frames,interactions,destination]{
+        QObject::connect(timer,&QTimer::timeout,&application,[&,timer,step,frames,interactions,destination,inputDriver,click]{
             if(*step<7){window->setProperty("page",*step);}
             else if(*step<14){const int page=*step-7;window->setProperty("page",page);QTimer::singleShot(450,&application,[&,page,destination]{if(!window->grabWindow().save(destination+QString("/page-%1.png").arg(page)))qmlFailure=true;});}
             else if(*step==14){controller.setOption("style",1);window->setProperty("page",1);}
@@ -136,7 +144,8 @@ int main(int argc,char** argv){
             }
             else if(*step==23){
                 bool pass=true;QVariantList tabResults;QElapsedTimer elapsed;elapsed.start();
-                for(int i=0;i<7;++i){auto item=findVisual(window,QString("navigation-%1").arg(i));if(!item){pass=false;continue;}const auto position=item->mapToScene(QPointF(item->width()/2,item->height()/2));const QPointF global(window->mapToGlobal(position.toPoint()));QMouseEvent press(QEvent::MouseButtonPress,position,global,Qt::LeftButton,Qt::LeftButton,Qt::NoModifier),release(QEvent::MouseButtonRelease,position,global,Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QMouseEvent move(QEvent::MouseMove,position,global,Qt::NoButton,Qt::NoButton,Qt::NoModifier);move.setTimestamp(1000+i*30);press.setTimestamp(1001+i*30);release.setTimestamp(1002+i*30);QCoreApplication::sendEvent(window,&move);QCoreApplication::sendEvent(window,&press);const bool wasPressed=item->property("pressed").toBool();QCoreApplication::sendEvent(window,&release);QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents,5);const bool selected=window->property("page").toInt()==i;tabResults<<QVariantMap{{"tab",i},{"page",window->property("page")},{"visible",item->isVisible()},{"enabled",item->isEnabled()},{"pressed",wasPressed},{"activeWindow",window->isActive()},{"mouseGrabber",window->mouseGrabberItem()?window->mouseGrabberItem()->objectName():QString()},{"x",position.x()},{"y",position.y()}};pass=pass&&selected;}
+                if(!click){pass=false;(*interactions)["inputError"]=inputDriver->errorString();}
+                for(int i=0;i<7;++i){auto item=findVisual(window,QString("navigation-%1").arg(i));if(!item){pass=false;continue;}const auto position=item->mapToScene(QPointF(item->width()/2,item->height()/2));if(click)click(window,qRound(position.x()),qRound(position.y()));const bool selected=window->property("page").toInt()==i;tabResults<<QVariantMap{{"tab",i},{"page",window->property("page")},{"visible",item->isVisible()},{"activeWindow",window->isActive()}};pass=pass&&selected;}
                 (*interactions)["tabs"]=tabResults;(*interactions)["sevenTabSwitchesMs"]=elapsed.elapsed();(*interactions)["tabNavigationPassed"]=pass;(*interactions)["statePreserved"]=controller.options()["volume"].toInt()==200;
             }
             else if(*step==24){

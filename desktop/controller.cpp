@@ -143,8 +143,11 @@ bool Controller::save(){
 void Controller::scheduleSave(){m_saveTimer.start();}
 void Controller::setOption(const QString& key,const QVariant& value){
     if(!m_options.contains(key))return;
-    auto requested=m_options;requested[key]=value;
-    auto next=cleanOptions(requested);if(next==m_options)return;
+    if(key=="volume"){
+        bool ok=false;const auto number=value.toDouble(&ok);if(!ok||!std::isfinite(number))return;const int percent=int(qBound(0.,number,200.));if(percent==volume())return;
+        m_options["volume"]=percent;m_state["volume"]=percent;m_volumeUntil=m_clock.elapsed()+700;emit volumeChanged();scheduleSave();if(!m_test)m_platform->applyOptions("volume");return;
+    }
+    const auto validated=cleanOptions(QVariantMap{{key,value}});auto next=m_options;next[key]=validated[key];if(next==m_options)return;
     if(key=="startWithSystem"&&!m_test){QString error;if(!lifecycle::setStartup(next[key].toBool(),&error)){notify(error,"warning");emit optionsChanged();return;}}
     m_options=std::move(next);
     if(key=="low"||key=="mid"||key=="high"){
@@ -158,10 +161,9 @@ void Controller::setOption(const QString& key,const QVariant& value){
         const int i=m_options[key].toInt();if(i<5){m_options["low"]=presets[i][0];m_options["mid"]=presets[i][1];m_options["high"]=presets[i][2];m_options["eq"]=true;}
     }
     if(key=="micId"){m_state["selectedMicName"]="";for(const auto& item:m_devices)if(item.toMap()["id"]==m_options["micId"])m_state["selectedMicName"]=item.toMap()["name"];}
-    if(key=="volume"){m_volumeUntil=m_clock.elapsed()+700;setState("volume",m_options["volume"]);}
     if(key=="micId"||key=="noise"||key=="eq"||key=="noisePreset"||key=="voicePreset"||key=="low"||key=="mid"||key=="high")setState("pendingMic",false);
     if(gameKeys.contains(key))rememberOverlay();
-    emit optionsChanged();if(visualKeys.contains(key))emit overlayChanged();scheduleSave();
+    emit optionsChanged();if(key=="fields"||key=="order")emit readoutsChanged();if(key=="fields"||key=="order"||key=="style")emit overlayGeometryChanged();scheduleSave();
     if(!m_test&&!QStringList{"startWithSystem","startHidden","minimizeToTray","closeToTray","autoCapture","motion","uiScale"}.contains(key))m_platform->applyOptions(key);
 }
 QVariantList Controller::readouts()const{
@@ -187,7 +189,7 @@ void Controller::activateGameProfile(const QString& executable){
     const auto key=gameKey(executable);if(key==m_activeGameKey)return;rememberOverlay();m_activeGameKey=key;
     const auto values=key.isEmpty()||!m_gameOptions.contains(key)?m_baseOverlay:m_gameOptions[key].toMap();
     auto next=m_options;for(const auto& name:gameKeys)if(values.contains(name))next[name]=values[name];m_options=cleanOptions(next);
-    m_state["profileName"]=key.isEmpty()?"Default layout":key;emit optionsChanged();emit overlayChanged();emit stateChanged();scheduleSave();if(!m_test&&m_platform)m_platform->applyOptions();
+    m_state["profileName"]=key.isEmpty()?"Default layout":key;emit optionsChanged();emit readoutsChanged();emit overlayGeometryChanged();emit stateChanged();scheduleSave();if(!m_test&&m_platform)m_platform->applyOptions();
 }
 void Controller::selectGame(const QString& id){
     QString executable;if(id=="auto")executable=m_state["profileExe"].toString();
@@ -274,7 +276,7 @@ void Controller::setGameUnlock(bool enabled,bool confirmed){
 }
 void Controller::removeGame(const QString& id){for(int i=0;i<m_games.size();++i)if(m_games[i].toMap()["id"].toString()==id){m_games.removeAt(i);break;}if(m_options["selectedGame"]==id)selectGame("auto");emit gamesChanged();scheduleSave();}
 void Controller::saveProfile(const QString& name){const auto clean=name.trimmed().left(80);if(clean.isEmpty())return;for(int i=0;i<m_profiles.size();++i)if(m_profiles[i].toMap()["name"].toString()==clean){m_profiles[i]=QVariantMap{{"name",clean},{"options",pick(m_options,visualKeys)}};emit profilesChanged();scheduleSave();notify("Preset updated.");return;}if(m_profiles.size()>=128){notify("Remove a preset before adding another.","warning");return;}m_profiles<<QVariantMap{{"name",clean},{"options",pick(m_options,visualKeys)}};emit profilesChanged();scheduleSave();notify("Preset saved.");}
-void Controller::applyProfile(int index){if(index<0||index>=m_profiles.size())return;auto next=m_options;const auto saved=m_profiles[index].toMap()["options"].toMap();for(const auto& key:visualKeys)if(saved.contains(key))next[key]=saved[key];m_options=cleanOptions(next);rememberOverlay();emit optionsChanged();emit overlayChanged();scheduleSave();if(!m_test)m_platform->applyOptions();notify("Overlay preset loaded. Game limits, audio and startup preferences are preserved.");}
+void Controller::applyProfile(int index){if(index<0||index>=m_profiles.size())return;auto next=m_options;const auto saved=m_profiles[index].toMap()["options"].toMap();for(const auto& key:visualKeys)if(saved.contains(key))next[key]=saved[key];m_options=cleanOptions(next);rememberOverlay();emit optionsChanged();emit readoutsChanged();emit overlayGeometryChanged();scheduleSave();if(!m_test)m_platform->applyOptions();notify("Overlay preset loaded. Game limits, audio and startup preferences are preserved.");}
 void Controller::removeProfile(int index){if(index<0||index>=m_profiles.size())return;m_profiles.removeAt(index);emit profilesChanged();scheduleSave();}
 bool Controller::exportProfiles(const QUrl& url){if(!url.isLocalFile())return false;QSaveFile file(url.toLocalFile());QVariantList exported;for(const auto& value:m_profiles){auto preset=value.toMap();auto options=preset["options"].toMap();options.remove("micId");options.remove("selectedGame");for(const auto& key:QStringList{"startWithSystem","startHidden","minimizeToTray","closeToTray","autoCapture"})options.remove(key);preset["options"]=options;exported<<preset;}QJsonObject document{{"format","Framoryx presets"},{"version",1},{"presets",QJsonArray::fromVariantList(exported)}};if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(document).toJson())<0||!file.commit()){notify("Presets could not be exported.","warning");return false;}notify("Presets exported. Device identifiers and game paths are excluded from the export.");return true;}
 bool Controller::importProfiles(const QUrl& url){QJsonObject object;if(!url.isLocalFile()||!boundedJson(url.toLocalFile(),&object)||object["format"]!="Framoryx presets"||object["version"].toInt()!=1){notify("This is not a supported Framoryx preset file.","warning");return false;}int count=0;for(const auto& value:object["presets"].toArray()){if(m_profiles.size()>=128)break;if(!value.isObject())continue;const auto entry=value.toObject();const auto name=entry["name"].toString().trimmed().left(80);if(name.isEmpty())continue;auto options=pick(cleanOptions(entry["options"].toObject().toVariantMap()),visualKeys);m_profiles<<QVariantMap{{"name",name},{"options",options}};++count;}emit profilesChanged();scheduleSave();notify(QString("Imported %1 presets. Nothing was launched or applied to audio devices.").arg(count));return count>0;}
@@ -292,7 +294,7 @@ void Controller::receive(const QJsonObject& incoming){
     if(next.contains("profileExe")){const auto executable=next["profileExe"].toString();bool follows=m_options["selectedGame"]=="auto";for(const auto& item:m_games)if(item.toMap()["id"]==m_options["selectedGame"]&&gameKey(item.toMap()["executable"].toString())==gameKey(executable))follows=true;for(const auto& item:next["games"].toList())if(item.toMap()["id"]==m_options["selectedGame"])follows=true;if(follows)activateGameProfile(executable);}
 
     if(next["inGameSupported"]==false&&m_options["mode"]==2){setOption("mode",1);notify("This renderer uses the external overlay. Optional Windows in-game limiting supports DX11/DX12.");}
-    if(next.contains("volume")&&m_clock.elapsed()>m_volumeUntil){m_options["volume"]=qBound(0,next["volume"].toInt(),200);emit optionsChanged();}
+    if(next.contains("volume")&&m_clock.elapsed()>m_volumeUntil){const int percent=qBound(0,next["volume"].toInt(),200);if(percent!=volume()){m_options["volume"]=percent;emit volumeChanged();}}
     if(next.contains("games")){m_state["windows"]=next.take("games");}
     if(next.contains("microphones")){const auto list=next.take("microphones").toList();m_state["engineMicrophones"]=list;}
     if(next.contains("graph"))m_graph=next.take("graph").toList();
@@ -334,7 +336,7 @@ void Controller::action(const QString& name,const QVariantMap& args){
     if(name=="guide"){QDesktopServices::openUrl(QUrl("https://github.com/NeTriXoN-BoT/Framoryx#readme"));return;}
     if(name=="release"){QDesktopServices::openUrl(QUrl("https://github.com/NeTriXoN-BoT/Framoryx/releases/latest"));return;}
     if(name=="quit"){emit quitRequested();return;}
-    if(name=="resetOverlay"){auto values=defaults();for(const auto& key:QStringList{"fields","order","style","opacity","overlayScale","fontScale","hudX","hudY","accent"})m_options[key]=values[key];rememberOverlay();emit optionsChanged();emit overlayChanged();scheduleSave();if(!m_test)m_platform->applyOptions();return;}
+    if(name=="resetOverlay"){auto values=defaults();for(const auto& key:QStringList{"fields","order","style","opacity","overlayScale","fontScale","hudX","hudY","accent"})m_options[key]=values[key];rememberOverlay();emit optionsChanged();emit readoutsChanged();emit overlayGeometryChanged();scheduleSave();if(!m_test)m_platform->applyOptions();return;}
     if(name=="enableHook"){
         if(!args["confirmed"].toBool()||m_state["antiCheatStatus"]=="detected"){notify("In-game hooks are blocked while known anti-cheat indicators are present.","warning");return;}
         m_manualRiskKey=m_safetyKey+":"+m_state["antiCheatStatus"].toString();if(!m_test)m_platform->action("safetyFallback",{{"enabled",false}});

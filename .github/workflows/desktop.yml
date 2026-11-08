@@ -37,7 +37,7 @@ jobs:
           cache: true
       - name: Configure desktop application
         shell: pwsh
-        run: cmake -S . -B build/desktop -DFRAMORYX_BUILD_DESKTOP=ON -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build/desktop -DFRAMORYX_BUILD_DESKTOP=ON -DFRAMORYX_BUILD_DIAGNOSTICS=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build shared C++ and QML application
         shell: pwsh
         run: cmake --build build/desktop --config Release --parallel 3
