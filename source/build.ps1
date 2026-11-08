@@ -89,5 +89,8 @@ try {
     Invoke-Compiler $cxx32 ($flags + $dependencySources + @('-o',(Join-Path $BuildDirectory 'dependency-tests32.exe'),'-limm32'))
     & (Join-Path $BuildDirectory 'dependency-tests32.exe')
     if ($LASTEXITCODE -ne 0) { throw '32-bit headless dependency checks failed' }
+    Invoke-Compiler $cxx ($flags + @('-DMINIZ_NO_DEFLATE_APIS','flow_tests.cpp','noise_updates.cpp') + $zipObjects + @('-o',(Join-Path $BuildDirectory 'flow-tests.exe'),'-lwininet','-lbcrypt','-ladvapi32','-lole32','-luuid','-lshell32'))
+    & (Join-Path $BuildDirectory 'flow-tests.exe') (Join-Path $BuildDirectory 'flow-test-data')
+    if ($LASTEXITCODE -ne 0) { throw 'Export/worker/updater flow checks failed' }
     Write-Output 'Build and core checks passed.'
 } finally { Pop-Location }

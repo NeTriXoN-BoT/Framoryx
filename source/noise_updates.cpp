@@ -422,4 +422,10 @@ std::optional<NoiseRelease> NoiseUpdater::takeResult() {
     state->result.reset();
     return result;
 }
+NoiseUpdateSnapshot NoiseUpdater::poll() {
+    std::lock_guard lock(state->mutex);
+    NoiseUpdateSnapshot snapshot{state->busy.load(), state->message, std::move(state->result)};
+    state->result.reset();
+    return snapshot;
+}
 } // namespace fg

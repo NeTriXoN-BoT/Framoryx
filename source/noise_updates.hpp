@@ -7,6 +7,11 @@ struct NoiseRelease {
     std::wstring mono, stereo, version;
     std::string monoDigest, stereoDigest;
 };
+struct NoiseUpdateSnapshot {
+    bool running = false;
+    std::wstring message;
+    std::optional<NoiseRelease> release;
+};
 class NoiseUpdater {
     struct State;
     std::unique_ptr<State> state;
@@ -20,5 +25,6 @@ class NoiseUpdater {
     bool running() const;
     std::wstring status() const;
     std::optional<NoiseRelease> takeResult();
+    NoiseUpdateSnapshot poll();
 };
 } // namespace fg

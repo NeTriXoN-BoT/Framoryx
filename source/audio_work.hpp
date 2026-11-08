@@ -23,7 +23,8 @@ void syncOutputVolume() {
         return;
     auto old = std::tuple(app.audio.device, app.audio.guid, app.outputPercent, app.audio.mute,
                           app.audio.available);
-    app.audio = fg::audioState();
+    if (!app.smokeAudio)
+        app.audio = fg::audioState();
     refreshAudioStatus();
     double gain = app.cachedGain.value_or(0);
     app.outputBoostActive = gain > .001;
@@ -52,25 +53,33 @@ std::string selectedNoiseDigest() {
                : (mic->channels == 1 ? app.noiseRelease.monoDigest : app.noiseRelease.stereoDigest);
 }
 void queueMicrophoneEffects(const fg::Microphone& mic, const fg::MicrophoneOptions& options) {
-    bool queued =
-        app.effectWorker.submit([directory = app.boost.directory(), mic, plugin = app.noisePlugin,
-                                 options, digest = selectedNoiseDigest()] {
+    bool queued = app.effectWorker.submit(
+        [directory = app.boost.directory(), mic, plugin = app.noisePlugin, options,
+         digest = selectedNoiseDigest()] {
             auto error = fg::MicrophoneEffects::apply(directory, mic, plugin, options, digest);
             return error.empty()
                        ? std::wstring(L"Mic effects configured for the selected device. Verify in "
                                       L"a recording; raw/exclusive modes can bypass APO.")
                        : error;
-        });
+        },
+        1);
     app.audioNotice = queued ? L"Applying microphone effects… The controls stay available."
                              : L"Audio queue is busy. Try again shortly.";
 }
+void cancelPendingMicrophoneEdit() {
+    if (!app.pendingMicrophoneApply.empty()) {
+        app.pendingMicrophoneApply.clear();
+        app.audioNotice = L"Microphone settings changed. Click Apply mic effects when ready.";
+    }
+}
 void pollAudioWork() {
-    auto status = app.noiseUpdater.status();
+    auto update = app.noiseUpdater.poll();
+    auto status = update.message;
     if (status != app.noiseUpdateStatus) {
         app.noiseUpdateStatus = status;
         app.contentDirty = true;
     }
-    if (auto release = app.noiseUpdater.takeResult()) {
+    if (auto& release = update.release) {
         app.noiseRelease = *release;
         selectAutomaticNoisePlugin();
         saveSettings();
@@ -86,16 +95,17 @@ void pollAudioWork() {
         }
         app.contentDirty = true;
     }
-    if (!app.noiseUpdater.running() && !app.pendingMicrophoneApply.empty()) {
+    if (!update.running && !update.release && !app.pendingMicrophoneApply.empty()) {
         app.pendingMicrophoneApply.clear();
         app.audioNotice = app.noiseUpdater.status();
         app.contentDirty = true;
     }
     if (auto result = app.gainWorker.takeResult()) {
-        if (!result->empty()) {
-            app.audioNotice = *result;
-            syncOutputVolume();
-        }
+        app.audioNotice =
+            result->empty()
+                ? L"Output level updated. Verify extra gain with APO enabled for this device."
+                : *result;
+        syncOutputVolume();
         refreshAudioStatus();
         app.contentDirty = true;
     }

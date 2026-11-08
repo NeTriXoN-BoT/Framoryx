@@ -5,6 +5,7 @@
 #include "noise_updates.hpp"
 #include "compatibility.hpp"
 #include "animation.hpp"
+#include "export.hpp"
 #include <shlobj.h>
 #include <commctrl.h>
 #include <commdlg.h>
@@ -152,7 +153,10 @@ struct App {
     std::map<int, bool> toggleTargets;
     std::unique_ptr<Bitmap> transitionOld, transitionNew;
     double transitionStart = 0;
-    bool capturingScene = false;
+    RECT transitionRegion{};
+    ULONGLONG peakTransitionBytes = 0;
+    ULONGLONG matchingFullTransitionBytes=0;
+    bool hotkeysRegistered=false;
     ULONGLONG transitionsCompleted = 0;
 
     std::wstring notice = L"Choose a game, or leave Auto selected. Press Start capture to begin.";
@@ -214,9 +218,17 @@ struct App {
     std::map<std::string, int> gameLimits;
     std::wstring diagnosticPath;
     std::wstring snapshotPath, rulesSnapshotPath;
-    bool snapshotSaved = false, diagnosticMic = false, diagnosticMaximized = false;
+    bool snapshotSaved = false, diagnosticMic = false, diagnosticMaximized = false, diagnosticShown=false;
     std::wstring settingsOverride;
     bool smokeAudio = false;
+    bool smokeAudioControls = false;
+    bool smokeFeatures = false, smokeCaptureFailure = false, captureFailureChecked = false;
+    int featureStep = 0, featureChecks = 0;
+    bool featureRunning = false;
+    std::vector<std::string> featureFailures;
+    RECT featureOriginalRect{};
+    LONG_PTR featureOriginalStyle = 0;
+    ULONGLONG featureAnimationFrames = 0;
     int audioControlChecks = 0, rulesControlChecks = 0, audioCheckStep = 0;
     bool smokeLayout = false;
     int layoutStep = 0, layoutChecks = 0;
@@ -230,6 +242,7 @@ struct App {
     int fixedSmokePage = -1;
     std::vector<double> cpuSamples;
     ULONGLONG lastVolumeWrite = 0;
+    bool volumeDragging=false;
     fg::Handle demoProcess, demoJob;
     DWORD demoPid = 0, pendingDemoPid = 0;
     bool smokeDemo = false;
@@ -342,6 +355,7 @@ void loadSettings() {
         contents.erase(0, 3);
     std::istringstream file(contents);
     app.hudProfiles.clear();
+    app.gameLimits.clear();
     app.rules.allow.clear();
     app.rules.deny.clear();
     std::string line;
@@ -426,7 +440,7 @@ void applyProfile(const std::string& exe);
 void applyDesktopScale();
 void paintMain(HDC, const RECT&);
 void positionHud();
-std::unique_ptr<Bitmap> captureScene();
+std::unique_ptr<Bitmap> captureScene(bool contentOnly = false);
 void rounded(Graphics& g, RectF r, Color color, float radius = 13, bool border = false) {
     GraphicsPath path;
     float d = radius * 2;
@@ -687,6 +701,10 @@ void attachHook() {
         app.capture.setRules(app.rules);
     }
     auto err = app.hook.attach(t->pid, t->exe, app.rules, app.cap);
+    if (!err.empty()) {
+        setNotice(err);
+        return;
+    }
     app.overlay = true;
     SetWindowTextW(app.controls[Overlay], L"Hide overlay");
     pushHookPresentation();
@@ -702,7 +720,7 @@ void attachHook() {
 }
 void exportCSV() {
     if (app.stats.frames.empty()) {
-        setNotice(L"There are no ETW frames to export yet. Start capture and select a game.");
+        setNotice(L"There are no captured frames to export yet. Start capture and select a game.");
         return;
     }
     wchar_t filename[32768] = L"Framoryx-capture.csv";
@@ -714,25 +732,16 @@ void exportCSV() {
     of.nMaxFile = 32768;
     of.lpstrDefExt = L"csv";
     of.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-    if (!GetSaveFileNameW(&of))
+    if (app.smokeFeatures) {
+        auto path = (fs::path(app.diagnosticPath).parent_path() / L"feature-export.csv").wstring();
+        wcsncpy_s(filename, path.c_str(), _TRUNCATE);
+    } else if (!GetSaveFileNameW(&of))
         return;
     std::ofstream file{fs::path(filename), std::ios::binary};
-    file << "Application,ProcessID,SwapChainAddress,TimeInSeconds,MsBetweenPresents\n"
-         << std::fixed << std::setprecision(6);
-    double firstTimestamp = app.stats.frames.front().time;
-    for (auto& f : app.stats.frames) {
-        std::string name;
-        for (char c : app.stats.app) {
-            if (c == '"')
-                name += '"';
-            name += c;
-        }
-        file << '"' << name << "\"," << app.stats.pid << ',' << app.stats.chain << ','
-             << f.time - firstTimestamp << ',' << f.ms << '\n';
-    }
+    bool written = fg::writeCaptureCsv(file, app.stats);
     file.close();
-    setNotice(file ? L"Saved the selected swapchain’s rolling 30-second capture."
-                   : L"The CSV could not be saved.");
+    setNotice(written && file ? L"Saved the selected swapchain’s rolling 30-second capture."
+                              : L"The CSV could not be saved.");
 }
 std::wstring rulesText(const std::vector<std::string>& rules) {
     std::wstring out;
@@ -941,7 +950,7 @@ void pageControls(int page) {
 void switchPage(int page) {
     bool animate = page != app.page && app.motion && app.bufferDC &&
                    (GetForegroundWindow() == app.window || app.diagnosticAnimate);
-    auto previous = animate ? captureScene() : nullptr;
+    auto previous = animate ? captureScene(true) : nullptr;
     app.transitionOld.reset();
     app.transitionNew.reset();
     app.page = page;
@@ -952,10 +961,14 @@ void switchPage(int page) {
     if (page == 5)
         syncHudControls();
     if (animate && previous) {
-        auto next = captureScene();
+        auto next = captureScene(true);
         if (next) {
             app.transitionOld = std::move(previous);
             app.transitionNew = std::move(next);
+            auto bytes =
+                4ull * (ULONGLONG(app.transitionOld->GetWidth()) * app.transitionOld->GetHeight() +
+                        ULONGLONG(app.transitionNew->GetWidth()) * app.transitionNew->GetHeight());
+            if(bytes>=app.peakTransitionBytes){app.peakTransitionBytes=bytes;app.matchingFullTransitionBytes=8ull*ULONGLONG(app.bufferWidth)*app.bufferHeight;}
             app.transitionStart = animationClock();
             for (auto& control : app.controls) {
                 RECT rect{};
@@ -1263,7 +1276,7 @@ void paintMain(HDC destination, const RECT& invalid) {
             line(g, 188, 0, 188, 820, edge);
             line(g, 24, 476, 162, 476);
             label(g, L"YOUR TOOLKIT", 24, 722, 145, 20, 9, muted, true);
-            label(g, L"FRAMORYX 0.2.2 · WINDOWS X64", 24, 747, 146, 40, 9, muted, false, true);
+            label(g, L"FRAMORYX 0.2.3 · WINDOWS X64", 24, 747, 146, 40, 9, muted, false, true);
             rounded(g, RectF(24, 770, 100, 17), Color(255, 43, 36, 29), 4);
             label(g, L"UNSIGNED BUILD", 30, 771, 94, 16, 8, amber, true);
             if (!app.preferencesSaved)
@@ -1296,7 +1309,7 @@ void paintMain(HDC destination, const RECT& invalid) {
         paintHeader(g);
         if (app.page == 0 && app.motion)
             paintAnimatedMetrics(g);
-        if (app.transitionNew && !app.capturingScene) {
+        if (app.transitionNew) {
             double t = fg::easeOut((animationClock() - app.transitionStart) / .22);
             auto transform = g.Save();
             g.ResetTransform();
@@ -1314,11 +1327,12 @@ void paintMain(HDC destination, const RECT& invalid) {
                 matrix.m[4][4] = 1;
                 ImageAttributes attributes;
                 attributes.SetColorMatrix(&matrix);
-                g.DrawImage(
-                    image,
-                    RectF(offset * app.scale, 0, float(app.bufferWidth), float(app.bufferHeight)),
-                    0, 0, float(image->GetWidth()), float(image->GetHeight()), UnitPixel,
-                    &attributes);
+                g.DrawImage(image,
+                            RectF(app.transitionRegion.left + offset * app.scale,
+                                  float(app.transitionRegion.top), float(image->GetWidth()),
+                                  float(image->GetHeight())),
+                            0, 0, float(image->GetWidth()), float(image->GetHeight()), UnitPixel,
+                            &attributes);
             };
             layer(app.transitionOld.get(), float(1 - t), float(-14 * t));
             layer(app.transitionNew.get(), float(t), float(18 * (1 - t)));
@@ -1406,6 +1420,7 @@ LRESULT CALLBACK hudProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     }
     return DefWindowProcW(window, msg, wp, lp);
 }
+#include "feature_smoke.hpp"
 void update() {
     // Static pages reuse their body until a control, notice or device state changes.
     if (app.page == 0 || app.page == 5 || app.page == 6)
@@ -1473,6 +1488,15 @@ void update() {
             PostMessageW(app.window, WM_CLOSE, 0, 0);
             return;
         }
+        if (app.smokeCaptureFailure && !app.captureFailureChecked && elapsed >= 4) {
+            SendMessageW(app.window, WM_COMMAND, Overlay, 0);
+            featureCheck(!app.overlay && !app.capture.running() &&
+                             app.notice.find(L"PresentMon.exe is missing") != std::wstring::npos,
+                         "capture failure remains visible and overlay toggle rolls back");
+            app.captureFailureChecked = true;
+        }
+        if (app.smokeFeatures && elapsed >= 10 + 2 * app.featureStep && app.featureStep < 24)
+            runFeatureStep();
         if (!app.snapshotPath.empty() && !app.snapshotSaved && elapsed > 3 && !app.transitionNew) {
             auto image = captureScene();
             if (image) {
@@ -1489,7 +1513,7 @@ void update() {
                         }
             }
         }
-        if (app.smokeAudio && elapsed >= 4 && app.audioCheckStep == 0) {
+        if (app.smokeAudioControls && elapsed >= 4 && app.audioCheckStep == 0) {
             SendMessageW(app.controls[Volume], TBM_SETPOS, TRUE, 75);
             SendMessageW(app.window, WM_HSCROLL, TB_THUMBTRACK,
                          reinterpret_cast<LPARAM>(app.controls[Volume]));
@@ -1630,7 +1654,9 @@ void update() {
                 app.customizationStep = 5;
             }
         }
-        int desired = app.fixedSmokePage >= 0 ? app.fixedSmokePage : int(elapsed / 2) % 7;
+        int desired = app.smokeFeatures         ? app.page
+                      : app.fixedSmokePage >= 0 ? app.fixedSmokePage
+                                                : int(elapsed / 2) % 7;
         if (desired != app.page)
             switchPage(desired);
         int step = int(elapsed / 4) % 3;
@@ -1642,11 +1668,11 @@ void update() {
             app.smokeResizeStep = step;
         }
         if (elapsed >= 8 && !app.smokeDialogOpened &&
-            (app.fixedSmokePage < 0 || app.smokeAudio || !app.rulesSnapshotPath.empty())) {
+            (app.fixedSmokePage < 0 || app.smokeAudioControls || !app.rulesSnapshotPath.empty())) {
             app.smokeDialogOpened = true;
             showRules();
             HWND rules = GetLastActivePopup(app.window);
-            if (rules && rules != app.window && app.smokeAudio) {
+            if (rules && rules != app.window && app.smokeAudioControls) {
                 SetWindowTextW(GetDlgItem(rules, 1), L"C:\\invalid.exe");
                 SendMessageW(rules, WM_COMMAND, 3, reinterpret_cast<LPARAM>(GetDlgItem(rules, 3)));
                 auto state =
@@ -2000,6 +2026,7 @@ LRESULT CALLBACK volumeProc(HWND w, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DW
     if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK) {
         SetFocus(w);
         SetCapture(w);
+        app.volumeDragging=true;
         setFromMouse(short(LOWORD(lp)), TB_THUMBTRACK);
         return 0;
     }
@@ -2009,11 +2036,17 @@ LRESULT CALLBACK volumeProc(HWND w, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DW
         return 0;
     }
     if (msg == WM_LBUTTONUP && GetCapture() == w) {
+        app.volumeDragging=false;
         setFromMouse(short(LOWORD(lp)), TB_THUMBPOSITION);
         ReleaseCapture();
         InvalidateRect(w, nullptr, FALSE);
         return 0;
     }
+    if(msg==WM_CAPTURECHANGED && app.volumeDragging) {
+        app.volumeDragging=false;
+        SendMessageW(GetParent(w),WM_HSCROLL,TB_THUMBPOSITION,reinterpret_cast<LPARAM>(w));
+    }
+    if(msg==WM_CANCELMODE && GetCapture()==w){ReleaseCapture();return 0;}
     if (msg == WM_KEYDOWN) {
         int value = int(SendMessageW(w, TBM_GETPOS, 0, 0)), next = value;
         if (wp == VK_LEFT || wp == VK_DOWN)
@@ -2687,7 +2720,8 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
             InvalidateRect(window, nullptr, FALSE);
             break;
         case ApplyBoost: {
-            app.audio = fg::audioState();
+            if (!app.smokeAudio)
+                app.audio = fg::audioState();
             double db = SendMessageW(app.controls[BoostLevel], CB_GETCURSEL, 0, 0) == 0
                             ? 3.0
                             : 20 * std::log10(2.0);
@@ -2765,15 +2799,20 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
             app.overlay = !app.overlay;
             if (app.overlay && !app.capture.running()) {
                 auto error = app.capture.start(app.rules);
-                if (!error.empty())
+                if (!error.empty()) {
+                    app.overlay = false;
                     setNotice(error);
+                    syncHudControls();
+                    SetWindowTextW(app.controls[Overlay], L"Show overlay");
+                    break;
+                }
             }
             pushHookPresentation();
             syncHudControls();
             SetWindowTextW(app.controls[Overlay], app.overlay ? L"Hide overlay" : L"Show overlay");
             positionHud();
             setNotice(app.overlay ? L"Overlay on. Ctrl+Alt+O toggles it. If hidden by fullscreen, "
-                                    L"use Borderless play or opt into the DX11 HUD."
+                                    L"use Borderless play or opt into the DX11/DX12 HUD."
                                   : L"Desktop overlay hidden.");
             break;
         case Rules:
@@ -2925,6 +2964,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             app.rulesSnapshotPath = arguments[++i];
         else if (argument == L"--smoke-maximized" && diagnosticInstance)
             app.diagnosticMaximized = true;
+        else if(argument==L"--smoke-shown" && diagnosticInstance)
+            app.diagnosticShown=true;
         else if (argument == L"--audio-mic")
             app.diagnosticMic = true;
         else if (argument == L"--audio-setup" && diagnosticInstance) {
@@ -2953,7 +2994,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         if (std::wstring(arguments[i]) == L"--smoke-layout" && diagnosticInstance)
             app.smokeLayout = true;
         if (std::wstring(arguments[i]) == L"--smoke-audio-controls" && diagnosticInstance)
+            app.smokeAudio = app.smokeAudioControls = true;
+        if (std::wstring(arguments[i]) == L"--smoke-audio-fixture" && diagnosticInstance)
             app.smokeAudio = true;
+        if (std::wstring(arguments[i]) == L"--smoke-feature-controls" && diagnosticInstance)
+            app.smokeFeatures = app.smokeAudio = app.smokeAudioControls = true;
+        if (std::wstring(arguments[i]) == L"--smoke-capture-failure" && diagnosticInstance)
+            app.smokeCaptureFailure = true;
         if (std::wstring(arguments[i]) == L"--smoke-customize" && !app.settingsOverride.empty())
             app.smokeCustomize = true;
         if (std::wstring(arguments[i]) == L"--smoke-animate" && app.smokeSeconds > 0 &&
@@ -2969,6 +3016,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             << "# Isolated UI audio test; never loaded by system APO.\n";
         app.boost.directory(scratch.wstring());
         app.autoNoiseUpdates = false;
+        app.audio = {L"Diagnostic output", L"{01234567-89ab-cdef-0123-456789abcdef}", 1.f, true,
+                     false};
     }
     app.diagnosticStart = fg::clockSeconds();
     app.trayRestartMessage = RegisterWindowMessageW(L"TaskbarCreated");
@@ -3028,10 +3077,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     bool hotkeys = RegisterHotKey(window, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'O');
     hotkeys &= RegisterHotKey(window, 2, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'B');
     hotkeys &= RegisterHotKey(window, 3, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'L');
+    app.hotkeysRegistered=hotkeys;
     if (!hotkeys)
         app.notice = L"Some hotkeys are already used by another app. All features remain available "
                      L"through the buttons.";
-    ShowWindow(window, show);
+    ShowWindow(window, app.diagnosticShown ? SW_SHOWNOACTIVATE : show);
     if (app.diagnosticMaximized)
         ShowWindow(window, SW_MAXIMIZE);
     UpdateWindow(window);
@@ -3061,6 +3111,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         DWORD handles = 0;
         GetProcessHandleCount(GetCurrentProcess(), &handles);
         std::ofstream report{fs::path(app.diagnosticPath), std::ios::binary};
+        std::ostringstream featureFailureJson;
+        featureFailureJson << '[';
+        for (size_t i = 0; i < app.featureFailures.size(); ++i) {
+            if (i)
+                featureFailureJson << ',';
+            featureFailureJson << std::quoted(app.featureFailures[i]);
+        }
+        featureFailureJson << ']';
         report << std::fixed << std::setprecision(3) << "{\n  \"elapsedSeconds\": " << elapsed
                << ",\n  \"processCpuSeconds\": " << seconds(kernel) + seconds(user)
                << ",\n  \"kernelCpuSeconds\": " << seconds(kernel)
@@ -3083,11 +3141,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
                << ",\n  \"demoLiveSamples\": " << app.demoLiveSamples
                << ",\n  \"transitionsCompleted\": " << app.transitionsCompleted
                << ",\n  \"animationFrames\": " << app.animationFrames
+               << ",\n  \"peakTransitionBytes\": " << app.peakTransitionBytes
+               << ",\n  \"matchingFullTransitionBytes\": " << app.matchingFullTransitionBytes
+               << ",\n  \"hotkeysRegistered\": " << (app.hotkeysRegistered ? "true" : "false")
                << ",\n  \"animationRefreshHz\": " << app.animationHz
                << ",\n  \"customizationChecks\": " << app.customizationChecks
                << ",\n  \"audioControlChecks\": " << app.audioControlChecks
                << ",\n  \"rulesControlChecks\": " << app.rulesControlChecks
                << ",\n  \"layoutChecks\": " << app.layoutChecks
+               << ",\n  \"featureChecks\": " << app.featureChecks
+               << ",\n  \"featureSteps\": " << app.featureStep
+               << ",\n  \"featureFailures\": " << featureFailureJson.str()
                << ",\n  \"customizationRoundTrip\": "
                << (app.customizationRoundTrip ? "true" : "false")
                << ",\n  \"effectiveUiScale\": " << app.scale << ",\n  \"cpuSamplesSeconds\": [";
@@ -3122,8 +3186,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     CoUninitialize();
     return (app.smokeDemo && app.smokeSeconds > 0 && !app.demoLiveSamples) ||
                    (app.smokeCustomize && app.customizationChecks < 4) ||
-                   (app.smokeAudio && (app.audioControlChecks < 8 || app.rulesControlChecks < 2)) ||
-                   (app.smokeLayout && app.layoutChecks < 5)
+                   (app.smokeAudioControls &&
+                    (app.audioControlChecks < 8 || app.rulesControlChecks < 2)) ||
+                   (app.smokeLayout && app.layoutChecks < 5) ||
+                   (app.smokeFeatures && (app.featureStep < 24 || !app.featureFailures.empty())) ||
+                   (app.smokeCaptureFailure &&
+                    (!app.captureFailureChecked || !app.featureFailures.empty()))
                ? 1
                : 0;
 }

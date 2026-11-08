@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(FramoryxCore VERSION 0.2.2 LANGUAGES CXX)
+project(FramoryxCore VERSION 0.2.3 LANGUAGES CXX)
 enable_testing()
 add_executable(FramoryxCoreTests source/tests.cpp)
 target_compile_features(FramoryxCoreTests PRIVATE cxx_std_20)

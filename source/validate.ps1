@@ -3,6 +3,7 @@ param(
     [string]$BuildDirectory = '',
     [switch]$IncludeGraphicsTests,
     [switch]$IncludeHookSoak,
+    [switch]$IncludeAudioNetworkTests,
     [ValidateRange(0,600)][int]$SoakSeconds = 0,
     [ValidateRange(0,120)][int]$UiSmokeSeconds = 0
 )
@@ -16,6 +17,19 @@ $cxx = Join-Path $ToolchainBin 'x86_64-w64-mingw32-clang++.exe'
 if (!(Test-Path -LiteralPath $cxx)) { throw 'Run build.ps1 first, or supply -ToolchainBin.' }
 if ($IncludeHookSoak -and !$IncludeGraphicsTests) { throw 'Use -IncludeGraphicsTests with -IncludeHookSoak for the optional injection stress test.' }
 $flags = @('-std=c++20','-O2','-static','-DNDEBUG','-DNOMINMAX','-DUNICODE','-D_UNICODE','-D_WIN32_WINNT=0x0A00')
+if($IncludeAudioNetworkTests){
+    $objects=@();$cc=Join-Path $ToolchainBin 'x86_64-w64-mingw32-clang.exe'
+    foreach($file in @('miniz.c','miniz_zip.c','miniz_tinfl.c')){
+        $object=Join-Path $BuildDirectory ('audio-'+$file+'.o')
+        & $cc '-O2' '-DMINIZ_NO_DEFLATE_APIS' '-c' (Join-Path $PSScriptRoot ('vendor/miniz/'+$file)) '-o' $object
+        if($LASTEXITCODE -ne 0){throw 'Audio integration archive-reader build failed.'};$objects+=$object
+    }
+    $test=Join-Path $packageDirectory 'FramoryxAudioCheck.exe'
+    & $cxx @flags '-municode' '-DMINIZ_NO_DEFLATE_APIS' (Join-Path $PSScriptRoot 'audio_network_tests.cpp') (Join-Path $PSScriptRoot 'noise_updates.cpp') @objects '-o' $test '-lwininet' '-lbcrypt' '-ladvapi32' '-lole32' '-luuid' '-lshell32'
+    if($LASTEXITCODE -ne 0){throw 'Audio integration test build failed.'}
+    & $test (Join-Path $BuildDirectory ('official-noise-'+[Guid]::NewGuid().ToString('N'))) | Tee-Object (Join-Path $BuildDirectory 'audio-network-results.txt')
+    if($LASTEXITCODE -ne 0){throw 'Official RNNoise integration failed.'}
+}
 if ($IncludeGraphicsTests) {
     Write-Output 'Graphics tests target only the bundled Framoryx test scenes.'
     $integration = Join-Path $packageDirectory 'FramoryxCheck.exe'

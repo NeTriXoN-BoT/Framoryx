@@ -396,26 +396,44 @@ void paintCompatibility(Graphics& g) {
           true);
     label(g, app.notice, 214, 777, 938, 38, 12, muted, false, true);
 }
-std::unique_ptr<Bitmap> captureScene() {
-    if (!app.bufferDC) {
-        RECT client{};
-        GetClientRect(app.window, &client);
-        HDC dc = GetDC(app.window);
-        paintMain(dc, client);
-        ReleaseDC(app.window, dc);
-    }
-    if (!app.bufferDC || app.bufferWidth < 1 || app.bufferHeight < 1)
+std::unique_ptr<Bitmap> captureScene(bool contentOnly) {
+    RECT region{};
+    GetClientRect(app.window, &region);
+    if (region.right < 1 || region.bottom < 1)
         return {};
+    if (contentOnly) {
+        region.left =
+            std::clamp(LONG(std::floor(app.originX + 198 * app.scale)), 0L, region.right - 1);
+        region.top = std::clamp(LONG(std::floor(app.originY)), 0L, region.bottom - 1);
+        region.right = std::clamp(LONG(std::ceil(app.originX + BW * app.scale)), region.left + 1,
+                                  region.right);
+        region.bottom = std::clamp(LONG(std::ceil(app.originY + BH * app.scale)), region.top + 1,
+                                   region.bottom);
+        app.transitionRegion = region;
+    }
     HDC screen = GetDC(app.window), dc = CreateCompatibleDC(screen);
-    HBITMAP bitmap = CreateCompatibleBitmap(screen, app.bufferWidth, app.bufferHeight);
+    HBITMAP bitmap =
+        CreateCompatibleBitmap(screen, region.right - region.left, region.bottom - region.top);
+    if (!screen || !dc || !bitmap) {
+        if (bitmap)
+            DeleteObject(bitmap);
+        if (dc)
+            DeleteDC(dc);
+        if (screen)
+            ReleaseDC(app.window, screen);
+        return {};
+    }
     auto old = SelectObject(dc, bitmap);
-    RECT rect{0, 0, app.bufferWidth, app.bufferHeight};
-    paintMain(dc, rect);
+    SetViewportOrgEx(dc, -region.left, -region.top, nullptr);
+    paintMain(dc, region);
     for (auto& control : app.controls)
         if (GetWindowLongPtrW(control.second, GWL_STYLE) & WS_VISIBLE) {
             RECT child{};
             GetWindowRect(control.second, &child);
             MapWindowPoints(nullptr, app.window, reinterpret_cast<POINT*>(&child), 2);
+            RECT overlap{};
+            if (!IntersectRect(&overlap, &child, &region))
+                continue;
             HDC childDC = CreateCompatibleDC(screen);
             int width = std::max(1L, child.right - child.left),
                 height = std::max(1L, child.bottom - child.top);
@@ -433,7 +451,7 @@ std::unique_ptr<Bitmap> captureScene() {
     DeleteObject(bitmap);
     DeleteDC(dc);
     ReleaseDC(app.window, screen);
-    return output;
+    return output && output->GetLastStatus() == Ok ? std::move(output) : nullptr;
 }
 void paintAnimatedMetrics(Graphics& g) {
     const float positions[]{229, 513, 733, 953}, widths[]{234, 170, 170, 182};

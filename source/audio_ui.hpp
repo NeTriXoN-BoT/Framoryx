@@ -5,7 +5,11 @@ const fg::Microphone* selectedMicrophone() {
 }
 #include "audio_work.hpp"
 void refreshMicrophones() {
-    app.microphones = fg::microphones();
+    app.microphones =
+        app.smokeAudio
+            ? std::vector<fg::Microphone>{{L"Diagnostic microphone", L"diagnostic-mic",
+                                           L"{01234567-89ab-cdef-0123-456789abcdef}", 48000, 1}}
+            : fg::microphones();
     auto combo = app.controls[MicDevice];
     SendMessageW(combo, CB_RESETCONTENT, 0, 0);
     int selected = 0;
@@ -140,6 +144,10 @@ void paintAudio(Graphics& g) {
     label(g, app.audioNotice, 214, 777, 938, 38, 12, muted, false, true);
 }
 bool audioCommand(int id, int notification) {
+    if (id == MicRefresh || id == MicDevice || id == MicNoise || id == MicEQ ||
+        id == MicNoisePreset || id == MicEQPreset || id == MicLow || id == MicMid ||
+        id == MicHigh || id == MicChoosePlugin || id == MicDownload)
+        cancelPendingMicrophoneEdit();
     if (id == AudioOutputView || id == AudioMicView) {
         app.audioSetup = false;
         app.audioTab = id == AudioMicView ? 1 : 0;
@@ -222,6 +230,7 @@ bool audioCommand(int id, int notification) {
         if (app.autoNoiseUpdates)
             startNoiseUpdate(false);
     } else if (id == MicApply) {
+        app.pendingMicrophoneApply.clear();
         auto mic = selectedMicrophone();
         if (mic && app.microphoneOptions.noise &&
             (!fg::rnnoisePlugin(app.noisePlugin, mic->channels) ||
@@ -240,13 +249,14 @@ bool audioCommand(int id, int notification) {
             app.audioNotice = L"Select an available microphone first.";
     } else if (id == MicDisable) {
         app.pendingMicrophoneApply.clear();
-        bool queued = app.effectWorker.submit([directory = app.boost.directory()] {
-            auto error = fg::MicrophoneEffects::disable(directory);
-            return error.empty()
-                       ? std::wstring(
-                             L"Framoryx microphone effects disabled. Other effects are unchanged.")
-                       : error;
-        });
+        bool queued = app.effectWorker.submit(
+            [directory = app.boost.directory()] {
+                auto error = fg::MicrophoneEffects::disable(directory);
+                return error.empty() ? std::wstring(L"Framoryx microphone effects disabled. Other "
+                                                    L"effects are unchanged.")
+                                     : error;
+            },
+            1);
         app.audioNotice =
             queued ? L"Disabling microphone effects…" : L"Audio queue is busy. Try again shortly.";
     } else if (id == MicSetup) {
@@ -268,19 +278,22 @@ bool audioCommand(int id, int notification) {
             app.audioNotice = L"Equalizer APO device configurator was not found. Install it first, "
                               L"or locate its config folder.";
     } else if (id == BassApply || id == BassDisable) {
-        app.audio = fg::audioState();
+        if (!app.smokeAudio)
+            app.audio = fg::audioState();
         int db = int(SendMessageW(app.controls[BassAmount], CB_GETCURSEL, 0, 0)) * 3;
-        bool queued = app.effectWorker.submit([directory = app.boost.directory(),
-                                               guid = app.audio.guid, db, id] {
-            auto error = id == BassApply ? fg::OutputBass::apply(directory, guid, db)
-                                         : fg::OutputBass::disable(directory);
-            return error.empty()
-                       ? std::wstring(id == BassApply
-                                          ? L"Bass configured with matching headroom compensation. "
-                                            L"Verify playback with APO enabled."
-                                          : L"Framoryx bass disabled. Other effects are unchanged.")
-                       : error;
-        });
+        bool queued = app.effectWorker.submit(
+            [directory = app.boost.directory(), guid = app.audio.guid, db, id] {
+                auto error = id == BassApply ? fg::OutputBass::apply(directory, guid, db)
+                                             : fg::OutputBass::disable(directory);
+                return error.empty()
+                           ? std::wstring(
+                                 id == BassApply
+                                     ? L"Bass configured with matching headroom compensation. "
+                                       L"Verify playback with APO enabled."
+                                     : L"Framoryx bass disabled. Other effects are unchanged.")
+                           : error;
+            },
+            2);
         app.audioNotice =
             queued ? L"Updating bass enhancement…" : L"Audio queue is busy. Try again shortly.";
     } else

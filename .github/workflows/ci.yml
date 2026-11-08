@@ -53,11 +53,25 @@ jobs:
             Write-Output "Page $page passed all five maximize/percentage/restore checks."
           }
       - name: Check graphics and capture on the isolated runner
-        timeout-minutes: 8
+        timeout-minutes: 12
         shell: pwsh
         run: |
           $toolchain=(Resolve-Path './work/build/toolchain/llvm-mingw-20261104-ucrt-x86_64/bin').Path
-          ./dist/Framoryx/source/validate.ps1 -ToolchainBin $toolchain -BuildDirectory ./work/graphics-validation -IncludeGraphicsTests -SoakSeconds 120
+          ./dist/Framoryx/source/validate.ps1 -ToolchainBin $toolchain -BuildDirectory ./work/graphics-validation -IncludeGraphicsTests -SoakSeconds 180 -IncludeAudioNetworkTests
+      - name: Check complete feature flows and capture native UI previews
+        timeout-minutes: 8
+        shell: pwsh
+        run: ./scripts/check-features.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: Framoryx-Feature-Reports
+          path: |
+            work/feature-reports/*.json
+            work/feature-reports/*.png
+            work/feature-reports/*.csv
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Framoryx-Windows-x64

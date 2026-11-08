@@ -24,7 +24,6 @@ class GainWorker {
         {
             std::lock_guard lock(mutex);
             stopped = true;
-            pending.reset();
         }
         wake.notify_one();
         if (worker.joinable())
@@ -39,15 +38,14 @@ class GainWorker {
             try {
                 worker = std::thread([this] {
                     std::unique_lock lock(mutex);
-                    while (!stopped) {
+                    for (;;) {
                         wake.wait(lock, [this] { return stopped || pending.has_value(); });
-                        if (stopped)
+                        if (!pending)
                             break;
                         // Coalesce rapid slider updates without blocking the window thread.
-                        wake.wait_for(lock, std::chrono::milliseconds(100),
-                                      [this] { return stopped; });
-                        if (stopped)
-                            break;
+                        if (!stopped)
+                            wake.wait_for(lock, std::chrono::milliseconds(100),
+                                          [this] { return stopped; });
                         auto request = *pending;
                         pending.reset();
                         writing = true;
@@ -76,6 +74,8 @@ class GainWorker {
     }
     std::optional<std::wstring> takeResult() {
         std::lock_guard lock(mutex);
+        if (writing || pending)
+            return {};
         auto out = result;
         result.reset();
         return out;
@@ -89,7 +89,11 @@ class AudioEffectWorker {
     std::thread worker;
     std::mutex mutex;
     std::condition_variable wake;
-    std::deque<std::function<std::wstring()>> queue;
+    struct Work {
+        int category;
+        std::function<std::wstring()> task;
+    };
+    std::deque<Work> queue;
     std::optional<std::wstring> result;
     bool stopped = false, writing = false;
 
@@ -98,28 +102,32 @@ class AudioEffectWorker {
         {
             std::lock_guard lock(mutex);
             stopped = true;
-            queue.clear();
         }
         wake.notify_one();
         if (worker.joinable())
             worker.join();
     }
-    bool submit(std::function<std::wstring()> task) {
+    bool submit(std::function<std::wstring()> task, int category = 0) {
         {
             std::lock_guard lock(mutex);
-            if (stopped || queue.size() >= 8)
+            if (stopped)
                 return false;
-            queue.push_back(std::move(task));
+            if (category)
+                std::erase_if(queue,
+                              [category](const Work& work) { return work.category == category; });
+            if (queue.size() >= 8)
+                return false;
+            queue.push_back({category, std::move(task)});
         }
         if (!worker.joinable())
             try {
                 worker = std::thread([this] {
                     std::unique_lock lock(mutex);
-                    while (!stopped) {
+                    for (;;) {
                         wake.wait(lock, [this] { return stopped || !queue.empty(); });
-                        if (stopped)
+                        if (queue.empty())
                             break;
-                        auto task = std::move(queue.front());
+                        auto task = std::move(queue.front().task);
                         queue.pop_front();
                         writing = true;
                         lock.unlock();
@@ -150,6 +158,8 @@ class AudioEffectWorker {
     }
     std::optional<std::wstring> takeResult() {
         std::lock_guard lock(mutex);
+        if (writing || !queue.empty())
+            return {};
         auto out = std::move(result);
         result.reset();
         return out;

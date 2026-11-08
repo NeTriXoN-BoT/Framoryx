@@ -38,6 +38,7 @@ intptr_t host(Effect*, int op, int, intptr_t, void*, float) {
     return 0;
 }
 int wmain(int argc, wchar_t** argv) {
+    SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX|SEM_NOOPENFILEERRORBOX);
     if (argc != 2)
         return 2;
     auto library = LoadLibraryExW(
