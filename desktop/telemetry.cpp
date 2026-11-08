@@ -17,6 +17,7 @@
 #include <pdhmsg.h>
 #include <wbemidl.h>
 #include <oleauto.h>
+#include <powrprof.h>
 #include <QElapsedTimer>
 #endif
 namespace {
@@ -36,6 +37,19 @@ class HardwareBackend {
     PDH_HQUERY query=nullptr;PDH_HCOUNTER engineCounter=nullptr,memoryCounter=nullptr;
     QString adapterName,adapterLuid;double adapterMemory=0;bool adapterTried=false;
     int sensorRetry=0;
+    HMODULE powerModule=nullptr;bool powerTried=false;
+    void windowsCpuClock(QVariantMap& values){
+        if(!powerTried){powerTried=true;powerModule=LoadLibraryExW(L"powrprof.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32);}
+        if(!powerModule)return;
+        const auto queryPower=reinterpret_cast<decltype(&CallNtPowerInformation)>(GetProcAddress(powerModule,"CallNtPowerInformation"));if(!queryPower)return;
+        // PROCESSOR_POWER_INFORMATION's documented ABI; some SDKs omit its declaration.
+        struct ProcessorPowerState{ULONG number,maxMhz,currentMhz,limit,maxIdle,currentIdle;};static_assert(sizeof(ProcessorPowerState)==24);
+        SYSTEM_INFO system{};GetSystemInfo(&system);if(!system.dwNumberOfProcessors||system.dwNumberOfProcessors>4096)return;
+        std::vector<ProcessorPowerState> processors(system.dwNumberOfProcessors);
+        if(queryPower(ProcessorInformation,nullptr,0,processors.data(),ULONG(processors.size()*sizeof(ProcessorPowerState)))!=0)return;
+        double total=0;unsigned count=0;for(const auto& processor:processors)if(processor.currentMhz>0&&processor.currentMhz<=10000){total+=processor.currentMhz;++count;}
+        if(count)values["cpuClock"]=total/count;
+    }
     void windowsCpuTemperature(QVariantMap& values){
         if(sensorRetry>0){--sensorRetry;return;}
         const HRESULT initialized=CoInitializeEx(nullptr,COINIT_MULTITHREADED);if(FAILED(initialized))return;
@@ -165,6 +179,7 @@ public:
         if(initialized){const auto shutdown=reinterpret_cast<int(*)()>(nvml.resolve("nvmlShutdown"));if(shutdown)shutdown();}
 #ifdef Q_OS_WIN
         if(query)PdhCloseQuery(query);
+        if(powerModule)FreeLibrary(powerModule);
 #endif
     }
     QVariantMap read(){auto result=empty();if(sys!="/sys"){sysfs(result);return result;}
@@ -175,6 +190,7 @@ public:
 #endif
         nvidia(result);
 #ifdef Q_OS_WIN
+        windowsCpuClock(result);
         windowsCpuTemperature(result);
 #endif
         return result;

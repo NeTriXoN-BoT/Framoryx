@@ -44,7 +44,7 @@ ColumnLayout {
         GridLayout {
             Layout.fillWidth: true; columns: page.width>Theme.px(1050)?4:2; columnSpacing: Theme.px(12); rowSpacing: Theme.px(12)
             Repeater {
-                model: [{key:"gpu",name:"GPU usage",unit:"%",note:"Device-wide load"},{key:"vramPercent",name:"VRAM usage",unit:"%",note:"Dedicated memory"},{key:"gpuTemp",name:"GPU temperature",unit:" °C",note:"Driver temperature sensor"},{key:"cpuTemp",name:"CPU temperature",unit:" °C",note:"Hottest available CPU sensor"},{key:"gpuPower",name:"GPU power",unit:" W",note:"Reported device power"},{key:"gpuClock",name:"GPU clock",unit:" MHz",note:"Graphics clock"},{key:"gpuFan",name:"GPU fan",unit:"%",note:"Driver-reported fan speed"},{key:"cpuClock",name:"CPU clock",unit:" MHz",note:"Average exposed core clock"}]
+                model: [{key:"gpu",name:"GPU usage",unit:"%",note:"Device-wide load"},{key:"vramPercent",name:"VRAM usage",unit:"%",note:"Dedicated memory"},{key:"gpuTemp",name:"GPU temperature",unit:" °C",note:"Driver temperature sensor"},{key:"cpuTemp",name:"CPU temperature",unit:" °C",note:"Hottest available CPU sensor"},{key:"gpuPower",name:"GPU power",unit:" W",note:"Reported device power"},{key:"gpuClock",name:"GPU clock",unit:" MHz",note:"Graphics clock"},{key:"gpuFan",name:"GPU fan",unit:"%",note:"Driver-reported fan speed"},{key:"cpuClock",name:"CPU clock",unit:" MHz",note:"Reported average core clock"}]
                 Metric {
                     required property var modelData
                     Layout.fillWidth: true
