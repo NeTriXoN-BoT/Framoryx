@@ -55,6 +55,7 @@ ColumnLayout {
         }
         Text { text: typeof app.state.vramUsed==="number"&&typeof app.state.vramTotal==="number"?Number(app.state.vramUsed).toFixed(1)+" / "+Number(app.state.vramTotal).toFixed(1)+" GB dedicated GPU memory":"Dedicated GPU memory capacity is unavailable."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
         Text { text: app.state.sensorSource||"Sensors are read in the background. Unsupported values remain unavailable."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        RowLayout { visible: app.platformName==="Windows"; Layout.fillWidth: true; FButton { text: "Temperature setup"; quiet: true; onClicked: app.action("sensorGuide") } Text { text: "CPU temperatures can use an existing Libre Hardware Monitor WMI provider. Framoryx does not install a sensor driver."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap } }
     }
     FCard {
         Layout.fillWidth: true

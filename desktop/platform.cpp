@@ -21,12 +21,15 @@
 #include <QTimer>
 #include <QUrl>
 #include <cmath>
+#include <QtConcurrent>
+#include <QFutureWatcher>
 #ifndef Q_OS_WIN
 #include "vendor/miniz/miniz.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <linux/falloc.h>
 #include "passive_linux.hpp"
+#include "noise_cache.hpp"
 #else
 class PassiveCapture {};
 #endif
@@ -46,7 +49,15 @@ bool allowed(const QVariantMap& options,const QString& name){if(denied(options,n
 Platform::Platform(Controller* controller):QObject(controller),c(controller){
     m_optionTimer.setInterval(75);m_optionTimer.setSingleShot(true);connect(&m_optionTimer,&QTimer::timeout,this,&Platform::flushOptions);
     m_volumeTimer.setSingleShot(true);m_volumeTimer.setInterval(45);
-    connect(&m_volumeTimer,&QTimer::timeout,this,[this]{
+    connect(&m_volumeTimer,&QTimer::timeout,this,&Platform::flushVolume);
+    for(auto* process:{&m_mic,&m_output}){
+        connect(process,&QProcess::started,this,[this,process]{if(m_expectedStops.contains(process)||m_pendingAudio.contains(process))process->terminate();});
+        connect(process,&QProcess::readyReadStandardError,this,[this,process]{auto error=process->readAllStandardError();if(error.size()>4096)error=error.right(4096);c->setState(process==&m_mic?"micDiagnostic":"outputDiagnostic",QString::fromUtf8(error));});
+        connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this,process](int code,QProcess::ExitStatus){c->setState(process==&m_mic?"micConfigured":"bassConfigured",false);const bool expected=m_expectedStops.remove(process);if(code&&!m_closing&&!expected&&!m_pendingAudio.contains(process))c->notify("An audio filter stopped. Open Audio setup to inspect its status.","warning");if(m_pendingAudio.contains(process)&&!m_closing)QTimer::singleShot(0,this,[this,process]{startAudio(process);});});
+    }
+}
+void Platform::flushVolume(){
+    m_volumeTimer.stop();
 #ifdef Q_OS_WIN
         send({{"action","volume"},{"value",c->m_options["volume"].toInt()}});
 #else
@@ -54,11 +65,6 @@ Platform::Platform(Controller* controller):QObject(controller),c(controller){
         const double volume=c->m_options["volume"].toInt()/100.;
         command(exe("wpctl"),{"set-volume","-l","2.0","@DEFAULT_AUDIO_SINK@",QString::number(volume,'f',2)},[this](int code,QByteArray){if(code)c->notify("The output volume could not be changed. Check your audio session.","warning");});
 #endif
-    });
-    for(auto* process:{&m_mic,&m_output}){
-        connect(process,&QProcess::readyReadStandardError,this,[this,process]{auto error=process->readAllStandardError();if(error.size()>4096)error=error.right(4096);c->setState(process==&m_mic?"micDiagnostic":"outputDiagnostic",QString::fromUtf8(error));});
-        connect(process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this,process](int code,QProcess::ExitStatus){c->setState(process==&m_mic?"micConfigured":"bassConfigured",false);if(code&&!m_closing&&!m_pendingAudio.contains(process))c->notify("An audio filter stopped. Open Audio setup to inspect its status.","warning");if(m_pendingAudio.contains(process)&&!m_closing)QTimer::singleShot(0,this,[this,process]{startAudio(process);});});
-    }
 }
 Platform::~Platform(){shutdown();}
 void Platform::command(const QString& program,const QStringList& args,std::function<void(int,QByteArray)> complete,int timeout){
@@ -286,11 +292,11 @@ void Platform::borderless(bool restore){
     send({{"action",restore?"restore":"borderless"}});
 #endif
 }
-void Platform::linuxAudio(bool microphone){
+void Platform::linuxAudio(bool microphone,bool verified){
 #ifndef Q_OS_WIN
     if(exe("pipewire").isEmpty()){c->notify("PipeWire is required for audio effects. Open Setup for installation guidance.","warning");return;}
     const auto& o=c->m_options;const QString plugin=c->root()+"/rnnoise/librnnoise_ladspa.so";
-    if(microphone&&o["noise"].toBool()&&!QFileInfo::exists(plugin)){c->setState("pendingMic",true);updateNoise(false);c->notify("Preparing RNNoise. Microphone effects will apply when the verified plugin is ready.");return;}
+    if(microphone&&o["noise"].toBool()&&!verified){c->setState("pendingMic",true);updateNoise(false);c->notify("Preparing RNNoise. Microphone effects will apply when the verified plugin is ready.");return;}
     QJsonArray nodes,links;QString previous,first;
     auto add=[&](QString name,QString label,QJsonObject controls,QString type="builtin"){
         QJsonObject node{{"type",type},{"name",name},{"label",label},{"control",controls}};if(type=="ladspa")node["plugin"]=plugin;
@@ -345,49 +351,53 @@ void Platform::updateNoise(bool force){
     send({{"action","noiseUpdate"},{"force",force}});
 #else
     if(c->m_state["noiseBusy"].toBool())return;
-    const QString base=c->root()+"/rnnoise",plugin=base+"/librnnoise_ladspa.so";
-    const auto verified=[&](){QFile f(plugin);if(!f.open(QIODevice::ReadOnly)||f.size()>32*1024*1024)return false;return QCryptographicHash::hash(f.readAll(),QCryptographicHash::Sha256).toHex()=="ba2b420c76cd2f1e7684430c96fef8c533041d5f67b94060f8eeda6af1701f97";};
-    if(!force&&verified()){c->setState("noiseStatus","RNNoise v1.10 ready · verified official Linux plugin");if(c->m_state["pendingMic"].toBool()){c->setState("pendingMic",false);linuxAudio(true);}return;}
-    c->setState("noiseBusy",true);c->setState("noiseStatus","Checking the latest official Linux RNNoise release…");
+    c->setState("noiseBusy",true);c->setState("noiseStatus","Verifying the installed RNNoise plugin…");
+    auto watcher=new QFutureWatcher<QVariantMap>(this);const auto directory=c->root()+"/rnnoise";
+    connect(watcher,&QFutureWatcher<QVariantMap>::finished,this,[this,watcher,force]{const auto cached=watcher->result();watcher->deleteLater();
+        const auto age=QDateTime::currentSecsSinceEpoch()-cached["checkedAt"].toLongLong();
+        if(cached["ok"].toBool()&&!force&&age>=0&&age<6*60*60){c->setState("noiseBusy",false);c->setState("noiseStatus","RNNoise "+cached["version"].toString()+" ready · verified official Linux plugin");if(c->m_state["pendingMic"].toBool()){c->setState("pendingMic",false);linuxAudio(true,true);}return;}
+        beginNoiseDownload(cached);
+    });watcher->setFuture(QtConcurrent::run(verifiedNoiseCache,directory));
+#endif
+}
+void Platform::beginNoiseDownload(const QVariantMap& cached){
+#ifndef Q_OS_WIN
+    const QString base=c->root()+"/rnnoise";
+    auto fail=[this,cached](const QString& text){if(m_closing)return;c->setState("noiseBusy",false);c->setState("noiseStatus",cached["ok"].toBool()?text+" Verified cached "+cached["version"].toString()+" remains ready.":text);if(cached["ok"].toBool()&&c->m_state["pendingMic"].toBool()){c->setState("pendingMic",false);linuxAudio(true,true);}else c->setState("pendingMic",false);};
+    c->setState("noiseStatus","Checking the latest official Linux RNNoise release…");
     auto fetch=std::make_shared<std::function<void(QUrl,int,qint64,std::function<void(QByteArray)>)>>();
     const std::weak_ptr<std::function<void(QUrl,int,qint64,std::function<void(QByteArray)>)>> weakFetch=fetch;
-    *fetch=[this,weakFetch](QUrl url,int redirects,qint64 limit,std::function<void(QByteArray)> done){
+    *fetch=[this,weakFetch,fail](QUrl url,int redirects,qint64 limit,std::function<void(QByteArray)> done){
         const auto fetch=weakFetch.lock();if(!fetch)return;
         const QStringList hosts{"api.github.com","github.com","release-assets.githubusercontent.com","objects.githubusercontent.com"};
-        auto fail=[this](const QString& text){c->setState("noiseBusy",false);c->setState("pendingMic",false);c->setState("noiseStatus",text);c->notify(text,"warning");};
-        if(url.scheme()!="https"||!hosts.contains(url.host())||!url.userInfo().isEmpty()||redirects>5){fail("RNNoise update refused an unexpected download location. The existing plugin was kept.");return;}
+        if(url.scheme()!="https"||!hosts.contains(url.host())||!url.userInfo().isEmpty()||redirects>5){fail("RNNoise update refused an unexpected download location.");return;}
         QNetworkRequest request(url);request.setHeader(QNetworkRequest::UserAgentHeader,"Framoryx/0.3");request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,QNetworkRequest::ManualRedirectPolicy);request.setTransferTimeout(20000);
         auto reply=m_network.get(request);auto data=std::make_shared<QByteArray>();
         connect(reply,&QIODevice::readyRead,this,[reply,data,limit]{*data+=reply->readAll();if(data->size()>limit)reply->abort();});
         connect(reply,&QNetworkReply::finished,this,[this,reply,data,limit,redirects,done,fetch,fail]{
             *data+=reply->readAll();const auto redirect=reply->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl();const int code=reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();const auto destination=reply->url().resolved(redirect);const auto error=reply->error();reply->deleteLater();
             if(code>=300&&code<400&&!redirect.isEmpty()){(*fetch)(destination,redirects+1,limit,done);return;}
-            if(error!=QNetworkReply::NoError||code!=200||data->size()>limit){fail("RNNoise update could not finish. Check your connection; the existing plugin was kept.");return;}
-            done(*data);
+            if(error!=QNetworkReply::NoError||code!=200||data->size()>limit){fail("RNNoise update could not finish. Check your connection.");return;}done(*data);
         });
     };
-    (*fetch)(QUrl("https://api.github.com/repos/werman/noise-suppression-for-voice/releases/latest"),0,2*1024*1024,[this,fetch,base,plugin](QByteArray bytes){
+    (*fetch)(QUrl("https://api.github.com/repos/werman/noise-suppression-for-voice/releases/latest"),0,2*1024*1024,[this,fetch,base,cached,fail](QByteArray bytes){
         const auto release=QJsonDocument::fromJson(bytes).object();const auto version=release["tag_name"].toString();QJsonObject asset;
         for(const auto& value:release["assets"].toArray())if(value.toObject()["name"]=="linux-rnnoise.zip")asset=value.toObject();
         QString digest=asset["digest"].toString();if(version=="v1.10")digest="sha256:811390b6eb6e28dde023c70590c74d26e74ebb2e595bcf4b95af2341db160e99";
-        if(asset.isEmpty()||!digest.startsWith("sha256:")||digest.size()!=71||release["prerelease"].toBool()||release["draft"].toBool()){c->setState("noiseBusy",false);c->setState("pendingMic",false);c->setState("noiseStatus","The latest release could not be verified. Your installed plugin is unchanged.");return;}
-        c->setState("noiseStatus","Downloading and verifying official Linux RNNoise…");
-        (*fetch)(QUrl(asset["browser_download_url"].toString()),0,64*1024*1024,[this,base,plugin,digest,version](QByteArray archive){
-            auto fail=[this]{c->setState("noiseBusy",false);c->setState("pendingMic",false);c->setState("noiseStatus","Plugin verification failed. The existing audio configuration was kept.");};
-            if(QCryptographicHash::hash(archive,QCryptographicHash::Sha256).toHex()!=digest.mid(7).toLatin1()){fail();return;}
-            mz_zip_archive zip{};if(!mz_zip_reader_init_mem(&zip,archive.constData(),archive.size(),0)){fail();return;}
-            QByteArray binary;
-            for(mz_uint i=0;i<mz_zip_reader_get_num_files(&zip);++i){mz_zip_archive_file_stat stat{};if(!mz_zip_reader_file_stat(&zip,i,&stat))continue;const QString name=QString::fromUtf8(stat.m_filename);if(!name.endsWith("/ladspa/librnnoise_ladspa.so")||stat.m_uncomp_size>32*1024*1024||stat.m_uncomp_size<64)continue;binary.resize(qsizetype(stat.m_uncomp_size));if(!mz_zip_reader_extract_to_mem(&zip,i,binary.data(),binary.size(),0))binary.clear();break;}
-            mz_zip_reader_end(&zip);
-            if(binary.size()<64||binary.left(4)!=QByteArray("\x7f" "ELF",4)||quint8(binary[4])!=2||quint8(binary[18])!=62){fail();return;}
-            if(version=="v1.10"&&QCryptographicHash::hash(binary,QCryptographicHash::Sha256).toHex()!="ba2b420c76cd2f1e7684430c96fef8c533041d5f67b94060f8eeda6af1701f97"){fail();return;}
-            QDir().mkpath(base);if(!writeFile(plugin,binary)){fail();return;}
-            const QVariantMap record{{"version",version},{"sha256",QString::fromLatin1(QCryptographicHash::hash(binary,QCryptographicHash::Sha256).toHex())}};writeFile(base+"/verified.json",json(record));
-            c->setState("noiseBusy",false);c->setState("noiseStatus","RNNoise "+version+" ready · verified official Linux plugin");if(c->m_state["pendingMic"].toBool()){c->setState("pendingMic",false);linuxAudio(true);}
+        if(asset.isEmpty()||!QRegularExpression("^sha256:[0-9a-f]{64}$").match(digest).hasMatch()||release["prerelease"].toBool()||release["draft"].toBool()){fail("The latest release could not be verified.");return;}
+        if(cached["ok"].toBool()&&cached["version"]==version&&cached["archiveSha256"]==digest.mid(7)){auto updated=cached;updated["checkedAt"]=QDateTime::currentSecsSinceEpoch();writeFile(base+"/verified.json",json(updated));c->setState("noiseBusy",false);c->setState("noiseStatus","RNNoise "+version+" is current · verified official plugin");if(c->m_state["pendingMic"].toBool()){c->setState("pendingMic",false);linuxAudio(true,true);}return;}
+        c->setState("noiseStatus","Downloading the latest verified Linux RNNoise plugin…");
+        (*fetch)(QUrl(asset["browser_download_url"].toString()),0,64*1024*1024,[this,base,digest,version,fail](QByteArray archive){
+            c->setState("noiseStatus","Preparing RNNoise in the background…");auto watcher=new QFutureWatcher<QVariantMap>(this);
+            connect(watcher,&QFutureWatcher<QVariantMap>::finished,this,[this,watcher,fail]{const auto result=watcher->result();watcher->deleteLater();if(!result["ok"].toBool()){fail("Plugin verification failed; the existing audio configuration was kept.");return;}c->setState("noiseBusy",false);c->setState("noiseStatus","RNNoise "+result["version"].toString()+" ready · verified official Linux plugin");if(c->m_state["pendingMic"].toBool()){c->setState("pendingMic",false);linuxAudio(true,true);}});
+            watcher->setFuture(QtConcurrent::run(installNoiseArchive,base,archive,digest.mid(7),version));
         });
     });
+#else
+    Q_UNUSED(cached);
 #endif
 }
+
 void Platform::action(const QString& name,const QVariantMap& args){
     if(name=="telemetry"){
 #ifdef Q_OS_WIN
@@ -417,7 +427,7 @@ void Platform::action(const QString& name,const QVariantMap& args){
     if(name=="overlay"){c->setState("overlay",!c->m_state["overlay"].toBool());applyOptions("fields");c->notify(c->m_state["overlay"].toBool()?"Overlay enabled for monitored launches. Reload it with Shift+F4 in a running game.":"Overlay hidden for monitored launches. Reload it with Shift+F4 in a running game.");return;}
     if(name=="micApply"){linuxAudio(true);return;}
     if(name=="bassApply"){linuxAudio(false);return;}
-    if(name=="micDisable"||name=="bassDisable"){auto process=name=="micDisable"?&m_mic:&m_output;m_pendingAudio.remove(process);++m_audioGeneration[process];process->terminate();c->setState(name=="micDisable"?"micConfigured":"bassConfigured",false);c->setState("pendingMic",false);c->notify("The selected Framoryx effects are disabled.");return;}
+    if(name=="micDisable"||name=="bassDisable"){auto process=name=="micDisable"?&m_mic:&m_output;m_pendingAudio.remove(process);++m_audioGeneration[process];m_expectedStops.insert(process);process->terminate();c->setState(name=="micDisable"?"micConfigured":"bassConfigured",false);c->setState("pendingMic",false);c->notify("The selected Framoryx effects are disabled.");return;}
     if(name=="defaultMic"||name=="defaultOutput"){const QString target=name=="defaultMic"?"framoryx_mic":"framoryx_output";for(const auto& value:c->m_state["audioNodes"].toList()){const auto node=value.toMap();if(node["name"]==target){command(exe("wpctl"),{"set-default",node["id"].toString()},[this](int code,QByteArray){c->notify(code?"The default audio device could not be changed.":"Framoryx is now the default audio device.",code?"warning":"info");});return;}}c->notify("Apply this effect first, then choose its virtual device.");return;}
     if(name=="shortcut"){const QString folder=QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);if(folder.isEmpty()){c->notify("No desktop folder is configured. Framoryx is available in your app launcher.");return;}const QString program=QCoreApplication::applicationFilePath();QByteArray entry="[Desktop Entry]\nType=Application\nName=Framoryx\nExec=\""+QFile::encodeName(program).replace("\"","\\\"")+"\"\nIcon=io.framoryx.Framoryx\nTerminal=false\nCategories=Game;Utility;\n";const QString path=folder+"/Framoryx.desktop";if(writeFile(path,entry)){QFile::setPermissions(path,QFile::permissions(path)|QFile::ExeOwner);c->notify("Desktop shortcut created. Your desktop may ask you to trust the launcher once.");}else c->notify("The desktop shortcut could not be created.","warning");return;}
     if(name=="fixture"){const QString scene=QCoreApplication::applicationDirPath()+"/FramoryxScene";c->addGame(QUrl::fromLocalFile(scene),"Framoryx test scene","");linuxLaunch();return;}
@@ -426,13 +436,14 @@ void Platform::action(const QString& name,const QVariantMap& args){
 #endif
 }
 void Platform::shutdown(){
-    if(m_closing)return;m_closing=true;m_scanTimer.stop();m_volumeTimer.stop();m_optionTimer.stop();
+    if(m_closing)return;if(m_volumeTimer.isActive())flushVolume();if(m_optionTimer.isActive())flushOptions();m_closing=true;c->setState("pendingMic",false);for(auto reply:m_network.findChildren<QNetworkReply*>()){reply->disconnect(this);reply->abort();}for(auto child:children())child->disconnect(this);m_scanTimer.stop();m_volumeTimer.stop();m_optionTimer.stop();
 #ifdef Q_OS_WIN
     send({{"action","quit"}});m_engine.closeWriteChannel();if(!m_engine.waitForFinished(2500)){m_engine.terminate();if(!m_engine.waitForFinished(500))m_engine.kill();}
 #else
     for(const auto& id:m_windowRestores.keys())command(exe("wmctrl"),{"-ir",id,"-b","remove,fullscreen"});
     for(auto process:{&m_mic,&m_output}){process->terminate();if(!process->waitForFinished(1000))process->kill();}
     if(m_passive)m_passive->stop();
+    for(auto process:m_commands){if(process->state()!=QProcess::NotRunning&&!process->waitForFinished(250)){process->kill();process->waitForFinished(100);}}
     // A user's game keeps running when the control application closes.
     m_game.disconnect(this);
 #endif

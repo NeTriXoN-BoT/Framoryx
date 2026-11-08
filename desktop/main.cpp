@@ -31,6 +31,10 @@
 #include <dwmapi.h>
 #endif
 
+QQuickItem* findVisual(QQuickWindow* window,const QString& name){
+    QList<QQuickItem*> pending{window->contentItem()};int visited=0;
+    while(!pending.isEmpty()&&visited++<16384){auto item=pending.takeLast();if(item->objectName()==name)return item;pending.append(item->childItems());}return nullptr;
+}
 int main(int argc,char** argv){
 #ifdef Q_OS_WIN
     SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX|SEM_NOOPENFILEERRORBOX);
@@ -121,7 +125,7 @@ int main(int argc,char** argv){
             else if(*step==20){window->grabWindow().save(destination+"/studio-transparent.png");controller.setOption("style",4);controller.setOption("opacity",90);controller.setOption("accent",4);}
             else if(*step==21){window->grabWindow().save(destination+"/studio-dashboard.png");window->setProperty("page",2);controller.setOption("uiScale",100);}
             else if(*step==22){
-                auto item=window->findChild<QQuickItem*>("output-volume-slider");bool pass=item&&item->isVisible();QElapsedTimer elapsed;elapsed.start();
+                auto item=findVisual(window,"output-volume-slider");bool pass=item&&item->isVisible();QElapsedTimer elapsed;elapsed.start();
                 if(pass){auto send=[&](QEvent::Type type,qreal x,Qt::MouseButton button,Qt::MouseButtons buttons){const auto position=item->mapToScene(QPointF(x,item->height()/2));QMouseEvent event(type,position,QPointF(window->mapToGlobal(position.toPoint())),button,buttons,Qt::NoModifier);QCoreApplication::sendEvent(window,&event);};
                     send(QEvent::MouseButtonPress,8,Qt::LeftButton,Qt::LeftButton);
                     for(int i=0;i<120;++i)send(QEvent::MouseMove,8+(item->width()-16)*(i%40)/39.,Qt::NoButton,Qt::LeftButton);
@@ -132,7 +136,7 @@ int main(int argc,char** argv){
             }
             else if(*step==23){
                 bool pass=true;QElapsedTimer elapsed;elapsed.start();
-                for(int i=0;i<7;++i){auto item=window->findChild<QQuickItem*>(QString("navigation-%1").arg(i));if(!item){pass=false;continue;}const auto position=item->mapToScene(QPointF(item->width()/2,item->height()/2));const QPointF global(window->mapToGlobal(position.toPoint()));QMouseEvent press(QEvent::MouseButtonPress,position,global,Qt::LeftButton,Qt::LeftButton,Qt::NoModifier),release(QEvent::MouseButtonRelease,position,global,Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&press);QCoreApplication::sendEvent(window,&release);pass=pass&&window->property("page").toInt()==i;}
+                for(int i=0;i<7;++i){auto item=findVisual(window,QString("navigation-%1").arg(i));if(!item){pass=false;continue;}const auto position=item->mapToScene(QPointF(item->width()/2,item->height()/2));const QPointF global(window->mapToGlobal(position.toPoint()));QMouseEvent press(QEvent::MouseButtonPress,position,global,Qt::LeftButton,Qt::LeftButton,Qt::NoModifier),release(QEvent::MouseButtonRelease,position,global,Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&press);QCoreApplication::sendEvent(window,&release);pass=pass&&window->property("page").toInt()==i;}
                 (*interactions)["sevenTabSwitchesMs"]=elapsed.elapsed();(*interactions)["tabNavigationPassed"]=pass;(*interactions)["statePreserved"]=controller.options()["volume"].toInt()==200;
             }
             else if(*step==24){

@@ -29,6 +29,7 @@ private:
     std::unique_ptr<PassiveCapture> m_passive;
     bool attachPassive(bool explain=false);
     QString m_passiveName;quint32 m_passivePid=0;
+    QSet<QProcess*> m_expectedStops;
     QMap<QProcess*,QString> m_pendingAudio;
     QMap<QProcess*,quint64> m_audioGeneration;
     QString m_outputTarget;
@@ -44,6 +45,7 @@ private:
     QTimer m_scanTimer, m_volumeTimer, m_optionTimer;
     QSet<QString> m_pendingOptions;
     void flushOptions();
+    void flushVolume();
     QVariantMap m_windowRestores;
     QNetworkAccessManager m_network;
     bool m_closing = false, m_refreshing = false;
@@ -54,7 +56,8 @@ private:
     void linuxScan();
     void linuxLaunch();
     void readLog();
-    void linuxAudio(bool mic);
+    void linuxAudio(bool mic,bool verified=false);
     void updateNoise(bool force);
+    void beginNoiseDownload(const QVariantMap& cached);
     void borderless(bool restore);
 };

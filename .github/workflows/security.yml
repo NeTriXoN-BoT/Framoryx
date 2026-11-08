@@ -2,9 +2,9 @@ name: CodeQL security analysis
 on:
   push:
     branches: [main]
-    paths: ['source/**', 'scripts/**', '.github/workflows/security.yml']
+    paths: ['source/**', 'desktop/**', 'scripts/**', '.github/workflows/security.yml']
   pull_request:
-    paths: ['source/**', 'scripts/**', '.github/workflows/security.yml']
+    paths: ['source/**', 'desktop/**', 'scripts/**', '.github/workflows/security.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -40,3 +40,42 @@ jobs:
       - uses: github/codeql-action/analyze@5895b2c9be147bc7f1c75ce72c5cb577febb1907 # v4
         with:
           category: /language:cpp/native-windows
+  shared-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: linux_gcc_64
+          - os: windows-latest
+            arch: win64_msvc2022_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install Linux development dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libxcb-present-dev libpulse-dev libxkbcommon-x11-0 libxcb-cursor0
+      - uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06
+        with:
+          version: '6.8.3'
+          arch: ${{ matrix.arch }}
+          modules: qtmultimedia
+          cache: true
+      - uses: github/codeql-action/init@5895b2c9be147bc7f1c75ce72c5cb577febb1907
+        with:
+          languages: c-cpp
+          build-mode: manual
+          queries: security-extended
+      - name: Analyze the shared UI and platform integrations
+        shell: pwsh
+        run: |
+          cmake -S . -B build/desktop-security -DFRAMORYX_BUILD_DESKTOP=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/desktop-security --config Release --parallel 3
+      - uses: github/codeql-action/analyze@5895b2c9be147bc7f1c75ce72c5cb577febb1907
+        with:
+          category: /language:cpp/shared-desktop-${{ runner.os }}

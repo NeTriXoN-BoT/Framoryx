@@ -24,6 +24,7 @@ private:
     QByteArray m_recording;
     QBuffer m_playback;
     QTimer m_stop, m_meter;
+    quint64 m_generation=0;
     float m_peak = 0;
     void consume();
 };

@@ -15,6 +15,9 @@
 #include <dxgi1_2.h>
 #include <pdh.h>
 #include <pdhmsg.h>
+#include <wbemidl.h>
+#include <oleauto.h>
+#include <QElapsedTimer>
 #endif
 namespace {
 QByteArray readSmall(const QString& path){QFile file(path);if(!file.open(QIODevice::ReadOnly))return {};const auto data=file.read(4097);return data.size()<=4096?data.trimmed():QByteArray();}
@@ -32,12 +35,39 @@ class HardwareBackend {
 #ifdef Q_OS_WIN
     PDH_HQUERY query=nullptr;PDH_HCOUNTER engineCounter=nullptr,memoryCounter=nullptr;
     QString adapterName,adapterLuid;double adapterMemory=0;bool adapterTried=false;
+    int sensorRetry=0;
+    void windowsCpuTemperature(QVariantMap& values){
+        if(sensorRetry>0){--sensorRetry;return;}
+        const HRESULT initialized=CoInitializeEx(nullptr,COINIT_MULTITHREADED);if(FAILED(initialized))return;
+        struct Apartment{~Apartment(){CoUninitialize();}} apartment;
+        IWbemLocator* locator=nullptr;
+        if(FAILED(CoCreateInstance(CLSID_WbemLocator,nullptr,CLSCTX_INPROC_SERVER,IID_IWbemLocator,reinterpret_cast<void**>(&locator)))){sensorRetry=30;return;}
+        std::optional<double> hottest;
+        for(const auto space:{L"ROOT\\LibreHardwareMonitor",L"ROOT\\OpenHardwareMonitor"}){
+            BSTR path=SysAllocString(space);IWbemServices* service=nullptr;const auto connected=locator->ConnectServer(path,nullptr,nullptr,nullptr,WBEM_FLAG_CONNECT_USE_MAX_WAIT,nullptr,nullptr,&service);SysFreeString(path);if(FAILED(connected))continue;
+            CoSetProxyBlanket(service,RPC_C_AUTHN_WINNT,RPC_C_AUTHZ_NONE,nullptr,RPC_C_AUTHN_LEVEL_CALL,RPC_C_IMP_LEVEL_IMPERSONATE,nullptr,EOAC_NONE);
+            BSTR language=SysAllocString(L"WQL"),queryText=SysAllocString(L"SELECT Identifier, Value FROM Sensor WHERE SensorType='Temperature'");IEnumWbemClassObject* results=nullptr;
+            const auto queried=service->ExecQuery(language,queryText,WBEM_FLAG_FORWARD_ONLY|WBEM_FLAG_RETURN_IMMEDIATELY,nullptr,&results);SysFreeString(language);SysFreeString(queryText);
+            if(SUCCEEDED(queried)){
+                QElapsedTimer elapsed;elapsed.start();
+                for(int count=0;count<512&&elapsed.elapsed()<300;++count){IWbemClassObject* item=nullptr;ULONG returned=0;if(results->Next(40,1,&item,&returned)!=S_OK||returned!=1)break;
+                    VARIANT identifier,value;VariantInit(&identifier);VariantInit(&value);item->Get(L"Identifier",0,&identifier,nullptr,nullptr);item->Get(L"Value",0,&value,nullptr,nullptr);
+                    const QString id=identifier.vt==VT_BSTR&&SysStringLen(identifier.bstrVal)<4096?QString::fromWCharArray(identifier.bstrVal).toLower():QString();
+                    double temperature=-1;if(value.vt==VT_R4)temperature=value.fltVal;else if(value.vt==VT_R8)temperature=value.dblVal;
+                    if((id.startsWith("/intelcpu/")||id.startsWith("/amdcpu/")||id.startsWith("/cpu/"))&&std::isfinite(temperature)&&temperature>=0&&temperature<=150&&(!hottest||temperature>*hottest))hottest=temperature;
+                    VariantClear(&identifier);VariantClear(&value);item->Release();
+                }results->Release();
+            }service->Release();if(hottest)break;
+        }locator->Release();
+        if(hottest){values["cpuTemp"]=*hottest;values["cpuTempLabel"]="Hottest CPU sensor from an existing hardware-monitor WMI provider";values["sensorSource"]=values["sensorSource"].toString()+" CPU temperature is read from your existing hardware-monitor service.";}else sensorRetry=30;
+    }
+
     QList<QPair<QString,double>> counters(PDH_HCOUNTER counter){
         QList<QPair<QString,double>> result;if(!counter)return result;DWORD bytes=0,count=0;
         const DWORD flags=PDH_FMT_DOUBLE|PDH_FMT_NOCAP100;
         if(PdhGetFormattedCounterArrayW(counter,flags,&bytes,&count,nullptr)!=PDH_MORE_DATA||bytes>8*1024*1024)return result;
         std::vector<unsigned char> buffer(bytes);auto items=reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(buffer.data());
-        if(PdhGetFormattedCounterArrayW(counter,flags,&bytes,&count,items)!=ERROR_SUCCESS||count>32768)return result;
+        if(PdhGetFormattedCounterArrayW(counter,flags,&bytes,&count,items)!=ERROR_SUCCESS||count>32768||count>buffer.size()/sizeof(PDH_FMT_COUNTERVALUE_ITEM_W))return result;
         for(DWORD i=0;i<count;++i)if(items[i].FmtValue.CStatus==PDH_CSTATUS_VALID_DATA||items[i].FmtValue.CStatus==PDH_CSTATUS_NEW_DATA){const double value=items[i].FmtValue.doubleValue;if(std::isfinite(value)&&value>=0)result<<qMakePair(QString::fromWCharArray(items[i].szName).toLower(),value);}
         return result;
     }
@@ -141,7 +171,11 @@ public:
 #else
         sysfs(result);
 #endif
-        nvidia(result);return result;
+        nvidia(result);
+#ifdef Q_OS_WIN
+        windowsCpuTemperature(result);
+#endif
+        return result;
     }
 };
 Telemetry::Telemetry(QObject* parent):QObject(parent),m_backend(std::make_shared<HardwareBackend>()){

@@ -17,7 +17,7 @@ AudioMonitor::AudioMonitor(Controller* controller) : QObject(controller), m_cont
 AudioMonitor::~AudioMonitor(){stop();}
 void AudioMonitor::record(const QByteArray& id){
     stop();
-    QAudioDevice device = QMediaDevices::defaultAudioInput();
+    QAudioDevice device = id.isEmpty()?QMediaDevices::defaultAudioInput():QAudioDevice();
     for(const auto& candidate:QMediaDevices::audioInputs()) if(candidate.id()==id)device=candidate;
     if(device.isNull()){m_controller->notify("No microphone is available.","warning");return;}
     m_format=device.preferredFormat();
@@ -60,11 +60,13 @@ void AudioMonitor::play(){
     m_output=std::make_unique<QAudioSink>(device,m_format);
     m_playback.setData(m_recording);m_playback.open(QIODevice::ReadOnly);
     m_output->start(&m_playback);
-    connect(m_output.get(),&QAudioSink::stateChanged,this,[this](QAudio::State state){if(state==QAudio::IdleState)QTimer::singleShot(0,this,[this]{stop();});});
+    const auto generation=m_generation;
+    connect(m_output.get(),&QAudioSink::stateChanged,this,[this,generation](QAudio::State state){if(state==QAudio::IdleState&&generation==m_generation)QTimer::singleShot(0,this,[this,generation]{if(generation==m_generation)stop();});});
     m_controller->setState("playing",true);
     m_stop.start(6500);
 }
 void AudioMonitor::stop(){
+    ++m_generation;
     m_stop.stop();m_meter.stop();
     if(m_input){m_input->stop();m_input.reset();}m_stream=nullptr;
     if(m_output){m_output->stop();m_output.reset();}

@@ -5,6 +5,10 @@
 #include "process_catalog.hpp"
 #include "game_safety.hpp"
 #include "telemetry.hpp"
+#ifndef Q_OS_WIN
+#include "noise_cache.hpp"
+#include <QCryptographicHash>
+#endif
 #include "unlock.hpp"
 #include "presentation.hpp"
 #include <QtConcurrent>
@@ -66,7 +70,7 @@ Controller::Controller(QString root,bool testing,QObject* parent):QObject(parent
     m_safetyTimer.setInterval(10000);connect(&m_safetyTimer,&QTimer::timeout,this,[this]{assessCurrentGame(true);});
     if(!m_test){refreshDevices();m_platform->start();m_poll.start(250);m_safetyTimer.start();m_telemetry->start();}
 }
-Controller::~Controller(){m_poll.stop();m_audio->stop();m_platform->shutdown();save();}
+Controller::~Controller(){m_poll.stop();m_safetyTimer.stop();m_telemetry->disconnect(this);m_audio->stop();m_platform->shutdown();save();}
 QString Controller::platformName()const{
 #ifdef Q_OS_WIN
     return "Windows";
@@ -293,6 +297,7 @@ void Controller::action(const QString& name,const QVariantMap& args){
     if(name=="stopSample"){m_audio->stop();return;}
     if(name=="export"){writeCsv(QUrl(args["url"].toString()).toLocalFile());return;}
     if(name=="openConfig"){QDesktopServices::openUrl(QUrl::fromLocalFile(m_root));return;}
+    if(name=="sensorGuide"){QDesktopServices::openUrl(QUrl("https://github.com/LibreHardwareMonitor/LibreHardwareMonitor#readme"));return;}
     if(name=="guide"){QDesktopServices::openUrl(QUrl("https://github.com/NeTriXoN-BoT/Framoryx#readme"));return;}
     if(name=="release"){QDesktopServices::openUrl(QUrl("https://github.com/NeTriXoN-BoT/Framoryx/releases/latest"));return;}
     if(name=="quit"){emit quitRequested();return;}
@@ -330,6 +335,10 @@ bool Controller::selfTest(QString* error){
     addProcessRule("fixture.exe",false);if(!check(m_options["allow"].toStringList().contains("fixture.exe"),"Add a listed executable to allow rules"))return false;
     addProcessRule("fixture.exe",true);if(!check(processRuleStatus("fixture.exe")=="Blocked","A process block wins over allow rules"))return false;
     const auto allow=m_options["allow"];addProcessRule("dwm.exe",false);addProcessRule("unlisted.exe",false);if(!check(m_options["allow"]==allow,"Protect immutable and absent process names"))return false;
+#ifndef Q_OS_WIN
+    const QByteArray malformed("not a zip file");const auto digest=QString::fromLatin1(QCryptographicHash::hash(malformed,QCryptographicHash::Sha256).toHex());
+    if(!check(installNoiseArchive(m_root+"/invalid-plugin",malformed,digest,"v1.10").isEmpty()&&verifiedNoiseCache(m_root+"/invalid-plugin").isEmpty(),"Reject malformed plugin archives without installing code"))return false;
+#endif
     if(!check(Telemetry::selfTest(m_root,error),"Read sensor units and reject unavailable or invalid values"))return false;
     if(!check(changelog().size()==5,"Include the full offline release history"))return false;
     sampleFrames(QList<double>(120,16.666666),"Fixture",42);if(!check(m_state["fps"].toDouble()>50&&!m_graph.isEmpty(),"Compute real portable frame statistics"))return false;
