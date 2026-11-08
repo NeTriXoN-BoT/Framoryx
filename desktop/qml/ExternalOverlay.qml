@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Window
 Window {
     id: overlay
+    objectName: "FramoryxExternalOverlay"
+    transientParent: null
     color: "transparent"
     flags: Qt.Tool|Qt.FramelessWindowHint|Qt.WindowStaysOnTopHint|Qt.WindowTransparentForInput|Qt.WindowDoesNotAcceptFocus
     readonly property var display: app.state.overlayDisplay||({x:0,y:0,width:1920,height:1080,dpr:1})

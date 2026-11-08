@@ -27,7 +27,7 @@ QVariantList runningProcesses() {
     for(const auto& item:QDir("/proc").entryList(QDir::Dirs|QDir::NoDotAndDotDot)){
         bool ok=false;const auto pid=item.toUInt(&ok);if(!ok)continue;
         QString name=QFileInfo(QFileInfo("/proc/"+item+"/exe").symLinkTarget()).fileName();
-        if(name.isEmpty()){QFile comm("/proc/"+item+"/comm");if(comm.open(QIODevice::ReadOnly))name=QString::fromUtf8(comm.read(512)).trimmed();}
+        if(name.isEmpty()||name.startsWith("wine")){QFile comm("/proc/"+item+"/comm");if(comm.open(QIODevice::ReadOnly))name=QString::fromUtf8(comm.read(512)).trimmed();}
         append(pid,name);
     }
 #endif

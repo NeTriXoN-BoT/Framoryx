@@ -30,7 +30,7 @@ LARGE_INTEGER frequency{};
 thread_local bool inside = false;
 LONGLONG lastStart = 0;
 LONGLONG lastSuccessful = 0;
-uint64_t primaryPixels = 0;
+std::atomic<uint64_t> primaryPixels{0};
 HANDLE timer = nullptr;
 SRWLOCK paceLock = SRWLOCK_INIT;
 SRWLOCK renderLock = SRWLOCK_INIT;
@@ -45,6 +45,7 @@ ID3D11Device* guiDevice = nullptr;
 ID3D11DeviceContext* guiContext = nullptr;
 void* guiChain = nullptr;
 double smoothedFps = 0;
+LONGLONG adaptiveWakeGuard=0;
 LONGLONG previousDraw = 0;
 LONGLONG hudSampleQpc = 0, hudSampleFrames = 0, hudLastGraphFrame = 0;
 std::array<float, 120> hudTimes{};
@@ -370,6 +371,15 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
 LONGLONG pace(IDXGISwapChain* chain, UINT flags) {
     if (!enabled.load(std::memory_order_relaxed) || !control || (flags & DXGI_PRESENT_TEST))
         return 0;
+    // A secondary UI/video swapchain must not wait for the primary game's cap.
+    if(primary.load()&&primary.load()!=chain){
+        LARGE_INTEGER at{};QueryPerformanceCounter(&at);
+        if(at.QuadPart-primaryLast.load()<frequency.QuadPart*2){
+            DXGI_SWAP_CHAIN_DESC surface{};uint64_t pixels=0;
+            if(SUCCEEDED(chain->GetDesc(&surface))){UINT width=surface.BufferDesc.Width,height=surface.BufferDesc.Height;if(!width||!height){RECT rect{};GetClientRect(surface.OutputWindow,&rect);width=UINT(std::max(0L,rect.right));height=UINT(std::max(0L,rect.bottom));}pixels=uint64_t(width)*height;}
+            if(pixels<640*360||pixels<=primaryPixels.load()*3/2)return 0;
+        }
+    }
     AcquireSRWLockExclusive(&paceLock);
     struct Unlock {
         ~Unlock() {
@@ -420,12 +430,20 @@ LONGLONG pace(IDXGISwapChain* chain, UINT flags) {
             if (!timer)
                 timer = CreateWaitableTimerW(nullptr, FALSE, nullptr);
             auto remaining = deadline - now.QuadPart;
-            LONGLONG guard = std::min(frequency.QuadPart / 4000, step / 5);
+            const LONGLONG minimumGuard=std::max<LONGLONG>(1,frequency.QuadPart/4000);
+            const LONGLONG maximumGuard=std::max(minimumGuard,std::min(frequency.QuadPart/200,step/3));
+            LONGLONG guard=std::clamp(adaptiveWakeGuard?adaptiveWakeGuard:minimumGuard,minimumGuard,maximumGuard);
             if (timer && remaining > guard * 2) {
                 LARGE_INTEGER due{};
                 due.QuadPart = -((remaining - guard) * 10000000LL / frequency.QuadPart);
-                if (SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE))
+                if (SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)){
                     WaitForSingleObject(timer, 200);
+                    LARGE_INTEGER woke{};QueryPerformanceCounter(&woke);
+                    const auto oversleep=std::max<LONGLONG>(0,woke.QuadPart-(deadline-guard));
+                    // Learn this process's timer wakeup error rather than imposing a
+                    // global timer resolution or carrying each oversleep into every frame.
+                    adaptiveWakeGuard=std::clamp(std::max(oversleep+minimumGuard,guard*4/5),minimumGuard,maximumGuard);
+                }
             }
             do {
                 YieldProcessor();

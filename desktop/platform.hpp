@@ -38,6 +38,9 @@ private:
     QByteArray m_incoming;
     QString m_token, m_logFile;
     qint64 m_launchedPid = 0;
+    QString m_lastLaunchId,m_launchStart;
+    QMap<qint64,QString> m_fixtures;
+    void stopFixtures();
     bool m_monitoring = false;
     qint64 m_logOffset = 0;
     QByteArray m_logPending;

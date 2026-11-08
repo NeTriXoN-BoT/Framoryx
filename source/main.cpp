@@ -675,6 +675,10 @@ void attachHook(bool confirmed = false) {
         setNotice(L"Select a specific game window before enabling the experimental limiter.");
         return;
     }
+    const auto renderer=fg::inspectCompatibility(t->hwnd,t->exe);
+    if(renderer.inspected&&!renderer.dxgi&&(renderer.vulkan||renderer.opengl||renderer.dx9)){
+        setNotice(L"This renderer uses the external overlay. Framoryx's optional Windows in-game limiter currently supports DX11/DX12; use the game's own frame limit for this API.");return;
+    }
     if (!updateCap())
         return;
     if (app.rules.blocked(t->exe)) {
@@ -1741,7 +1745,7 @@ void update() {
     auto profileName = t ? t->exe : app.autoExe;
     if (app.activeProfile != fg::lower(profileName))
         applyProfile(profileName);
-    if (app.selectedPid != app.compatibilityPid || (app.page == 6 && app.tick % 20 == 0)) {
+    if (app.selectedPid != app.compatibilityPid || ((app.page == 6 || app.engineMode) && app.tick % 20 == 0)) {
         app.compatibility = fg::inspectCompatibility(targetWindow, profileName);
         app.compatibilityPid = app.selectedPid;
         if (app.page == 6)

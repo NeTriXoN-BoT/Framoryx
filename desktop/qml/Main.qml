@@ -30,7 +30,7 @@ ApplicationWindow {
     function choosePage(index){page=index}
     onActiveChanged: app.setWindowActive(active)
     onClosing: function(close){if(!app.testMode&&app.options.closeToTray&&app.state.trayAvailable){close.accepted=false;app.action("hideToTray")}else app.action("quit")}
-    onVisibilityChanged: if(visibility===Window.Minimized&&!app.testMode&&app.options.minimizeToTray&&app.state.trayAvailable)app.action("hideToTray")
+    onVisibilityChanged: function(visibility){if(visibility===Window.Minimized&&!app.testMode&&app.options.minimizeToTray&&app.state.trayAvailable)app.action("hideToTray")}
     property int warmedPages: 0
     Timer { interval: 220; repeat: true; running: window.warmedPages<7; onTriggered: window.warmedPages++ }
     RowLayout {
@@ -66,7 +66,7 @@ ApplicationWindow {
                         implicitHeight: Theme.px(46)
                         quiet: window.page!==index
                         onClicked: {window.page=index;if(index===2)app.action("audioOpen");if(index===4)app.refreshProcesses()}
-                        background: Rectangle { color: window.page===index?"#1b3b35":parent.hovered?"#172934":"transparent"; radius: Theme.px(10); border.width: parent.visualFocus?2:0; border.color: Theme.accent; Rectangle { visible: window.page===index; x: 0; y: 10; width: 3; height: parent.height-20; radius: 2; color: Theme.accent } Behavior on color { ColorAnimation { duration: Theme.duration } } }
+                        background: Rectangle { color: window.page===index?Qt.rgba(Theme.accent.r,Theme.accent.g,Theme.accent.b,.14):parent.hovered?"#172934":"transparent"; radius: Theme.px(10); border.width: parent.visualFocus?2:0; border.color: Theme.accent; Rectangle { visible: window.page===index; x: 0; y: 10; width: 3; height: parent.height-20; radius: 2; color: Theme.accent } Behavior on color { ColorAnimation { duration: Theme.duration } } }
                     }
                 }
                 Item { Layout.fillHeight: true }
@@ -92,7 +92,7 @@ ApplicationWindow {
                     ColumnLayout { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: Theme.px(28); width: parent.width-Theme.px(50); spacing: Theme.px(10)
                         Text { text: "FRAMORYX // PERFORMANCE SYSTEM"; color: Theme.accent; font.family: "monospace"; font.pixelSize: Theme.px(9); font.letterSpacing: 1.4 }
                         Item { Layout.fillWidth: true; implicitHeight: headline.implicitHeight
-                            Text { id: headline; width: parent.width-Theme.px(20); text: window.titles[window.page].toUpperCase(); color: Theme.text; font.family: app.platformName==="Windows"?"Cascadia Mono":"monospace"; font.pixelSize: Theme.px(25); font.weight: Font.DemiBold; font.letterSpacing: -.5; wrapMode: Text.Wrap }
+                            Text { id: headline; width: parent.width-Theme.px(20); text: window.titles[window.page].toUpperCase(); color: Theme.text; font.family: app.platformName==="Windows"?"Consolas":"monospace"; font.pixelSize: Theme.px(25); font.weight: Font.DemiBold; font.letterSpacing: -.5; wrapMode: Text.Wrap }
                             Rectangle { x: Math.min(headline.contentWidth,headline.width)+Theme.px(7); y: headline.height-Theme.px(25); width: Theme.px(11); height: Theme.px(24); color: Theme.accent; opacity: 1
                                 SequentialAnimation on opacity { running: Theme.motion&&visible; loops: Animation.Infinite; PauseAnimation { duration: 560 } NumberAnimation { to: 0; duration: 80 } PauseAnimation { duration: 360 } NumberAnimation { to: 1; duration: 80 } }
                             }

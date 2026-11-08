@@ -27,6 +27,7 @@
 #include "vendor/miniz/miniz.h"
 #include <fcntl.h>
 #include <unistd.h>
+#include <signal.h>
 #include <linux/falloc.h>
 #include "passive_linux.hpp"
 #include "noise_cache.hpp"
@@ -35,6 +36,7 @@ class PassiveCapture {};
 #endif
 namespace {
 QString exe(const QString& name){return QStandardPaths::findExecutable(name);}
+QString processStart(qint64 pid){QFile file(QString("/proc/%1/stat").arg(pid));if(!file.open(QIODevice::ReadOnly))return {};const auto bytes=file.read(4096);const int end=bytes.lastIndexOf(')');if(end<0)return {};const auto fields=bytes.mid(end+1).simplified().split(' ');return fields.size()>19?QString::fromLatin1(fields[19]):QString();}
 QString shellQuote(QString value){return "'"+value.replace("'","'\\''")+"'";}
 QByteArray json(const QVariantMap& value){return QJsonDocument(QJsonObject::fromVariantMap(value)).toJson(QJsonDocument::Compact);}
 bool writeFile(const QString& path,const QByteArray& bytes){QSaveFile file(path);return file.open(QIODevice::WriteOnly)&&file.write(bytes)==bytes.size()&&file.commit();}
@@ -121,6 +123,8 @@ void Platform::refresh(){
     QVariantList list;
 #ifdef Q_OS_WIN
     list<<QVariantMap{{"name","Windows monitoring engine"},{"ready",QFileInfo::exists(QCoreApplication::applicationDirPath()+"/FramoryxEngine.exe")},{"detail","PresentMon capture, borderless controls and optional DX11/DX12 hooks."}};
+    list<<QVariantMap{{"name","Graphics API monitoring"},{"ready",true},{"detail","PresentMon ETW monitoring and an external overlay for supported DXGI, D3D9, Vulkan and OpenGL presentations. Exclusive fullscreen may require borderless mode."}};
+    list<<QVariantMap{{"name","Optional Windows in-game HUD and limiter"},{"ready",true},{"detail","DX11/DX12 only. Manual approval is required; other rendering APIs use the external monitor and their own game limits."}};
     list<<QVariantMap{{"name","Audio processing"},{"ready",c->m_state["apoAvailable"].toBool()},{"detail","Extra gain, bass and mic effects use Equalizer APO device setup."}};
     send({{"action","refresh"}});
 #else
@@ -197,7 +201,7 @@ void Platform::linuxScan(){
     if(m_refreshing)return;m_refreshing=true;
     if(!exe("wmctrl").isEmpty()&&qEnvironmentVariable("XDG_SESSION_TYPE")!="wayland")command(exe("wmctrl"),{"-lpGx"},[this](int code,QByteArray output){
         if(code)return;QVariantList windows;
-        for(const auto& line:QString::fromUtf8(output).split('\n')){const auto cells=line.split(QRegularExpression("\\s+"),Qt::SkipEmptyParts);if(cells.size()<10)continue;const auto pid=cells[2].toUInt();QFile comm(QString("/proc/%1/comm").arg(pid));QString process;if(comm.open(QIODevice::ReadOnly))process=QString::fromUtf8(comm.read(256)).trimmed();if(denied(c->m_options,process)||pid==QCoreApplication::applicationPid())continue;
+        for(const auto& line:QString::fromUtf8(output).split('\n')){const auto cells=line.split(QRegularExpression("\\s+"),Qt::SkipEmptyParts);if(cells.size()<10)continue;const auto pid=cells[2].toUInt();QFile comm(QString("/proc/%1/comm").arg(pid));QString process=QFileInfo(QFileInfo(QString("/proc/%1/exe").arg(pid)).symLinkTarget()).fileName();if(process.isEmpty()||process.startsWith("wine"))if(comm.open(QIODevice::ReadOnly))process=QString::fromUtf8(comm.read(256)).trimmed();if(denied(c->m_options,process)||pid==QCoreApplication::applicationPid())continue;
             windows<<QVariantMap{{"id",cells[0]},{"pid",pid},{"name",cells.mid(9).join(' ')},{"exe",process},{"x",cells[3].toInt()},{"y",cells[4].toInt()},{"width",cells[5].toInt()},{"height",cells[6].toInt()}};}
         c->setState("windows",windows);
         if(m_monitoring&&c->m_options["linuxOverlayMode"].toInt()!=2)attachPassive();
@@ -248,7 +252,7 @@ bool Platform::attachPassive(bool explain){
 }
 void Platform::linuxLaunch(){
 #ifndef Q_OS_WIN
-    if(m_launchedPid&&QFileInfo::exists(QString("/proc/%1").arg(m_launchedPid))){m_monitoring=true;c->setState("capture",true);c->notify("Monitoring resumed for the running game.");return;}
+    if(m_launchedPid&&m_lastLaunchId==c->m_options["selectedGame"].toString()&&!m_launchStart.isEmpty()&&processStart(m_launchedPid)==m_launchStart){m_monitoring=true;c->setState("capture",true);c->notify("Monitoring resumed for the running game.");return;}
     QVariantMap game;for(const auto& value:c->m_games)if(value.toMap()["id"]==c->m_options["selectedGame"])game=value.toMap();
     const QFileInfo file(game["executable"].toString());if(game.isEmpty()||!file.isFile()||!file.isExecutable()){c->notify("Add a game executable to your library, then select it.","warning");return;}
     if(denied(c->m_options,file.fileName())){c->notify("This executable is blocked by your process rules.","warning");return;}
@@ -260,7 +264,7 @@ void Platform::linuxLaunch(){
     QStringList args;if(inProcess)args<<"--dlsym";if(c->m_options["gamescope"].toBool())args<<exe("gamescope")<<"-b"<<"-r"<<QString::number(c->m_options["cap"].toInt())<<"--";
     args<<file.absoluteFilePath();args+=unlock::arguments(QProcess::splitCommand(game["arguments"].toString()),game["unlock"].toBool()&&unlock::supported(file.absoluteFilePath()));
     m_game.setWorkingDirectory(file.absolutePath());QString program;if(inProcess)program=exe("mangohud");else {program=args.takeFirst();if(program.isEmpty())program=file.absoluteFilePath();}
-    m_game.setProgram(program);m_game.setArguments(args);m_game.setStandardOutputFile(QProcess::nullDevice());m_game.setStandardErrorFile(c->root()+"/game-launch.log");if(!m_game.startDetached(&m_launchedPid)){c->notify("The game could not start. Check its executable and launch arguments.","error");return;}m_monitoring=true;c->m_state["profilePid"]=quint32(m_launchedPid);c->m_state["profileExe"]=file.fileName();c->m_state["profilePath"]=file.absoluteFilePath();c->m_state["gameRunning"]=true;c->m_state["capture"]=true;c->m_state["game"]=game["name"];c->m_state["externalCapture"]=!inProcess;c->m_state["renderer"]=inProcess?"MangoHud · Vulkan / OpenGL":"Waiting for X Present";c->m_state["launchTime"]=QDateTime::currentMSecsSinceEpoch();
+    m_game.setProgram(program);m_game.setArguments(args);m_game.setStandardOutputFile(QProcess::nullDevice());m_game.setStandardErrorFile(c->root()+"/game-launch.log");if(!m_game.startDetached(&m_launchedPid)){c->notify("The game could not start. Check its executable and launch arguments.","error");return;}m_lastLaunchId=c->m_options["selectedGame"].toString();m_launchStart=processStart(m_launchedPid);m_monitoring=true;c->m_state["profilePid"]=quint32(m_launchedPid);c->m_state["profileExe"]=file.fileName();c->m_state["profilePath"]=file.absoluteFilePath();c->m_state["gameRunning"]=true;c->m_state["capture"]=true;c->m_state["game"]=game["name"];c->m_state["externalCapture"]=!inProcess;c->m_state["renderer"]=inProcess?"MangoHud · Vulkan / OpenGL":"Waiting for X Present";c->m_state["launchTime"]=QDateTime::currentMSecsSinceEpoch();
     c->notify(inProcess?"Launching with your explicitly enabled MangoHud layer and frame limit.":"Game launched. External capture is armed; no monitoring module was added to the game.");
 #endif
 }
@@ -430,9 +434,17 @@ void Platform::action(const QString& name,const QVariantMap& args){
     if(name=="micDisable"||name=="bassDisable"){auto process=name=="micDisable"?&m_mic:&m_output;m_pendingAudio.remove(process);++m_audioGeneration[process];m_expectedStops.insert(process);process->terminate();c->setState(name=="micDisable"?"micConfigured":"bassConfigured",false);c->setState("pendingMic",false);c->notify("The selected Framoryx effects are disabled.");return;}
     if(name=="defaultMic"||name=="defaultOutput"){const QString target=name=="defaultMic"?"framoryx_mic":"framoryx_output";for(const auto& value:c->m_state["audioNodes"].toList()){const auto node=value.toMap();if(node["name"]==target){command(exe("wpctl"),{"set-default",node["id"].toString()},[this](int code,QByteArray){c->notify(code?"The default audio device could not be changed.":"Framoryx is now the default audio device.",code?"warning":"info");});return;}}c->notify("Apply this effect first, then choose its virtual device.");return;}
     if(name=="shortcut"){const QString folder=QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);if(folder.isEmpty()){c->notify("No desktop folder is configured. Framoryx is available in your app launcher.");return;}const QString program=QCoreApplication::applicationFilePath();QByteArray entry="[Desktop Entry]\nType=Application\nName=Framoryx\nExec=\""+QFile::encodeName(program).replace("\"","\\\"")+"\"\nIcon=io.framoryx.Framoryx\nTerminal=false\nCategories=Game;Utility;\n";const QString path=folder+"/Framoryx.desktop";if(writeFile(path,entry)){QFile::setPermissions(path,QFile::permissions(path)|QFile::ExeOwner);c->notify("Desktop shortcut created. Your desktop may ask you to trust the launcher once.");}else c->notify("The desktop shortcut could not be created.","warning");return;}
-    if(name=="fixture"){const QString scene=QCoreApplication::applicationDirPath()+"/FramoryxScene";c->addGame(QUrl::fromLocalFile(scene),"Framoryx test scene","");linuxLaunch();return;}
+    if(name=="fixtureClose"){stopFixtures();return;}
+    if(name=="fixture"){const QString scene=QCoreApplication::applicationDirPath()+(c->m_options["linuxOverlayMode"].toInt()==2?"/FramoryxScene":"/FramoryxPresentScene");c->addGame(QUrl::fromLocalFile(scene),"Framoryx test scene","");linuxLaunch();if(m_launchedPid&&!m_launchStart.isEmpty())m_fixtures[m_launchedPid]=m_launchStart;return;}
     if(name=="soundSettings"){QDesktopServices::openUrl(QUrl("https://github.com/NeTriXoN-BoT/Framoryx/blob/main/docs/AUDIO.md"));return;}
     c->notify("This control is unavailable in the current desktop session.","warning");
+#endif
+}
+void Platform::stopFixtures(){
+#ifndef Q_OS_WIN
+    const auto folder=QCoreApplication::applicationDirPath();
+    for(auto item=m_fixtures.begin();item!=m_fixtures.end();++item){if(item.value().isEmpty()||processStart(item.key())!=item.value())continue;const auto file=QFileInfo(QString("/proc/%1/exe").arg(item.key())).symLinkTarget();if(file==folder+"/FramoryxScene"||file==folder+"/FramoryxPresentScene")::kill(pid_t(item.key()),SIGTERM);}
+    m_fixtures.clear();
 #endif
 }
 void Platform::shutdown(){
@@ -443,6 +455,7 @@ void Platform::shutdown(){
     for(const auto& id:m_windowRestores.keys())command(exe("wmctrl"),{"-ir",id,"-b","remove,fullscreen"});
     for(auto process:{&m_mic,&m_output}){process->terminate();if(!process->waitForFinished(1000))process->kill();}
     if(m_passive)m_passive->stop();
+    stopFixtures();
     for(auto process:m_commands){if(process->state()!=QProcess::NotRunning&&!process->waitForFinished(250)){process->kill();process->waitForFinished(100);}}
     // A user's game keeps running when the control application closes.
     m_game.disconnect(this);

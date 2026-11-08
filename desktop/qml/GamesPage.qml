@@ -18,7 +18,8 @@ ColumnLayout {
                 FButton { text: "+"; implicitWidth: Theme.px(38); onClicked: app.setOption("cap",app.options.cap<10?10:Math.min(1000,app.options.cap+1)) }
             }
             Flow { Layout.fillWidth: true; spacing: Theme.px(7); Repeater { model: [0,30,60,90,120,144,165,240]; FButton { required property int modelData; text: modelData===0?"Uncapped":String(modelData); primary: app.options.cap===modelData; onClicked: app.setOption("cap",modelData) } } }
-            FButton { text: app.platformName==="Windows"?(app.state.hookActive?"Update active limit":"Enable in-game limit"):"Save launch frame limit"; primary: true; onClicked: app.platformName==="Windows"?shell.requestHook():app.notify("Saved. The next monitored launch uses this frame limit.") }
+            FButton { enabled: app.platformName!=="Windows"||app.state.inGameSupported!==false; text: app.platformName==="Windows"?(app.state.hookActive?"Update active limit":"Enable in-game limit"):"Save launch frame limit"; primary: true; onClicked: app.platformName==="Windows"?shell.requestHook():app.notify("Saved. The next monitored launch uses this frame limit.") }
+            Text { text: app.state.compatibilityNote||""; visible: app.platformName==="Windows"; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
             FButton { visible: app.platformName==="Windows"; text: "Disable in-game hook"; enabled: app.state.hookActive; onClicked: app.action("disableHook") }
             Text { text: app.platformName==="Windows"?"Optional game hooks require explicit approval. Process blocks always take priority.":"MangoHud applies the limit to monitored Vulkan/OpenGL games. Gamescope can also control pacing at launch."; color: Theme.muted; font.pixelSize: Theme.px(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
         }
