@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="190" height="94" viewBox="0 0 190 94" role="img" aria-label="Release archive: Notes + SHA-256">
+<svg xmlns="http://www.w3.org/2000/svg" width="190" height="94" viewBox="0 0 190 94" role="img" aria-label="Latest release: Notes + SHA-256">
 <path d="M1 1H173L189 17V93H1Z" fill="#101b25" stroke="#2a414c"/>
 <path d="M1 93H56M173 1V17H189" fill="none" stroke="#5b8c86"/>
 <text x="16" y="23" font-family="Consolas,monospace" font-size="10" fill="#6f9a9a">/ 02</text>
 <g fill="none" stroke="#7df2c6" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M145 22h17v20h-17zM149 27h9m-9 5h9m-9 5h5"/></g>
-<text x="15" y="54" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="600" fill="#edf6f6">Release archive</text>
+<text x="15" y="54" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="600" fill="#edf6f6">Latest release</text>
 <text x="16" y="76" font-family="Segoe UI,Arial,sans-serif" font-size="10.5" fill="#92a9b6">Notes + SHA-256</text></svg>

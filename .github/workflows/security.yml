@@ -1,0 +1,42 @@
+name: CodeQL security analysis
+on:
+  push:
+    branches: [main]
+    paths: ['source/**', 'scripts/**', '.github/workflows/security.yml']
+  pull_request:
+    paths: ['source/**', 'scripts/**', '.github/workflows/security.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  native-cpp:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            work/build/toolchain
+            tools/PresentMon.exe
+            tools/PresentMon-2.6.0-x64.exe
+          key: llvm-mingw-20261104-ucrt-windows-x64
+      - name: Fetch verified compiler and monitoring dependency
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/fetch-ci-tools.ps1
+      - uses: github/codeql-action/init@5895b2c9be147bc7f1c75ce72c5cb577febb1907 # v4
+        with:
+          languages: c-cpp
+          build-mode: manual
+          queries: security-extended
+      - name: Analyze the actual Windows app, hooks, broker and helpers
+        shell: pwsh
+        run: ./source/build.ps1
+      - uses: github/codeql-action/analyze@5895b2c9be147bc7f1c75ce72c5cb577febb1907 # v4
+        with:
+          category: /language:cpp/native-windows

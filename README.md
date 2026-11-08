@@ -3,7 +3,7 @@
   <p>A native Windows toolkit for performance overlays, frame pacing, borderless play, and audio control.</p>
   <a href="https://github.com/NeTriXoN-BoT/Framoryx/releases/latest/download/Framoryx-Windows-x64.zip"><img src="docs/badges/download-windows.svg" alt="Download Framoryx for Windows x64" height="94"></a>
   &nbsp;
-  <a href="https://github.com/NeTriXoN-BoT/Framoryx/releases"><img src="docs/badges/releases.svg" alt="Releases and checksums" height="94"></a>
+  <a href="https://github.com/NeTriXoN-BoT/Framoryx/releases/latest"><img src="docs/badges/releases.svg" alt="Latest release notes and checksums" height="94"></a>
   &nbsp;
   <a href="docs/LINUX.md"><img src="docs/badges/linux.svg" alt="Linux roadmap — no Linux application release yet" height="94"></a>
   <p><sub><strong>UNSIGNED WINDOWS BUILD</strong> · No Authenticode publisher certificate.<br>Windows may display an unknown-publisher or SmartScreen warning. Check the release SHA-256 before use.</sub></p>
