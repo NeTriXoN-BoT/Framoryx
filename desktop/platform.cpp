@@ -49,6 +49,18 @@ bool denied(const QVariantMap& options,const QString& name){
     return false;
 }
 bool allowed(const QVariantMap& options,const QString& name){if(denied(options,name))return false;for(const auto& pattern:options["allow"].toStringList())if(fg::wildcard(pattern.toStdString(),name.toStdString()))return true;return false;}
+QVariantMap selectedWindow(const QVariantMap& options,const QVariantList& games,const QVariantList& windows,quint32 foreground){
+    const auto selected=options["selectedGame"].toString();QString libraryFile;QVariantList matches;
+    for(const auto& value:games){const auto game=value.toMap();if(game["id"]==selected)libraryFile=QFileInfo(game["executable"].toString()).fileName();}
+    for(const auto& value:windows){const auto window=value.toMap();const auto process=window["exe"].toString();if(denied(options,process))continue;
+        bool ok=false;const auto id=window["id"].toString().toUInt(&ok,16);if(!ok||!id)continue;
+        if(window["id"]==selected)return window;
+        if(!libraryFile.isEmpty()&&process==libraryFile)matches<<window;
+        if(selected=="auto"&&id==foreground&&allowed(options,process))return window;
+    }
+    for(const auto& value:matches)if(value.toMap()["id"].toString().toUInt(nullptr,16)==foreground)return value.toMap();
+    return matches.size()==1?matches.first().toMap():QVariantMap();
+}
 QProcessEnvironment hostEnvironment(){
     auto environment=QProcessEnvironment::systemEnvironment();
 #ifndef Q_OS_WIN
@@ -220,7 +232,7 @@ void Platform::linuxScan(){
             windows<<QVariantMap{{"id",cells[0]},{"pid",pid},{"name",cells.mid(9).join(' ')},{"exe",process},{"x",cells[3].toInt()},{"y",cells[4].toInt()},{"width",cells[5].toInt()},{"height",cells[6].toInt()}};}
         c->setState("windows",windows);
         if(m_monitoring&&c->m_options["linuxOverlayMode"].toInt()!=2)attachPassive();
-        if(c->m_options["autoBorderless"].toBool())for(const auto& value:windows){const auto window=value.toMap();if(window["id"]==c->m_options["selectedGame"]&&allowed(c->m_options,window["exe"].toString())&&!m_windowRestores.contains(window["id"].toString()))borderless(false);}
+        if(c->m_options["autoBorderless"].toBool()){const auto target=selectedWindow(c->m_options,c->m_games,windows,m_passive?m_passive->foreground():0);if(!target.isEmpty()&&allowed(c->m_options,target["exe"].toString())&&!m_windowRestores.contains(target["id"].toString()))borderless(false);}
     });
     if(!exe("wpctl").isEmpty()&&!m_volumeWriting&&!m_volumeTimer.isActive())command(exe("wpctl"),{"get-volume","@DEFAULT_AUDIO_SINK@"},[this](int code,QByteArray output){if(code)return;const auto parts=output.simplified().split(' ');if(parts.size()>1){const int value=qBound(0,qRound(parts[1].toDouble()*100),200);if(!m_volumeWriting&&!m_volumePending&&!m_volumeTimer.isActive()&&c->m_clock.elapsed()>c->m_volumeUntil&&c->volume()!=value){c->m_state["volume"]=value;c->m_options["volume"]=value;emit c->volumeChanged();}c->m_state["muted"]=output.contains("MUTED");}});
     if(!exe("pw-dump").isEmpty())command(exe("pw-dump"),{},[this](int code,QByteArray output){
@@ -245,7 +257,7 @@ int Platform::mangoFontPixels()const{
 }
 QString Platform::mangoConfiguration()const{
     const bool layer=c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected";
-    return "legacy_layout=0,no_display=0,cpu_stats=0,gpu_stats=0,frame_timing=0,fps=0,fps_limit_method=late,font_size="+QString::number(mangoFontPixels())+",fps_limit="+QString::number(layer?c->m_options["cap"].toInt():0)+",control="+mangoPrefix()+"%p";
+    return "legacy_layout=0,no_display=0,cpu_stats=0,gpu_stats=0,frame_timing=0,fps=0,fps_limit_method=early,font_size="+QString::number(mangoFontPixels())+",fps_limit="+QString::number(layer?c->m_options["cap"].toInt():0)+",control="+mangoPrefix()+"%p";
 }
 QString Platform::mangoExecutable()const{
     const QString bundled=QCoreApplication::applicationDirPath()+"/runtime/mangohud/bin/mangohud";
@@ -265,13 +277,7 @@ bool Platform::attachPassive(bool explain){
     if(qEnvironmentVariable("XDG_SESSION_TYPE")=="wayland"){
         c->setState("overlayHint","Native Wayland restricts external overlay positioning and passive presentation capture. Use an X11 session, or explicitly select the MangoHud game layer where permitted.");if(explain)c->notify(c->m_state["overlayHint"].toString(),"warning");return false;
     }
-    const QString selected=c->m_options["selectedGame"].toString();QVariantMap target;QString libraryFile;
-    for(const auto& item:c->m_games){const auto game=item.toMap();if(game["id"]==selected)libraryFile=QFileInfo(game["executable"].toString()).fileName();}
-    const quint32 foreground=m_passive->foreground();
-    for(const auto& item:c->m_state["windows"].toList()){const auto window=item.toMap();const auto process=window["exe"].toString();if(denied(c->m_options,process))continue;
-        bool ok=false;const quint32 id=window["id"].toString().toUInt(&ok,16);if(!ok)continue;
-        if(window["id"]==selected||(!libraryFile.isEmpty()&&process==libraryFile)||(selected=="auto"&&allowed(c->m_options,process)&&(!foreground||foreground==id))){target=window;break;}
-    }
+    const auto target=selectedWindow(c->m_options,c->m_games,c->m_state["windows"].toList(),m_passive->foreground());
     if(target.isEmpty()){if(explain)c->notify("Capture is armed. Select a running game window, or add your game to the allow list for automatic capture.");return false;}
     const quint32 id=target["id"].toString().toUInt(nullptr,16);
     if(m_passive->running()&&m_passive->window()==id)return true;
@@ -310,7 +316,7 @@ void Platform::linuxLaunch(){
 void Platform::borderless(bool restore){
 #ifndef Q_OS_WIN
     if(qEnvironmentVariable("XDG_SESSION_TYPE")=="wayland"){c->notify("For Wayland, enable Gamescope in the game launch options to control fullscreen sizing.");return;}
-    const QString id=c->m_options["selectedGame"].toString();QVariantMap window;for(const auto& value:c->m_state["windows"].toList())if(value.toMap()["id"]==id)window=value.toMap();
+    const auto window=selectedWindow(c->m_options,c->m_games,c->m_state["windows"].toList(),m_passive?m_passive->foreground():0);const auto id=window["id"].toString();
     if(window.isEmpty()||!id.startsWith("0x")||denied(c->m_options,window["exe"].toString())){c->notify("Select an allowed running game window first.","warning");return;}
     if(restore){if(!m_windowRestores.contains(id)){c->notify("This window has no saved Framoryx state.");return;}const auto original=m_windowRestores[id];const bool restored=x11::fullscreen(original,original.fullscreen);m_windowRestores.remove(id);c->setState("borderlessActive",false);c->notify(restored?"Original window mode restored.":"The original window identity changed or restoration was refused. Refresh your game selection.",restored?"info":"warning");}
     else {const auto current=x11::inspect(id.toUInt(nullptr,16));if(!current.valid||current.pid!=window["pid"].toUInt()){c->notify("The game window identity changed. Refresh before applying borderless mode.","warning");return;}const bool applied=x11::fullscreen(current,true);if(applied){if(!m_windowRestores.contains(id))m_windowRestores[id]=current;c->setState("borderlessActive",true);}c->notify(applied?"Borderless fullscreen requested. Restore returns the original mode.":"The window manager refused fullscreen.",applied?"info":"warning");}
@@ -344,12 +350,12 @@ void Platform::linuxAudio(bool microphone,bool verified){
         const QString chosen=QString::fromUtf8(QByteArray::fromBase64(o["micId"].toByteArray()));QString target;QStringList descriptions;
         for(const auto& value:c->m_state["audioNodes"].toList()){const auto entry=value.toMap();if(!entry["media"].toString().startsWith("Audio/Source")||entry["name"]=="framoryx_mic")continue;if(entry["name"]==chosen)target=entry["name"].toString();if(!c->m_state["selectedMicName"].toString().isEmpty()&&entry["description"]==c->m_state["selectedMicName"])descriptions<<entry["name"].toString();}
         if(target.isEmpty()&&descriptions.size()==1)target=descriptions.first();
-        if(target.isEmpty()){c->notify("The selected physical microphone is unavailable. Refresh devices and select its input before applying effects.","warning");return;}capture["target.object"]=target;
+        if(target.isEmpty()){c->notify("The selected physical microphone is unavailable. Refresh devices and select its input before applying effects.","warning");return;}capture["target.object"]=target;capture["node.target"]=target;capture["node.dont-fallback"]=true;capture["node.dont-reconnect"]=true;playback["priority.session"]=0;
     }else{
         capture["media.class"]="Audio/Sink";playback["node.passive"]=true;
         const auto output=QMediaDevices::defaultAudioOutput();const auto chosen=QString::fromUtf8(output.id());QString target;
         for(const auto& value:c->m_state["audioNodes"].toList()){const auto entry=value.toMap();if(!entry["media"].toString().startsWith("Audio/Sink")||entry["name"]=="framoryx_output")continue;if(entry["name"]==chosen||entry["description"]==output.description())target=entry["name"].toString();if(target.isEmpty()&&entry["name"]==m_outputTarget)target=m_outputTarget;}
-        if(target.isEmpty()){c->notify("A physical output could not be identified. Refresh audio devices before applying bass.","warning");return;}m_outputTarget=target;playback["target.object"]=target;
+        if(target.isEmpty()){c->notify("A physical output could not be identified. Refresh audio devices before applying bass.","warning");return;}m_outputTarget=target;playback["target.object"]=target;playback["node.target"]=target;playback["node.dont-fallback"]=true;playback["node.dont-reconnect"]=true;capture["priority.session"]=0;
     }
     // PipeWire 0.3.48 resolves links while parsing, so nodes must precede links.
     // QJsonObject sorts keys alphabetically. A JSON string preserves graph order;
@@ -455,7 +461,7 @@ void Platform::action(const QString& name,const QVariantMap& args){
     if(name=="capture"&&c->m_state["capture"].toBool()){m_monitoring=false;if(m_passive)m_passive->stop();if(m_mango)m_mango->setCollecting(false);c->setState("capture",false);c->setState("live",false);c->notify("Capture stopped. Your game and its in-game overlay keep running.");return;}
     if(name=="capture"){m_monitoring=true;const bool layer=c->m_options["linuxOverlayMode"].toInt()==2&&c->m_state["antiCheatStatus"]!="detected";c->setState("externalCapture",!layer);c->setState("capture",true);if(layer){if(m_mango)m_mango->start(mangoPrefix(),true);c->notify("Capture armed for this game's enabled layer. Launch from your library or with its saved Steam options.");}else attachPassive(true);return;}
     if(name=="launch"){linuxLaunch();return;}
-    if(name=="overlay"){c->setState("overlay",!c->m_state["overlay"].toBool());applyOptions("fields");c->notify(c->m_state["overlay"].toBool()?"Overlay enabled for monitored launches. Reload it with Shift+F4 in a running game.":"Overlay hidden for monitored launches. Reload it with Shift+F4 in a running game.");return;}
+    if(name=="overlay"){c->setState("overlay",!c->m_state["overlay"].toBool());applyOptions("fields");c->notify(c->m_state["overlay"].toBool()?"Overlay enabled. Connected game layers update automatically.":"Overlay hidden. Connected game layers update automatically.");return;}
     if(name=="micApply"){linuxAudio(true);return;}
     if(name=="bassApply"){linuxAudio(false);return;}
     if(name=="micDisable"||name=="bassDisable"){auto process=name=="micDisable"?&m_mic:&m_output;m_pendingAudio.remove(process);++m_audioGeneration[process];m_expectedStops.insert(process);process->terminate();c->setState(name=="micDisable"?"micApplying":"bassApplying",false);c->setState(name=="micDisable"?"micConfigured":"bassConfigured",false);c->setState("pendingMic",false);c->notify("The selected Framoryx effects are disabled.");return;}

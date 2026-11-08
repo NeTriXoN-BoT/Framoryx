@@ -24,6 +24,7 @@ struct State {
 };
 inline State state;
 inline std::mutex mutex;
+inline void hide(){std::lock_guard<std::mutex> lock(mutex);state.visible=false;}
 inline bool requested(){static const bool value=[] {const auto text=std::getenv("FRAMORYX_HUD");return text&&std::strcmp(text,"1")==0;}();return value;}
 template<size_t N> bool numbers(std::string_view text,std::array<int,N>& output){
     if(text.size()>512)return false;
@@ -37,7 +38,8 @@ inline bool configure(std::string_view text){
 }
 inline bool metrics(std::string_view text){
     std::array<int,10> values{};if(!numbers(text,values))return false;for(const auto value:values)if(value < -1||value>100000000)return false;
-    for(const auto i:{2,4,5})if(values[i]>10000)return false;for(const auto i:{6,7})if(values[i]>15000)return false;
+    for(const auto i:{2,4,5})if(values[i]>10000)return false;
+    for(const auto i:{6,7})if(values[i]>15000)return false;
     std::unique_lock<std::mutex> lock(mutex,std::try_to_lock);if(!lock.owns_lock())return false;state.values=values;state.updated=std::chrono::steady_clock::now();return true;
 }
 inline void frame(float milliseconds){
@@ -65,7 +67,8 @@ inline void draw(float fps,float milliseconds,bool vulkan){
     for(size_t i=0;i<layout.count;++i){const auto& cell=layout.cells[i];unsigned index=0;for(auto bits=cell.field;bits>1;bits>>=1)++index;
         if(index==9){label(cell.x,cell.y,10,muted,"FRAMORYX");continue;}
         if(index==4){
-            if(snapshot.count<2)continue;float maximum=20;for(size_t n=0;n<snapshot.count;++n)maximum=std::max(maximum,snapshot.graph[n]);
+            if(snapshot.count<2)continue;
+            float maximum=20;for(size_t n=0;n<snapshot.count;++n)maximum=std::max(maximum,snapshot.graph[n]);
             ImVec2 previous;for(size_t n=0;n<snapshot.count;++n){const auto sample=snapshot.graph[(snapshot.next+snapshot.graph.size()-snapshot.count+n)%snapshot.graph.size()];const ImVec2 point(origin.x+(cell.x+cell.width*n/(snapshot.count-1))*scale,origin.y+(cell.y+(cell.height-10)*(1-sample/maximum))*scale);if(n)list->AddLine(previous,point,accent,1.5f*scale);previous=point;}continue;
         }
         char value[96];std::strcpy(value,"--");double number=-1;

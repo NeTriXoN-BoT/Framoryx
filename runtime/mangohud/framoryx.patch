@@ -85,7 +85,7 @@ index 1bb509d..8981a79 100644
 +// Framoryx supplies launch parameters and typed live controls, not arbitrary files.
 +void parseConfigFile(overlay_params&) {}
 diff --git a/src/control.cpp b/src/control.cpp
-index 9d99708..43ece68 100644
+index 9d99708..c3a58c0 100644
 --- a/src/control.cpp
 +++ b/src/control.cpp
 @@ -9,0 +10,3 @@
@@ -126,10 +126,23 @@ index 9d99708..43ece68 100644
 +         os_socket_close(socket);
 +         return;
 +      }
-@@ -176,0 +210 @@ static void control_client_disconnected(int& control_client)
+@@ -175 +208 @@ void control_client_check(int control, int& control_client, const std::string& d
+-static void control_client_disconnected(int& control_client)
++static void control_client_disconnected(int& control_client, overlay_params& params)
+@@ -176,0 +210,5 @@ static void control_client_disconnected(int& control_client)
 +   framoryx_stream::reset(false);
-@@ -183,0 +218 @@ void process_control_socket(int& control_client, overlay_params &params)
++   if (framoryx_hud::requested()) {
++      framoryx_hud::hide();
++      framoryx_update_limit(params, 0, std::clamp(int(get_params()->font_size),12,200));
++   }
+@@ -183,0 +222 @@ void process_control_socket(int& control_client, overlay_params &params)
 +      global_control_client = control_client;
+@@ -198 +237 @@ void process_control_socket(int& control_client, overlay_params &params)
+-            control_client_disconnected(control_client);
++            control_client_disconnected(control_client, params);
+@@ -201 +240 @@ void process_control_socket(int& control_client, overlay_params &params)
+-            control_client_disconnected(control_client);
++            control_client_disconnected(control_client, params);
 diff --git a/src/cpu.cpp b/src/cpu.cpp
 index f46faba..22d3b0f 100644
 --- a/src/cpu.cpp

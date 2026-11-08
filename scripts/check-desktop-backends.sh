@@ -33,6 +33,16 @@ with wave.open(sys.argv[1], 'wb') as output:
 PY
 paplay --device=framoryx_ci_input "$XDG_RUNTIME_DIR/tone.wav" > "$XDG_RUNTIME_DIR/tone.log" 2>&1 & pids+=("$!")
 sleep 1
+retry pactl set-source-volume framoryx_ci_mic 100%
+retry pactl set-source-mute framoryx_ci_mic false
+timeout 2 parec --device=framoryx_ci_mic --format=s16le --rate=48000 --channels=1 > "$XDG_RUNTIME_DIR/dry-input.raw" || [[ "$?" == 124 ]]
+python3 - "$XDG_RUNTIME_DIR/dry-input.raw" <<'PY'
+import array, pathlib, sys
+samples=array.array('h');samples.frombytes(pathlib.Path(sys.argv[1]).read_bytes())
+peak=max((abs(sample) for sample in samples),default=0)
+assert peak>0, 'The private test microphone must contain the synthesized signal'
+print('PASS: private microphone signal is nonzero; peak='+str(peak))
+PY
 result=0
 ./build/desktop/desktop/Framoryx --backend-test --backend-scope graphics --test-root "$RUNNER_TEMP/framoryx-backend-graphics" --snapshot-dir ./work/desktop-backends/graphics || result=1
 ./build/desktop/desktop/Framoryx --backend-test --backend-scope audio --test-root "$RUNNER_TEMP/framoryx-backend-audio" --snapshot-dir ./work/desktop-backends/audio || result=1

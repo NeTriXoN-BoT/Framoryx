@@ -13,6 +13,9 @@
 #include <QSaveFile>
 #include <QTimer>
 #include <algorithm>
+#ifndef Q_OS_WIN
+#include "x11_window.hpp"
+#endif
 
 namespace {
 class Checks : public QObject {
@@ -50,7 +53,10 @@ class Checks : public QObject {
         QJsonArray microphones;for(const auto& value:c->devices())microphones.append(value.toMap()["name"].toString());
         if(!passed){for(const auto& name:{"output.conf","microphone.conf"})QFile::copy(c->root()+'/'+name,destination+'/'+name);}
         const QJsonObject result{{"passed",passed},{"platform",c->platformName()},{"scope",scope},{"elapsedMs",total.elapsed()},{"maximumEventLoopGapMs",maximumGap},{"maximumInputLevel",maximumInput},{"checks",records},{"notice",state["notice"].toString()},{"audioStatus",state["audioStatus"].toString()},{"microphones",microphones},{"nodes",QJsonArray::fromVariantList(state["audioNodes"].toList())},{"micDiagnostic",state["micDiagnostic"].toString()},{"outputDiagnostic",state["outputDiagnostic"].toString()},{"noiseStatus",state["noiseStatus"].toString()}};
-        auto diagnostic=result;diagnostic["fps"]=state["fps"].toDouble();diagnostic["appliedCap"]=state["appliedCap"].toInt();diagnostic["renderer"]=state["renderer"].toString();
+        auto diagnostic=result;diagnostic["fps"]=state["fps"].toDouble();diagnostic["appliedCap"]=state["appliedCap"].toInt();diagnostic["renderer"]=state["renderer"].toString();diagnostic["sampleBytes"]=state["sampleBytes"].toLongLong();diagnostic["sampleReady"]=state["sampleReady"].toBool();
+#ifndef Q_OS_WIN
+        if(!passed){QProcess dump;dump.start("pw-dump");if(dump.waitForFinished(1500)){const auto bytes=dump.readAllStandardOutput();if(bytes.size()<=8*1024*1024){QSaveFile graph(destination+"/audio-graph.json");if(graph.open(QIODevice::WriteOnly)){graph.write(bytes);graph.commit();}}}else {dump.kill();dump.waitForFinished(200);}}
+#endif
         if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(diagnostic).toJson())<0||!file.commit())passed=false;
         QCoreApplication::exit(passed?0:1);
     }
@@ -84,10 +90,20 @@ class Checks : public QObject {
 #endif
                 c->action("borderless");
             }
-            await(state["borderlessActive"].toBool(),"Borderless command reaches the selected game");break;
+#ifdef Q_OS_WIN
+            await(state["borderlessActive"].toBool(),"Borderless command reaches the selected game");
+#else
+            await(state["borderlessActive"].toBool()&&x11::inspect(c->options()["selectedGame"].toString().toUInt(nullptr,16)).fullscreen,"Window manager confirms the selected game is fullscreen");
+#endif
+            break;
         case 4:
             if(first)c->action("restore");
-            await(!state["borderlessActive"].toBool()&&phase.elapsed()>500,"Window restoration completes");break;
+#ifdef Q_OS_WIN
+            await(!state["borderlessActive"].toBool()&&phase.elapsed()>500,"Window restoration completes");
+#else
+            await(!state["borderlessActive"].toBool()&&!x11::inspect(c->options()["selectedGame"].toString().toUInt(nullptr,16)).fullscreen&&phase.elapsed()>500,"Window manager confirms fullscreen is restored");
+#endif
+            break;
 #ifdef Q_OS_WIN
         case 5:
             if(first){c->setOption("cap",30);c->action("enableHook",{{"confirmed",true}});}

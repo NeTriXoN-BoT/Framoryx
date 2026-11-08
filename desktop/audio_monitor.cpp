@@ -10,6 +10,7 @@ AudioMonitor::AudioMonitor(Controller* controller) : QObject(controller), m_cont
     connect(&m_stop,&QTimer::timeout,this,[this]{stop();});
     m_meter.setInterval(50);
     connect(&m_meter,&QTimer::timeout,this,[this]{
+        if(m_stream)consume();
         m_controller->setState("inputLevel",qBound(0.f,m_peak,1.f));
         m_peak *= .72f;
     });
@@ -27,6 +28,7 @@ void AudioMonitor::record(const QByteArray& id){
     m_stream=m_input->start();
     if(!m_stream || m_input->error()!=QAudio::NoError){stop();m_controller->notify("The microphone could not be opened. Check system permissions and device use.","warning");return;}
     connect(m_stream,&QIODevice::readyRead,this,&AudioMonitor::consume);
+    consume();
     m_controller->setState("recording",true);
     m_controller->setState("sampleReady",false);
     m_controller->setState("recordingDevice",device.description());
@@ -38,6 +40,7 @@ void AudioMonitor::consume(){
     const QByteArray bytes=m_stream->readAll();
     if(bytes.size()+m_recording.size()>16*1024*1024){stop();return;}
     m_recording+=bytes;
+    m_controller->setState("sampleBytes",m_recording.size());
     const int sampleBytes=m_format.bytesPerSample();
     if(sampleBytes<=0)return;
     for(qsizetype p=0;p+sampleBytes<=bytes.size();p+=sampleBytes){
