@@ -6,7 +6,7 @@ ColumnLayout {
     property var shell
     spacing: Theme.px(18)
     Text { text: "Your processes. Your choice."; color: Theme.text; font.pixelSize: Theme.font(25); font.weight: Font.DemiBold; Layout.fillWidth: true }
-    Text { text: "Allow optional modifications for specific games. Block rules take priority, and system processes remain protected."; color: Theme.muted; font.pixelSize: Theme.font(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
+    Text { text: "Override automatic HUD detection for specific processes. Block rules take priority, and system processes remain protected."; color: Theme.muted; font.pixelSize: Theme.font(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
     FCard {
         Layout.fillWidth: true
         RowLayout {
@@ -44,7 +44,7 @@ ColumnLayout {
     GridLayout {
         Layout.fillWidth: true; columns: page.width>Theme.px(800)?2:1; columnSpacing: Theme.px(18); rowSpacing: Theme.px(18)
         Repeater {
-            model: [{key:"allow",title:"Allow list",note:"Optional hooks and automatic borderless changes",accent:true},{key:"deny",title:"Block list",note:"Hidden targets · modifications prevented",accent:false}]
+            model: [{key:"allow",title:"Allow list",note:"Show the HUD in Auto and allow optional game changes",accent:true},{key:"deny",title:"Block list",note:"Hidden targets · modifications prevented",accent:false}]
             FCard {
                 required property var modelData
                 Layout.fillWidth: true

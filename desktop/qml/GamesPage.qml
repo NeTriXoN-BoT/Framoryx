@@ -20,6 +20,8 @@ ColumnLayout {
             Flow { Layout.fillWidth: true; spacing: Theme.px(7); Repeater { model: [0,30,60,90,120,144,165,240]; FButton { required property int modelData; text: modelData===0?"Uncapped":String(modelData); primary: app.options.cap===modelData; onClicked: app.setOption("cap",modelData) } } }
             FButton { enabled: app.platformName!=="Windows"||app.state.inGameSupported!==false; text: app.platformName==="Windows"?(app.state.hookActive?"Update active limit":"Enable in-game limit"):(app.options.linuxOverlayMode===2?"Apply game-layer limit":app.options.gamescope?"Save Gamescope launch limit":"Choose a limiter method"); primary: true; onClicked: {if(app.platformName==="Windows")shell.requestHook();else if(app.options.linuxOverlayMode===2)app.notify("Saved. Connected games receive this limit; new layer launches use it too.");else if(app.options.gamescope)app.notify("Saved for the next Gamescope launch.");else {shell.page=1;app.notify("Choose the opt-in game layer in Overlay Studio, or enable Gamescope for your next launch.")}} }
             Text { text: app.state.compatibilityNote||""; visible: app.platformName==="Windows"; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Text { text: app.state.hookStatus||""; visible: app.platformName==="Windows"&&text!==""; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Text { text: "Desktop mode keeps the HUD outside the game. Choose Auto in Overlay Studio to switch to the in-game HUD once an approved hook starts drawing."; visible: app.platformName==="Windows"&&app.options.mode===1; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
             FButton { visible: app.platformName==="Windows"; text: "Disable in-game hook"; enabled: app.state.hookActive; onClicked: app.action("disableHook") }
             Text { text: app.platformName==="Windows"?"Optional game hooks require explicit approval. Process blocks always take priority.":"MangoHud applies the limit to monitored Vulkan/OpenGL games. Gamescope can also control pacing at launch."; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
         }
@@ -41,13 +43,31 @@ ColumnLayout {
         Layout.fillWidth: true
         RowLayout { Layout.fillWidth: true; Text { text: "Beyond the game's cap"; color: Theme.text; font.pixelSize: Theme.font(21); font.weight: Font.DemiBold; Layout.fillWidth: true } Text { text: app.unlockSupport.supported?"SUPPORTED LAUNCH OPTION":"GAME-SPECIFIC SUPPORT"; color: app.unlockSupport.supported?Theme.accent:Theme.muted; font.pixelSize: Theme.font(10) } }
         Text { textFormat: Text.PlainText; text: app.unlockSupport.supported?app.unlockSupport.name+" · "+app.unlockSupport.method:"Select a library game. Only games with a supported cap override can use this option; an internal hard cap cannot be removed by a general FPS limiter."; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
-        FToggle { text: "Use game-supported FPS cap override"; enabled: app.unlockSupport.supported; checked: app.unlockSupport.enabled; onToggled: {if(checked)unlockDialog.open();else app.setGameUnlock(false)} }
+        FToggle {
+            id: unlockToggle
+            text: "Use game-supported FPS cap override"
+            enabled: app.unlockSupport.supported
+            checked: app.unlockSupport.enabled
+            onToggled: {
+                const enabled = checked
+                checked = Qt.binding(function() { return app.unlockSupport.enabled })
+                if (enabled)
+                    unlockDialog.open()
+                else
+                    app.setGameUnlock(false)
+            }
+        }
         Text { text: "Applies on the next library launch. Higher FPS can affect physics, animations, timing, stability or power usage. V-sync, drivers and the game engine may impose other limits."; color: Theme.amber; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
-        Dialog {
-            id: unlockDialog; anchors.centerIn: Overlay.overlay; width: Math.min(page.width,Theme.px(540)); height: Theme.px(305); modal: true; title: "Apply the game's FPS override?"; standardButtons: Dialog.Yes|Dialog.Cancel
-            background: Rectangle { color: Theme.surface; radius: Theme.px(14); border.color: Theme.border }
-            contentItem: Text { text: "Framoryx will add the game's supported launch command and set its own limiter to Uncapped. No game files are patched.\n\nHigher frame rates can break physics, animations or game timing. Test carefully and disable this option if problems occur.\n\nThis affects the next launch from your Framoryx library."; color: Theme.text; font.pixelSize: Theme.font(13); wrapMode: Text.Wrap }
-            onAccepted: app.setGameUnlock(true,true)
+        FDialog {
+            id: unlockDialog
+            objectName: "unlockWarningDialog"
+            title: "Apply the game's FPS override?"
+            confirmText: "Apply override"
+            warning: true
+            message: "Framoryx will add the game's supported launch command and set its own limiter to Uncapped. No game files are patched."
+                     + "\n\nHigher frame rates can break physics, animations or game timing. Test carefully and disable this option if problems occur."
+                     + "\n\nThis setting applies to the next launch from your Framoryx library."
+            onAccepted: app.setGameUnlock(true, true)
         }
     }
     FCard {

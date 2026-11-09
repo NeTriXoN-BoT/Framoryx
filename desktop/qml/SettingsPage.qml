@@ -20,7 +20,7 @@ ColumnLayout {
         FCard {
             Layout.fillWidth: true
             Text { text: "Built around your setup."; color: Theme.text; font.pixelSize: Theme.font(23); font.weight: Font.DemiBold }
-            Text { text: "Framoryx 0.3.0 · "+app.platformName+(app.platformName==="Linux"?" · "+app.state.session:""); color: Theme.accent; font.pixelSize: Theme.font(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Text { text: "Framoryx "+Qt.application.version+" · "+app.platformName+(app.platformName==="Linux"?" · "+app.state.session:""); color: Theme.accent; font.pixelSize: Theme.font(13); Layout.fillWidth: true; wrapMode: Text.Wrap }
             Text { text: "Your game library, presets and measurements stay on this computer. Microphone testing is opt-in and stores its sample in memory."; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
             Text { text: app.platformName==="Windows"?"Unsigned Windows build · no publisher certificate. Verify the release checksum before sharing or using a download.":"Native Linux application · hardware and compositor support are listed in the release notes."; color: Theme.amber; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
             RowLayout { FButton { text: "Quick guide"; onClicked: app.action("guide") } FButton { text: "Latest release"; onClicked: app.action("release") } }
@@ -36,9 +36,11 @@ ColumnLayout {
             FToggle { text: "Minimize to the system tray"; checked: app.options.minimizeToTray; onToggled: app.setOption("minimizeToTray",checked) }
             FToggle { text: "Close button hides to tray"; checked: app.options.closeToTray; onToggled: app.setOption("closeToTray",checked) }
             FToggle { text: "Start capture automatically"; checked: app.options.autoCapture; onToggled: app.setOption("autoCapture",checked) }
+            FToggle { text: "Show overlay automatically"; checked: app.options.autoOverlay; onToggled: app.setOption("autoOverlay",checked) }
+            FToggle { visible: app.platformName==="Windows" || app.state.session==="X11"; text: "Show HUD on desktop"; checked: app.options.hudOnDesktop; onToggled: app.setOption("hudOnDesktop",checked) }
             FButton { text: "Hide to tray now"; onClicked: app.action("hideToTray") }
         }
-        Text { text: app.platformName==="Windows"?"Automatic capture starts passive monitoring on app launch and follows foreground game frames. It never enables an in-game hook automatically.":"Automatic capture waits for monitored game launches. Games are never launched automatically at sign-in."; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Text { text: app.platformName==="Windows"?"Startup preferences apply the next time Framoryx opens. Show overlay automatically also starts capture. The HUD follows detected foreground games in Auto mode. Use Process rules to explicitly show or hide it for a process. Hooks require separate approval.":"Startup preferences apply the next time Framoryx opens. On X11, Auto follows foreground games when capture and the overlay are on. The Wayland game layer still needs a monitored launch."; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
         Text { text: app.state.trayAvailable?"Open Framoryx from its tray icon. Use Quit Framoryx in the tray menu to stop it completely.":"This desktop has no available system tray. Framoryx stays accessible in the taskbar instead."; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
     }
     FCard {
@@ -56,6 +58,7 @@ ColumnLayout {
     FCard {
         Layout.fillWidth: true
         Text { text: "Anti-cheat · use at your own risk"; color: Theme.amber; font.pixelSize: Theme.font(19); font.weight: Font.DemiBold }
+        FToggle { visible: app.platformName === "Windows"; text: "Show in-game hook warnings"; checked: !app.options.hideHookWarning; onToggled: app.setOption("hideHookWarning", !checked) }
         Text { text: "Games with anti-cheat may restrict or penalize overlays and in-game hooks. You are responsible for checking and following each game's rules. Framoryx does not guarantee anti-cheat compatibility. Its maintainers accept no responsibility for bans, suspensions, lost access or other consequences arising from its use."; color: Theme.muted; font.pixelSize: Theme.font(12); Layout.fillWidth: true; wrapMode: Text.Wrap }
     }
     FCard {

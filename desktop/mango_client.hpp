@@ -30,13 +30,14 @@ private:
     QElapsedTimer m_clock;
     QString m_prefix;
     QByteArray m_bytes;
-    QByteArray m_hudPacket,m_metricPacket,m_limitPacket;
+    QByteArray m_hudPacket,m_labelPacket,m_temperaturePacket,m_glowPacket,m_metricPacket,m_limitPacket;
     unsigned m_pollCount=0;
     quint32 m_pid=0;
     int m_surfaceWidth=0,m_surfaceHeight=0;
     quint64 m_dropped=0;
     qint64 m_retry=0,m_connectTime=0;
     bool m_verified=false,m_supported=false,m_collecting=true;
+    void sendHudSettings();
     void poll();
     void receive();
 };

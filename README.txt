@@ -1,9 +1,11 @@
 FRAMORYX — YOUR GAMING TOOLKIT
-Version 0.3.0 | C++ and Qt | Windows x64 / Linux x86-64
+Version 0.3.1 | C++ and Qt | Windows x64 / Linux x86-64
 
 Extract the complete package. Open Framoryx.exe on Windows, or run the
-AppImage / AppRun on Linux. Select a running game and Start capture,
-then Show overlay. Overlay Studio controls readouts, layouts and sizing.
+AppImage / AppRun on Linux. Automatic capture is enabled for new setups.
+Select Show overlay to display the HUD. On Windows, you can also enable
+Show overlay automatically in Settings. Overlay Studio controls readouts,
+layouts and sizing.
 
 The default capture path loads no code into your game. Optional hooks
 and game layers require explicit selection and may conflict with games

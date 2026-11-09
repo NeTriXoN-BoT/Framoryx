@@ -24,6 +24,21 @@ struct Display {
 }
 namespace x11 {
 quint32 foreground(){Display display;if(!display.root)return 0;const auto bytes=display.property(display.root,"_NET_ACTIVE_WINDOW",XCB_ATOM_WINDOW,32);quint32 id=0;if(bytes.size()==4)memcpy(&id,bytes.constData(),4);return id;}
+bool desktopActive() {
+    Display display;
+    if (!display.root) return false;
+    const auto active = display.property(display.root, "_NET_ACTIVE_WINDOW", XCB_ATOM_WINDOW, 32);
+    if (active.size() != sizeof(xcb_window_t)) return false;
+    xcb_window_t window;
+    memcpy(&window, active.constData(), sizeof(window));
+    if (window == XCB_NONE || window == display.root) return true;
+
+    const auto types = display.property(window, "_NET_WM_WINDOW_TYPE", XCB_ATOM_ATOM, 32);
+    if (types.size() < sizeof(xcb_atom_t)) return false;
+    xcb_atom_t type;
+    memcpy(&type, types.constData(), sizeof(type));
+    return type != XCB_NONE && type == display.atom("_NET_WM_WINDOW_TYPE_DESKTOP");
+}
 WindowState inspect(quint32 id){Display display;return display.inspect(id);}
 bool fullscreen(const WindowState& original,bool enabled){
     if(!original.valid)return false;Display display;const auto current=display.inspect(original.id);

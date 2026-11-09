@@ -7,4 +7,5 @@ WindowState inspect(quint32 id);
 bool fullscreen(const WindowState& original,bool enabled);
 bool compositing();
 quint32 foreground();
+bool desktopActive();
 }

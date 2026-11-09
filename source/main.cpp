@@ -118,6 +118,74 @@ struct MonitorInfo {
     RECT rect;
     std::wstring name;
 };
+constexpr UINT HudLocationChanged = WM_APP + 71;
+struct HudSurface {
+    HDC dc{};
+    HBITMAP dib{};
+    std::unique_ptr<Bitmap> image;
+    std::unique_ptr<Graphics> graphics;
+    int width = 0, height = 0;
+
+    ~HudSurface() { reset(); }
+    void reset() {
+        graphics.reset();
+        image.reset();
+        if (dc) DeleteDC(dc);
+        if (dib) DeleteObject(dib);
+        dc = nullptr;
+        dib = nullptr;
+        width = height = 0;
+    }
+    bool ensure(int w, int h) {
+        if (graphics && width == w && height == h)
+            return true;
+        reset();
+        BITMAPINFO info{};
+        info.bmiHeader.biSize = sizeof(info.bmiHeader);
+        info.bmiHeader.biWidth = w;
+        info.bmiHeader.biHeight = -h;
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        info.bmiHeader.biCompression = BI_RGB;
+        void* pixels = nullptr;
+        dc = CreateCompatibleDC(nullptr);
+        if (dc)
+            dib = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
+        if (dib && pixels && SelectObject(dc, dib)) {
+            // GDI+ draws directly into the same premultiplied pixels the compositor reads.
+            image = std::make_unique<Bitmap>(w, h, w * 4, PixelFormat32bppPARGB,
+                                             static_cast<BYTE*>(pixels));
+            if (image->GetLastStatus() == Ok) {
+                graphics = std::make_unique<Graphics>(image.get());
+                if (graphics->GetLastStatus() == Ok) {
+                    graphics->SetSmoothingMode(SmoothingModeAntiAlias);
+                    graphics->SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
+                    width = w;
+                    height = h;
+                    return true;
+                }
+            }
+        }
+        reset();
+        return false;
+    }
+};
+
+struct HudPaintState {
+    uint32_t fields = 0;
+    uint64_t order = 0;
+    int width = 0, height = 0, opacity = 0, style = 0, accent = 0;
+    float scale = 0;
+    bool temperatureColors = false;
+    bool textGlow = false;
+    uint64_t rainbowTick = 0;
+    std::array<double, 16> values{};
+    uint32_t graphPid = 0;
+    size_t graphCount = 0;
+    double graphFirst = 0, graphFirstMs = 0, graphLast = 0, graphLastMs = 0;
+    bool operator==(const HudPaintState&) const = default;
+};
+
 struct App {
     bool engineMode = false, engineDirty = false, safetyFallback = false;
     std::wstring engineToken;
@@ -139,8 +207,11 @@ struct App {
     LONGLONG hookCursor = 0;
     bool hookSource = false;
     bool overlay = false, autoBorderless = false;
+    bool hudOnDesktop = false, showingDesktopHud = false;
     int corner = 0, cap = 60;
     fg::HudOptions hudOptions;
+    fg::HudOptions hudDisplayOptions;
+    fg::HudText hudText;
     std::array<double,6> sensorValues{-1,-1,-1,-1,-1,-1};
     fg::HudProfile hudBase;
     std::map<std::string, fg::HudProfile> hudProfiles;
@@ -151,6 +222,14 @@ struct App {
     std::wstring compatibilityGuard;
     int hudWidth = 260, hudHeight = 180;
     float hudRenderScale = 1;
+    HudSurface hudSurface;
+    std::optional<HudPaintState> hudLastPaint;
+    fg::HudText hudLastPaintText;
+    std::string hudLastGraphChain;
+    HWND hudTarget{};
+    HWINEVENTHOOK hudLocationHook{};
+    bool hudLocationPending = false;
+    bool hudRainbowAnimating = false;
     double animationTime = 0, lastAnimation = 0, metricFps = 0, metricAverage = 0, metricLow = 0,
            metricMs = 0, metricCpu = 0;
     std::map<int, double> hoverMotion, toggleMotion;
@@ -220,6 +299,9 @@ struct App {
     bool headerLive = false;
     float headerScale = 0;
     std::map<std::pair<float, bool>, std::unique_ptr<Font>> fonts;
+    std::string hudFontName;
+    std::unique_ptr<FontFamily> hudFontFamily;
+    std::map<std::pair<float, bool>, std::unique_ptr<Font>> hudFonts;
     std::map<std::string, int> gameLimits;
     std::wstring diagnosticPath;
     std::wstring snapshotPath, rulesSnapshotPath;
@@ -446,7 +528,7 @@ void pushHookPresentation();
 void applyProfile(const std::string& exe);
 void applyDesktopScale();
 void paintMain(HDC, const RECT&);
-void positionHud();
+void positionHud(bool repaint = true);
 std::unique_ptr<Bitmap> captureScene(bool contentOnly = false);
 void rounded(Graphics& g, RectF r, Color color, float radius = 13, bool border = false) {
     GraphicsPath path;
@@ -470,6 +552,29 @@ Font* uiFont(float size, bool bold = false) {
         font = std::make_unique<Font>(L"Segoe UI", size, bold ? FontStyleBold : FontStyleRegular,
                                       UnitPixel);
     return font.get();
+}
+Font* hudFont(float size, bool bold, const std::string& family) {
+    if (family != app.hudFontName) {
+        app.hudFonts.clear();
+        app.hudFontFamily.reset();
+        app.hudFontName = family;
+        if (!family.empty()) {
+            auto requested = std::make_unique<FontFamily>(fg::wide(family).c_str());
+            if (requested->GetLastStatus() == Ok)
+                app.hudFontFamily = std::move(requested);
+        }
+    }
+    if (!app.hudFontFamily)
+        return uiFont(size, bold);
+    auto [entry, inserted] = app.hudFonts.try_emplace({size, bold});
+    if (inserted) {
+        const auto style = bold && app.hudFontFamily->IsStyleAvailable(FontStyleBold)
+            ? FontStyleBold : FontStyleRegular;
+        auto font = std::make_unique<Font>(app.hudFontFamily.get(), size, style, UnitPixel);
+        if (font->GetLastStatus() == Ok)
+            entry->second = std::move(font);
+    }
+    return entry->second ? entry->second.get() : uiFont(size, bold);
 }
 void label(Graphics& g, const std::wstring& s, float x, float y, float w, float h, float size = 13,
            Color c = text, bool bold = false, bool wrap = false) {
@@ -669,15 +774,23 @@ bool updateCap(bool persist = true) {
         saveSettings();
     return true;
 }
-void attachHook(bool confirmed = false) {
+void attachHook(bool confirmed = false, DWORD expectedPid = 0, const std::string& expectedExe = {}) {
     TargetWindow automatic{};auto* t=selected();
     if(!t&&app.engineMode&&confirmed&&app.autoWindow&&app.autoPid&&!app.autoExe.empty()&&(app.engineWantedExe.empty()||fg::lower(app.autoExe)==app.engineWantedExe)){DWORD current=0;GetWindowThreadProcessId(app.autoWindow,&current);if(current==app.autoPid){automatic={app.autoWindow,app.autoPid,app.autoExe,L""};t=&automatic;}}
     if (!t) {
         setNotice(L"Select a specific game window before enabling the experimental limiter.");
         return;
     }
+    DWORD windowPid = 0;
+    GetWindowThreadProcessId(t->hwnd, &windowPid);
+    if (!windowPid || windowPid != t->pid || (app.engineMode &&
+        (expectedPid != t->pid || fg::lower(expectedExe) != fg::lower(t->exe)))) {
+        setNotice(L"The game changed or closed. Select its running window and confirm again.");
+        return;
+    }
     const auto renderer=fg::inspectCompatibility(t->hwnd,t->exe);
-    if(renderer.inspected&&!renderer.dxgi&&(renderer.vulkan||renderer.opengl||renderer.dx9)){
+    const auto frames=app.capture.snapshot(t->pid);
+    if(!renderer.supportsHook(frames.live?frames.runtime:fg::PresentRuntime::Unknown)){
         setNotice(L"This renderer uses the external overlay. Framoryx's optional Windows in-game limiter currently supports DX11/DX12; use the game's own frame limit for this API.");return;
     }
     if (!updateCap())
@@ -1293,7 +1406,7 @@ void paintMain(HDC destination, const RECT& invalid) {
             line(g, 188, 0, 188, 820, edge);
             line(g, 24, 476, 162, 476);
             label(g, L"YOUR TOOLKIT", 24, 722, 145, 20, 9, muted, true);
-            label(g, L"FRAMORYX 0.3.0 · WINDOWS X64", 24, 747, 146, 40, 9, muted, false, true);
+            label(g, L"FRAMORYX 0.3.1 · WINDOWS X64", 24, 747, 146, 40, 9, muted, false, true);
             rounded(g, RectF(24, 770, 100, 17), Color(255, 43, 36, 29), 4);
             label(g, L"UNSIGNED BUILD", 30, 771, 94, 16, 8, amber, true);
             if (!app.preferencesSaved)
@@ -1364,42 +1477,252 @@ void paintMain(HDC destination, const RECT& invalid) {
     app.paintMilliseconds += paintMs;
     app.maxPaintMs = std::max(app.maxPaintMs, paintMs);
 }
-void positionHud() {
-    if (!app.overlay || !app.hudOptions.fields || (app.hudMode == 2&&!app.safetyFallback)) {
-        ShowWindow(app.hud, SW_HIDE);
+void CALLBACK onHudTargetLocation(HWINEVENTHOOK hook, DWORD, HWND window, LONG object, LONG child,
+                                  DWORD, DWORD) {
+    if (hook == app.hudLocationHook && window == app.hudTarget && object == OBJID_WINDOW &&
+        child == CHILDID_SELF && !app.hudLocationPending) {
+        app.hudLocationPending = PostMessageW(app.window, HudLocationChanged, 0, 0) != FALSE;
+    }
+}
+void trackHudTarget(HWND target, DWORD pid = 0, DWORD thread = 0) {
+    if (target == app.hudTarget)
+        return;
+    if (app.hudLocationHook)
+        UnhookWinEvent(app.hudLocationHook);
+    app.hudTarget = target;
+    app.hudLocationHook = target ? SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE,
+        EVENT_OBJECT_LOCATIONCHANGE, nullptr, onHudTargetLocation, pid, thread,
+        WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS) : nullptr;
+}
+bool automaticHudEligible(const std::string& executable) {
+    if (!app.selectedPid || app.rules.blocked(executable))
+        return false;
+    if (fg::matches(app.rules.allow, executable))
+        return true;
+    // Accelerated browser and chat windows can present frames just like games.
+    static const std::vector<std::string> desktopApps{
+        "chrome.exe", "msedge.exe", "msedgewebview2.exe", "firefox.exe", "brave.exe",
+        "steamwebhelper.exe", "discord.exe", "chatgpt.exe", "codex.exe"};
+    if (fg::matches(desktopApps, executable))
+        return false;
+    const bool capturedGame = app.stats.pid == app.selectedPid && app.stats.frames.size() >= 3;
+    // Older APIs can have a visible game window without usable ETW frame timings.
+    const bool legacyGame = app.compatibilityPid == app.selectedPid &&
+        (app.compatibility.dx10 || app.compatibility.dx9 || app.compatibility.dx8 ||
+         app.compatibility.directDraw);
+    return capturedGame || legacyGame;
+}
+bool desktopIsForeground(HWND foreground) {
+    if (!foreground)
+        return false;
+    const HWND shell = GetShellWindow();
+    if (foreground == shell || foreground == GetDesktopWindow())
+        return true;
+    DWORD shellPid = 0, foregroundPid = 0;
+    GetWindowThreadProcessId(shell, &shellPid);
+    GetWindowThreadProcessId(foreground, &foregroundPid);
+    if (!shellPid || shellPid != foregroundPid)
+        return false;
+    wchar_t className[32]{};
+    return GetClassNameW(foreground, className, std::size(className)) &&
+        (wcscmp(className, L"Progman") == 0 || wcscmp(className, L"WorkerW") == 0);
+}
+const fg::HudText& visibleHudText() {
+    return app.showingDesktopHud ? app.hudBase.text : app.hudText;
+}
+constexpr UINT_PTR hudRainbowTimer = 1;
+constexpr UINT hudRainbowInterval = 50;
+void animateHudRainbow(bool enabled) {
+    if (enabled == app.hudRainbowAnimating)
+        return;
+    if (enabled)
+        app.hudRainbowAnimating = SetTimer(app.hud, hudRainbowTimer, hudRainbowInterval, nullptr) != 0;
+    else {
+        KillTimer(app.hud, hudRainbowTimer);
+        app.hudRainbowAnimating = false;
+    }
+}
+HudPaintState hudPaintState() {
+    const auto& options = app.hudDisplayOptions;
+    const auto& stats = app.stats;
+    HudPaintState state;
+    state.fields = options.fields;
+    state.order = options.order;
+    state.width = app.hudWidth;
+    state.height = app.hudHeight;
+    state.opacity = options.opacity;
+    state.style = options.style;
+    state.accent = options.accent;
+    state.scale = app.hudRenderScale;
+    state.temperatureColors = options.temperatureColors;
+    state.textGlow = options.textGlow;
+    if (options.accent == fg::hudRainbowAccent)
+        state.rainbowTick = GetTickCount64() / hudRainbowInterval;
+    state.values.fill(-1);
+    if ((options.fields & fg::HudFps) && stats.live) state.values[0] = stats.fps;
+    if ((options.fields & fg::HudAverage) && !stats.frames.empty()) state.values[1] = stats.average;
+    if ((options.fields & fg::HudLow) && stats.frames.size() >= 100) state.values[2] = stats.low;
+    if ((options.fields & fg::HudTime) && stats.live) state.values[3] = stats.ms;
+    if ((options.fields & fg::HudCpu) && app.cpuReady) state.values[5] = app.cpu;
+    if ((options.fields & fg::HudRam) && app.memoryReady) state.values[6] = app.ramGB;
+    if ((options.fields & fg::HudCap) && app.hook.active() && app.hook.pid() == app.selectedPid)
+        state.values[7] = app.cap;
+    for (size_t i = 0; i < app.sensorValues.size(); ++i)
+        if (options.fields & (fg::HudGpu << i))
+            state.values[10 + i] = app.sensorValues[i];
+    if ((options.fields & fg::HudGraph) && !stats.frames.empty()) {
+        state.graphPid = stats.pid;
+        state.graphCount = stats.frames.size();
+        state.graphFirst = stats.frames.front().time;
+        state.graphFirstMs = stats.frames.front().ms;
+        state.graphLast = stats.frames.back().time;
+        state.graphLastMs = stats.frames.back().ms;
+    }
+    return state;
+}
+bool hudPaintMatches(const HudPaintState& state, const fg::HudText& text) {
+    return app.hudLastPaint == state && app.hudLastPaintText == text &&
+        (!state.graphCount || app.hudLastGraphChain == app.stats.chain);
+}
+void positionHud(bool repaint) {
+    if (!app.hud)
+        return;
+    const auto hide = [] {
+        animateHudRainbow(false);
+        trackHudTarget(nullptr);
+        if (IsWindowVisible(app.hud))
+            ShowWindow(app.hud, SW_HIDE);
+    };
+    const HWND foreground = GetForegroundWindow();
+    const bool desktop = app.hudOnDesktop && desktopIsForeground(foreground);
+    auto options = desktop ? app.hudBase.options : app.hudOptions;
+    if (!app.overlay || !options.fields || (!desktop && app.hudMode == 2 && !app.safetyFallback)) {
+        hide();
+        if (!app.overlay || !options.fields) {
+            app.hudSurface.reset();
+            app.hudLastPaint.reset();
+        }
         return;
     }
-    HWND target = selected() ? selected()->hwnd : app.autoWindow;
-    // Auto desktop HUD yields to an attached DX11 HUD, avoiding duplicate counters.
-    if (!target || !IsWindow(target) || IsIconic(target) ||
-        (app.hudMode != 1 && app.hook.active() && app.hook.hudFresh() &&
-         app.hook.pid() == app.selectedPid)) {
-        ShowWindow(app.hud, SW_HIDE);
+    RECT screenClient{}, visible{};
+    if (desktop) {
+        POINT cursor{};
+        GetCursorPos(&cursor);
+        MONITORINFO monitor{sizeof(monitor)};
+        if (!GetMonitorInfoW(MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY), &monitor)) {
+            hide();
+            return;
+        }
+        trackHudTarget(nullptr);
+        screenClient = visible = monitor.rcWork;
+        options.fields = fg::desktopHudFields(options.fields);
+    } else {
+        const auto* selection = selected();
+        HWND target = selection ? selection->hwnd : app.autoWindow;
+        const auto& targetExe = selection ? selection->exe : app.autoExe;
+        // The external HUD yields to a drawing hook in Auto mode.
+        if (!app.selectedPid || !target || !IsWindowVisible(target) || IsIconic(target) ||
+            app.rules.blocked(targetExe) ||
+            (!selection && app.engineWantedExe.empty() &&
+             !automaticHudEligible(targetExe)) ||
+            (app.hudMode != 1 && app.hook.active() && app.hook.hudFresh() &&
+             app.hook.pid() == app.selectedPid)) {
+            hide();
+            return;
+        }
+        DWORD foregroundPid = 0, targetPid = 0;
+        GetWindowThreadProcessId(foreground, &foregroundPid);
+        const DWORD targetThread = GetWindowThreadProcessId(target, &targetPid);
+        RECT client{};
+        if (foregroundPid != app.selectedPid || targetPid != app.selectedPid ||
+            !GetClientRect(target, &client)) {
+            hide();
+            return;
+        }
+        POINT origin{client.left, client.top}, extent{client.right, client.bottom};
+        if (!ClientToScreen(target, &origin) || !ClientToScreen(target, &extent)) {
+            hide();
+            return;
+        }
+        trackHudTarget(target, targetPid, targetThread);
+        screenClient = {origin.x, origin.y, extent.x, extent.y};
+        const auto monitor = MonitorFromRect(&screenClient, MONITOR_DEFAULTTONULL);
+        MONITORINFO info{sizeof(info)};
+        if (!monitor || !GetMonitorInfoW(monitor, &info) ||
+            !IntersectRect(&visible, &screenClient, &info.rcMonitor)) {
+            animateHudRainbow(false);
+            if (IsWindowVisible(app.hud))
+                ShowWindow(app.hud, SW_HIDE);
+            return;
+        }
+    }
+
+    const int width = visible.right - visible.left;
+    const int height = visible.bottom - visible.top;
+    if (width <= 0 || height <= 0) {
+        hide();
         return;
     }
-    DWORD foregroundPid = 0;
-    GetWindowThreadProcessId(GetForegroundWindow(), &foregroundPid);
-    if (foregroundPid != app.selectedPid) {
-        ShowWindow(app.hud, SW_HIDE);
-        return;
-    }
-    RECT r = selectedMonitor(target);
-    float scale = fg::overlayScale(app.hudOptions.scale, r.bottom - r.top)*app.hudOptions.fontScale/100.f;
-    scale = std::min(scale, std::min((r.right - r.left - 44) / fg::hudWidth(app.hudOptions),
-                                     (r.bottom - r.top - 44) / fg::hudHeight(app.hudOptions)));
+    const int insetX = options.x < 0 ? std::min(22, width / 10) : 0;
+    const int insetY = options.y < 0 ? std::min(22, height / 10) : 0;
+    const int availableWidth = width - 2 * insetX;
+    const int availableHeight = height - 2 * insetY;
+    const auto layout = fg::hudLayout(options);
+    const float requestedScale = options.scale ? fg::overlayScale(options.scale, 0)
+        : std::clamp((screenClient.bottom - screenClient.top) / 1080.f, .5f, 2.5f);
+    const float scale = std::min({requestedScale * options.fontScale / 100.f,
+                                  availableWidth / layout.width, availableHeight / layout.height});
+    const int w = std::clamp(int(std::ceil(layout.width * scale)), 1, availableWidth);
+    const int h = std::clamp(int(std::ceil(layout.height * scale)), 1, availableHeight);
+    const int corner = desktop ? app.hudBase.corner : app.corner;
+    const int anchorX = options.x >= 0 ? options.x : (corner % 2 ? 10000 : 0);
+    const int anchorY = options.y >= 0 ? options.y : (corner >= 2 ? 10000 : 0);
+    const int x = visible.left + insetX + int((availableWidth - w) * anchorX / 10000.);
+    const int y = visible.top + insetY + int((availableHeight - h) * anchorY / 10000.);
+
+    const bool showing = IsWindowVisible(app.hud);
+    const bool sizeChanged = w != app.hudWidth || h != app.hudHeight || scale != app.hudRenderScale;
+    const bool desktopChanged = desktop != app.showingDesktopHud;
+    app.showingDesktopHud = desktop;
+    app.hudDisplayOptions = options;
     app.hudRenderScale = scale;
-    int w = int(fg::hudWidth(app.hudOptions) * scale),
-        h = int(fg::hudHeight(app.hudOptions) * scale);
     app.hudWidth = w;
     app.hudHeight = h;
-    int x = (app.corner % 2) ? r.right - w - 22 : r.left + 22;
-    int y = app.corner >= 2 ? r.bottom - h - 22 : r.top + 22;
-    if(app.hudOptions.x>=0)x=r.left+int(std::max(0L,r.right-r.left-w)*app.hudOptions.x/10000.);
-    if(app.hudOptions.y>=0)y=r.top+int(std::max(0L,r.bottom-r.top-h)*app.hudOptions.y/10000.);
-    SetWindowPos(app.hud, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    InvalidateRect(app.hud, nullptr, FALSE);
+    RECT previous{};
+    const RECT destination{x, y, x + w, y + h};
+    if (!showing || !GetWindowRect(app.hud, &previous) || !EqualRect(&previous, &destination))
+        SetWindowPos(app.hud, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    animateHudRainbow(options.accent == fg::hudRainbowAccent && IsWindowVisible(app.hud));
+    if (sizeChanged || desktopChanged || !showing ||
+        (repaint && !hudPaintMatches(hudPaintState(), visibleHudText())))
+        InvalidateRect(app.hud, nullptr, FALSE);
+}
+void setOverlay(bool enabled, bool automatic = false) {
+    if (enabled && !app.capture.running()) {
+        auto error = app.capture.start(app.rules);
+        if (!error.empty()) {
+            setNotice(error);
+            return;
+        }
+    }
+    app.overlay = enabled;
+    pushHookPresentation();
+    syncHudControls();
+    SetWindowTextW(app.controls[Overlay], app.overlay ? L"Hide overlay" : L"Show overlay");
+    positionHud();
+    if (enabled && automatic)
+        setNotice(L"Automatic overlay ready. Focus a game to show the HUD.");
+    else
+        setNotice(app.overlay ? L"Overlay on. Ctrl+Alt+O toggles it. If hidden by fullscreen, "
+                                L"use Borderless play or opt into the DX11/DX12 HUD."
+                              : L"Overlay hidden.");
 }
 LRESULT CALLBACK hudProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_TIMER && wp == hudRainbowTimer) {
+        if (app.hudRainbowAnimating && IsWindowVisible(window))
+            InvalidateRect(window, nullptr, FALSE);
+        return 0;
+    }
     if (msg == WM_NCHITTEST)
         return HTTRANSPARENT;
     if (msg == WM_MOUSEACTIVATE)
@@ -1410,30 +1733,29 @@ LRESULT CALLBACK hudProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
         PAINTSTRUCT ps{};
         BeginPaint(window, &ps);
         EndPaint(window, &ps);
-        Bitmap image(std::max(1, app.hudWidth), std::max(1, app.hudHeight), PixelFormat32bppPARGB);
-        {
-            Graphics g(&image);
-            g.Clear(Color(0, 0, 0, 0));
-            g.SetSmoothingMode(SmoothingModeAntiAlias);
-            g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
-            g.ScaleTransform(app.hudRenderScale, app.hudRenderScale);
-            paintHudContent(g, app.hudOptions, app.stats, false);
-        }
-        HBITMAP bitmap = nullptr;
-        if (image.GetHBITMAP(Color(0, 0, 0, 0), &bitmap) == Ok) {
-            HDC screen = GetDC(nullptr), dc = CreateCompatibleDC(screen);
-            auto old = SelectObject(dc, bitmap);
-            RECT rect{};
-            GetWindowRect(window, &rect);
-            POINT position{rect.left, rect.top}, source{};
-            SIZE size{app.hudWidth, app.hudHeight};
-            BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
-            UpdateLayeredWindow(window, screen, &position, &size, dc, &source, 0, &blend,
-                                ULW_ALPHA);
-            SelectObject(dc, old);
-            DeleteObject(bitmap);
-            DeleteDC(dc);
-            ReleaseDC(nullptr, screen);
+        if (!app.overlay || !IsWindowVisible(window))
+            return 0;
+        const auto paintState = hudPaintState();
+        const auto& textStyle = visibleHudText();
+        if (hudPaintMatches(paintState, textStyle))
+            return 0;
+        auto& surface = app.hudSurface;
+        if (!surface.ensure(app.hudWidth, app.hudHeight))
+            return 0;
+        auto& g = *surface.graphics;
+        g.ResetTransform();
+        g.Clear(Color(0, 0, 0, 0));
+        g.ScaleTransform(app.hudRenderScale, app.hudRenderScale);
+        paintHudContent(g, app.hudDisplayOptions, app.stats, false, textStyle);
+        g.Flush(FlushIntentionSync);
+        POINT source{};
+        SIZE size{app.hudWidth, app.hudHeight};
+        BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+        if (UpdateLayeredWindow(window, nullptr, nullptr, &size, surface.dc, &source, 0, &blend, ULW_ALPHA)) {
+            app.hudLastPaint = paintState;
+            app.hudLastPaintText = textStyle;
+            if (paintState.graphCount) app.hudLastGraphChain = app.stats.chain;
+            else app.hudLastGraphChain.clear();
         }
         return 0;
     }
@@ -2294,7 +2616,7 @@ void createControls() {
     for (auto label : {L"0%", L"15%", L"30%", L"45%", L"60%", L"75%", L"85%", L"90%", L"95%", L"100%"})
         SendMessageW(app.controls[HudOpacity], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     control(HudAccent, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
-    for (auto label : {L"Mint", L"Ice blue", L"Violet", L"Amber", L"Rose", L"Cyan", L"Solar", L"Lime", L"Coral", L"Silver"})
+    for (auto label : {L"Mint", L"Ice blue", L"Violet", L"Amber", L"Rose", L"Cyan", L"Solar", L"Lime", L"Coral", L"Silver", L"Rainbow"})
         SendMessageW(app.controls[HudAccent], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     control(HudPosition, L"COMBOBOX", L"", CBS_DROPDOWNLIST);
     for (auto label : {L"Top left", L"Top right", L"Bottom left", L"Bottom right"})
@@ -2438,6 +2760,7 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
             layout();
         return 0;
     case WM_DISPLAYCHANGE:
+        app.hudLastPaint.reset();
         updateAnimationState(true);
         refreshMonitors();
         if (app.desktopPercent == 0)
@@ -2835,24 +3158,7 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
                       L"controls.");
             break;
         case Overlay:
-            app.overlay = !app.overlay;
-            if (app.overlay && !app.capture.running()) {
-                auto error = app.capture.start(app.rules);
-                if (!error.empty()) {
-                    app.overlay = false;
-                    setNotice(error);
-                    syncHudControls();
-                    SetWindowTextW(app.controls[Overlay], L"Show overlay");
-                    break;
-                }
-            }
-            pushHookPresentation();
-            syncHudControls();
-            SetWindowTextW(app.controls[Overlay], app.overlay ? L"Hide overlay" : L"Show overlay");
-            positionHud();
-            setNotice(app.overlay ? L"Overlay on. Ctrl+Alt+O toggles it. If hidden by fullscreen, "
-                                    L"use Borderless play or opt into the DX11/DX12 HUD."
-                                  : L"Desktop overlay hidden.");
+            setOverlay(!app.overlay);
             break;
         case Rules:
             showRules();
@@ -2915,7 +3221,12 @@ LRESULT CALLBACK mainProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_APP+70:
         engineCommands();
         return 0;
+    case HudLocationChanged:
+        app.hudLocationPending = false;
+        positionHud(false);
+        return 0;
     case WM_DESTROY:
+        trackHudTarget(nullptr);
         if(app.engineMode){saveSettings();enginePipe.stop();}
         app.shuttingDown = true;
         app.animation.stop();
@@ -3006,6 +3317,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     loadSettings();
     if(app.engineMode){app.motion=false;app.fixedSmokePage=0;}
     app.hudOptions = app.hudBase.options;
+    app.hudText = app.hudBase.text;
     app.hudMode = app.hudBase.mode;
     app.corner = app.hudBase.corner;
     int argumentCount = 0;
@@ -3222,6 +3534,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     app.transitionOld.reset();
     app.transitionNew.reset();
     app.fonts.clear();
+    app.hudFonts.clear();
+    app.hudFontFamily.reset();
+    app.hudSurface.reset();
     app.buttonSurfaces.clear();
     app.headerCache.reset();
     app.logoCache.reset();

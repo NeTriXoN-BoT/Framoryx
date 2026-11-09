@@ -501,10 +501,6 @@ int main(int argc, char** argv) {
             double rate = double(hook.frameCount() - initial) / (fg::clockSeconds() - start);
             check(rate > 26 && rate < 33,
                   "conservative DX12 HUD fallback preserves the requested FPS cap");
-            hook.disable();
-            wait(400);
-            check(WaitForSingleObject(process.h, 0) == WAIT_TIMEOUT,
-                  "multiple-queue scene survives fallback and disable");
             HWND target = nullptr;
             Ctx context{info.dwProcessId, &target};
             EnumWindows(
@@ -521,8 +517,16 @@ int main(int argc, char** argv) {
                 reinterpret_cast<LPARAM>(&context));
             if (target)
                 PostMessageW(target, WM_CLOSE, 0, 0);
-            if (WaitForSingleObject(process.h, 2000) == WAIT_TIMEOUT)
+            const auto exited = WaitForSingleObject(process.h, 2000);
+            DWORD exitCode = 0;
+            check(exited == WAIT_OBJECT_0 && GetExitCodeProcess(process.h, &exitCode) &&
+                      exitCode == 0,
+                  "multiple-queue scene exits cleanly while the limiter is active");
+            if (exited == WAIT_TIMEOUT)
                 TerminateProcess(process.h, 0);
+            hook.tick();
+            check(!hook.active() && hook.pid() == 0 && hook.frameCount() == 0,
+                  "game exit clears the active hook and its frame history");
         } else
             check(false, "multiple-queue DX12 test scene starts");
     }

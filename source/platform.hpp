@@ -74,6 +74,15 @@ inline std::map<DWORD, std::string> processes() {
         } while (Process32NextW(snap.h, &e));
     return list;
 }
+inline std::string processImageBasename(HANDLE process) {
+    std::wstring path(32768, L'\0');
+    DWORD length = DWORD(path.size());
+    if (!QueryFullProcessImageNameW(process, 0, path.data(), &length))
+        return {};
+    path.resize(length);
+    const auto separator = path.find_last_of(L"\\/");
+    return utf8(path.substr(separator == std::wstring::npos ? 0 : separator + 1));
+}
 inline std::wstring antiCheatRunning() {
     Handle snap(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
     if (!snap)
@@ -118,6 +127,30 @@ class HookClient {
     ULONGLONG loaderStarted = 0;
     bool loaderIsBroker = false;
     std::string targetName;
+    HudText sentHudText;
+
+    static LONG hudFieldBits(const HudOptions& options) {
+        return LONG(options.fields |
+            (options.temperatureColors ? hudTemperatureColorsFlag : 0u) |
+            (options.textGlow ? hudTextGlowFlag : 0u));
+    }
+
+    void releaseExitedTarget() {
+        if (!target || WaitForSingleObject(target.h, 0) != WAIT_OBJECT_0)
+            return;
+        // Process exit releases the remote allocation and stops the DLL without an IPC update.
+        loaderThread.reset();
+        loaderPath = nullptr;
+        if (ipc) {
+            UnmapViewOfFile(ipc);
+            ipc = nullptr;
+        }
+        mapping.reset();
+        target.reset();
+        pid_ = 0;
+        targetName.clear();
+        sentHudText = {};
+    }
 
   public:
     ~HookClient() {
@@ -135,7 +168,7 @@ class HookClient {
         if (!ipc)
             return;
         options.validate();
-        InterlockedExchange(&ipc->hudFields, LONG(options.fields));
+        InterlockedExchange(&ipc->hudFields, hudFieldBits(options));
         InterlockedExchange(&ipc->hudScale, options.scale);
         InterlockedExchange(&ipc->hudOpacity, options.opacity);
         InterlockedExchange(&ipc->hudAccent, options.accent);
@@ -144,6 +177,21 @@ class HookClient {
         InterlockedExchange(&ipc->hudOrderHi,LONG(options.order>>32));
         InterlockedExchange(&ipc->hudX,options.x);InterlockedExchange(&ipc->hudY,options.y);
         InterlockedExchange(&ipc->hudFontScale,options.fontScale);
+    }
+    void hudText(const HudText& text) {
+        if (!ipc || text == sentHudText)
+            return;
+        std::array<LONG, hudTextWordCount> words{};
+        auto* bytes = reinterpret_cast<char*>(words.data());
+        for (size_t i = 0; i < text.labels.size(); ++i)
+            text.labels[i].copy(bytes + i * (hudLabelBytes + 1), hudLabelBytes);
+        text.fontFamily.copy(bytes + text.labels.size() * (hudLabelBytes + 1), hudFontFamilyBytes);
+        // The generation stays odd while writing, so the render thread can skip partial updates.
+        InterlockedIncrement(&ipc->hudTextGeneration);
+        for (size_t i = 0; i < words.size(); ++i)
+            InterlockedExchange(&ipc->hudTextWords[i], words[i]);
+        InterlockedIncrement(&ipc->hudTextGeneration);
+        sentHudText = text;
     }
     void sensors(const std::array<double,6>& values){if(ipc)for(size_t i=0;i<values.size();++i)InterlockedExchange(&ipc->sensors[i],std::isfinite(values[i])&&values[i]>=0?LONG(std::min(values[i],10000.)*100):-1);}
     void systemMetrics(double cpu, double ramGB) {
@@ -159,24 +207,29 @@ class HookClient {
         return ipc && status() == 1;
     }
     LONGLONG frameCount() const {
-        return ipc ? read64(&ipc->frames) : 0;
+        return ipc ? std::max<LONGLONG>(0, read64(&ipc->frames)) : 0;
     }
     std::vector<Frame> drainFrames(LONGLONG& cursor) const {
         std::vector<Frame> result;
         if (!ipc)
             return result;
-        auto end = frameCount();
-        if (cursor > end)
+        const auto end = frameCount();
+        if (cursor < 0 || cursor > end)
             cursor = 0;
-        auto begin = std::max<LONGLONG>(cursor + 1, end - LONGLONG(hookRingSize) + 1);
-        LARGE_INTEGER frequency{};
+        const auto count = std::min(end - cursor, LONGLONG(hookRingSize));
+        if (!count)
+            return result;
+        LARGE_INTEGER now{}, frequency{};
+        QueryPerformanceCounter(&now);
         QueryPerformanceFrequency(&frequency);
-        for (auto n = begin; n <= end; ++n) {
+        for (auto remaining = count; remaining > 0; --remaining) {
+            const auto n = end - remaining + 1;
             auto& entry = ipc->ring[n % hookRingSize];
             if (read64(&entry.sequence) != n)
                 continue;
             auto time = read64(&entry.qpc), interval = read64(&entry.interval);
-            if (read64(&entry.sequence) != n || interval <= 0 || interval > frequency.QuadPart * 60)
+            if (read64(&entry.sequence) != n || time <= 0 || time > now.QuadPart ||
+                interval <= 0 || interval > frequency.QuadPart * 60)
                 continue;
             result.push_back({targetName, "Hook primary", pid_, double(time) / frequency.QuadPart,
                               1000.0 * interval / frequency.QuadPart});
@@ -185,6 +238,7 @@ class HookClient {
         return result;
     }
     void tick() {
+        releaseExitedTarget();
         if (ipc)
             InterlockedExchange64(&ipc->heartbeat, GetTickCount64());
         if (loaderThread && WaitForSingleObject(loaderThread.h, 0) == WAIT_OBJECT_0) {
@@ -229,7 +283,7 @@ class HookClient {
         LARGE_INTEGER now{}, frequency{};
         QueryPerformanceCounter(&now);
         QueryPerformanceFrequency(&frequency);
-        return last > 0 && now.QuadPart - last < frequency.QuadPart;
+        return last > 0 && last <= now.QuadPart && now.QuadPart - last < frequency.QuadPart;
     }
     void disable() {
         if (ipc)
@@ -239,6 +293,7 @@ class HookClient {
         return target && WaitForSingleObject(target.h, 0) == WAIT_TIMEOUT;
     }
     std::wstring attach(DWORD pid, const std::string& expectedName, const Rules& rules, int fps) {
+        releaseExitedTarget();
         if (active() || loaderThread || (ipc && status() == 0 && targetAlive()))
             return L"A hook is active or still loading. Disable it and restart that game before "
                    L"attaching again.";
@@ -248,9 +303,7 @@ class HookClient {
         if (!blocker.empty())
             return L"Hook blocked: " + blocker +
                    L". Use ETW monitoring and an in-game or driver limiter.";
-        auto current = processes();
-        if (!current.count(pid) || lower(current[pid]) != lower(expectedName) ||
-            pid == GetCurrentProcessId())
+        if (!pid || pid == GetCurrentProcessId())
             return L"The selected process has changed. Refresh the window list.";
         // Injection is confined to this explicit opt-in path. ETW and borderless mode never call
         // it.
@@ -260,6 +313,9 @@ class HookClient {
                                    FALSE, pid));
         if (!process)
             return L"Cannot open the selected process: " + winError();
+        const auto currentName = processImageBasename(process.h);
+        if (currentName.empty() || lower(currentName) != lower(expectedName))
+            return L"The selected process has changed. Refresh the window list.";
         USHORT machine = 0, native = 0;
         if (!IsWow64Process2(process.h, &machine, &native) ||
             (machine != IMAGE_FILE_MACHINE_UNKNOWN && machine != IMAGE_FILE_MACHINE_I386) ||
@@ -283,12 +339,13 @@ class HookClient {
         ZeroMemory(view, sizeof(*view));
         view->magic = ipcMagic;
         view->version = ipcVersion;
+        sentHudText = {};
         view->ownerPid = GetCurrentProcessId();
         view->targetPid = pid;
         view->creationTime = birth;
         view->cap = fps;
         view->overlay = 1;
-        view->hudFields = HudOptions{}.fields;
+        view->hudFields = hudFieldBits(HudOptions{});
         view->hudOpacity = 90;
         view->hudOrderLo=LONG(HudOptions::defaultOrder&0xffffffffu);view->hudOrderHi=LONG(HudOptions::defaultOrder>>32);
         view->hudX=-1;view->hudY=-1;view->hudFontScale=100;

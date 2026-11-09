@@ -1,5 +1,6 @@
 #include "controller.hpp"
 #include "backend_checks.hpp"
+#include "hud_styled_text.hpp"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
@@ -47,7 +48,7 @@ int main(int argc,char** argv){
     QApplication application(argc,argv);
     application.setQuitOnLastWindowClosed(false);
     QCoreApplication::setApplicationName("Framoryx");
-    QCoreApplication::setApplicationVersion("0.3.0");
+    QCoreApplication::setApplicationVersion("0.3.1");
     QCoreApplication::setOrganizationName("Framoryx");
     QGuiApplication::setDesktopFileName("io.framoryx.Framoryx");
     QApplication::setWindowIcon(QIcon(":/art/icon.png"));
@@ -89,6 +90,7 @@ int main(int argc,char** argv){
     QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("app",&controller);
     bool qmlFailure=false;QStringList qmlWarnings;
     QObject::connect(&engine,&QQmlEngine::warnings,&application,[&](const QList<QQmlError>& warnings){for(const auto& warning:warnings){qWarning().noquote()<<warning.toString();qmlWarnings<<warning.toString();}qmlFailure=true;});
+    qmlRegisterType<HudStyledText>("Framoryx.Hud", 1, 0, "HudStyledText");
     engine.load(QUrl("qrc:/qml/Main.qml"));
     if(engine.rootObjects().isEmpty())return 1;
     auto window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());if(!window)return 1;
@@ -112,6 +114,14 @@ int main(int argc,char** argv){
     auto quit=menu.addAction("Quit Framoryx");QObject::connect(quit,&QAction::triggered,&application,&QApplication::quit);
     tray.setContextMenu(&menu);tray.setToolTip("Framoryx — Play at your best");
     QObject::connect(&tray,&QSystemTrayIcon::activated,&controller,[&](QSystemTrayIcon::ActivationReason reason){if(reason==QSystemTrayIcon::Trigger||reason==QSystemTrayIcon::DoubleClick)emit controller.showRequested();});
+    QObject::connect(&controller, &Controller::showRequested, window, [window] {
+        const auto states = window->windowStates();
+        if (states.testFlag(Qt::WindowMinimized))
+            window->setWindowStates(states & ~Qt::WindowStates(Qt::WindowMinimized));
+        window->setVisible(true);
+        window->raise();
+        window->requestActivate();
+    });
     auto syncTray=[&]{const bool available=QSystemTrayIcon::isSystemTrayAvailable();controller.setState("trayAvailable",available);if(available&&!smoke)tray.show();else {tray.hide();if(!smoke&&!window->isVisible())window->show();}};
     syncTray();
     QObject::connect(&controller,&Controller::hideRequested,window,[&]{if(tray.isVisible())window->hide();else {window->showMinimized();controller.notify("This desktop has no system tray. Framoryx was minimized to the taskbar.");}});

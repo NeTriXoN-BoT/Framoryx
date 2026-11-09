@@ -5,7 +5,7 @@ const wchar_t* hudTitles[]{L"Live FPS",    L"Average FPS",   L"1% low",     L"Fr
                            L"Frame graph", L"System CPU",    L"System RAM", L"Limit target",
                            L"Renderer", L"Framoryx label", L"GPU usage", L"VRAM usage", L"GPU temp", L"CPU temp", L"GPU power", L"GPU clock"};
 Color hudAccent(int index) {
-    const auto rgb=fg::accentColors[std::clamp(index,0,9)];
+    const auto rgb=fg::accentColors[std::clamp(index,0,fg::hudRainbowAccent)];
     return Color(255,BYTE(rgb>>16),BYTE(rgb>>8),BYTE(rgb));
 }
 void showAppWindow() {
@@ -13,7 +13,7 @@ void showAppWindow() {
     SetForegroundWindow(app.window);
 }
 void updateTray() {
-    if (!app.window || app.shuttingDown)
+    if (!app.window || app.shuttingDown || app.engineMode)
         return;
     NOTIFYICONDATAW icon{};
     icon.cbSize = sizeof(icon);
@@ -161,22 +161,32 @@ void applyProfile(const std::string& exe) {
     auto found = app.hudProfiles.find(app.activeProfile);
     auto profile = found == app.hudProfiles.end() ? app.hudBase : found->second;
     app.hudOptions = profile.options;
+    app.hudText = profile.text;
+    app.hudOptions.temperatureColors = app.hudBase.options.temperatureColors;
+    app.hudOptions.textGlow = app.hudBase.options.textGlow;
+    app.hudText.fontFamily = app.hudBase.text.fontFamily;
     app.corner = profile.corner;
     app.hudMode = profile.mode;
     if(app.engineMode){const auto limit=app.gameLimits.find(app.activeProfile);if(limit!=app.gameLimits.end()){app.cap=limit->second;SetWindowTextW(app.controls[CapValue],std::to_wstring(app.cap).c_str());if(app.hook.pid()==app.selectedPid)app.hook.cap(app.cap);}}
     syncHudControls();
 }
 void pushHookPresentation() {
+    if (!app.hook.pid())
+        return;
     auto found = app.hudProfiles.find(fg::lower(app.hook.name()));
     auto profile = found == app.hudProfiles.end() ? app.hudBase : found->second;
+    profile.options.temperatureColors = app.hudBase.options.temperatureColors;
+    profile.options.textGlow = app.hudBase.options.textGlow;
+    profile.text.fontFamily = app.hudBase.text.fontFamily;
     app.hook.hudOptions(profile.options);
+    app.hook.hudText(profile.text);
     app.hook.corner(profile.corner);
     app.hook.overlay(app.overlay && profile.mode != 1&&!app.safetyFallback);
 }
 void storeHudProfile() {
     app.contentDirty = true;
     app.hudOptions.validate();
-    fg::HudProfile profile{app.hudOptions, app.corner, app.hudMode};
+    fg::HudProfile profile{app.hudOptions, app.corner, app.hudMode, app.hudText};
     if (app.activeProfile.empty())
         app.hudBase = profile;
     else
@@ -216,9 +226,65 @@ void applyDesktopScale() {
     InvalidateRect(app.window, nullptr, FALSE);
 }
 void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats& stats,
-                     bool preview) {
+                     bool preview, const fg::HudText& hudText = app.hudText) {
+    const float phase = options.accent == fg::hudRainbowAccent
+        ? fg::hudRainbowPhase(GetTickCount64()) : 0.f;
+    auto drawText = [&](const std::wstring& caption, const RectF& bounds, float size, Color color,
+                        bool bold = false, StringAlignment align = StringAlignmentNear,
+                        bool temperatureTint = false) {
+        StringFormat format;
+        format.SetAlignment(align);
+        format.SetFormatFlags(StringFormatFlagsNoWrap);
+        format.SetTrimming(StringTrimmingEllipsisCharacter);
+        const auto* font = hudFont(size, bold, hudText.fontFamily);
+        const auto paint = [&](Brush& brush) {
+            g.DrawString(caption.c_str(), int(caption.size()), font, bounds, &format, &brush);
+        };
+        const auto halo = [&](Brush& brush) {
+            for (const float offset : {-1.f, 1.f}) {
+                auto shifted = bounds;
+                shifted.Offset(offset, 0.f);
+                g.DrawString(caption.c_str(), int(caption.size()), font, shifted, &format, &brush);
+            }
+        };
+        if (options.accent == fg::hudRainbowAccent && !temperatureTint && !caption.empty()) {
+            RectF measured;
+            g.MeasureString(caption.c_str(), int(caption.size()), font, bounds, &format, &measured);
+            if (measured.Width > 0) {
+                std::array<Color, fg::hudRainbowStops.size()> colors;
+                std::array<REAL, fg::hudRainbowStops.size()> positions;
+                for (size_t index = 0; index < colors.size(); ++index) {
+                    positions[index] = REAL(index) / REAL(colors.size() - 1);
+                    colors[index] = Color(0xff000000u | fg::hudRainbowColor(positions[index] + phase));
+                }
+                LinearGradientBrush spectrum(PointF(measured.X, 0),
+                    PointF(measured.GetRight(), 0), colors.front(), colors.back());
+                if (spectrum.SetInterpolationColors(colors.data(), positions.data(), int(colors.size())) == Ok) {
+                    if (options.textGlow) {
+                        for (auto& stop : colors) stop = Color(0x40000000u | (stop.GetValue() & 0xffffffu));
+                        LinearGradientBrush glow(PointF(measured.X, 0), PointF(measured.GetRight(), 0),
+                                                 colors.front(), colors.back());
+                        if (glow.SetInterpolationColors(colors.data(), positions.data(), int(colors.size())) == Ok)
+                            halo(glow);
+                    }
+                    paint(spectrum);
+                    return;
+                }
+            }
+        }
+        if (options.textGlow) {
+            SolidBrush glow(Color(0x40000000u | (color.GetValue() & 0xffffffu)));
+            halo(glow);
+        }
+        SolidBrush brush(color);
+        paint(brush);
+    };
+    auto customLabel = [&hudText](size_t index, const wchar_t* fallback) {
+        const auto& caption = hudText.labels[index];
+        return caption.empty() ? std::wstring(fallback) : fg::wide(caption);
+    };
     if (!options.fields) {
-        label(g, L"Choose at least one readout", 12, 20, 250, 40, 14, muted);
+        drawText(L"Choose at least one readout", RectF(12, 20, 250, 40), 14, muted);
         return;
     }
     auto accent=hudAccent(options.accent);const auto layout=fg::hudLayout(options);
@@ -227,7 +293,8 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
     if(!minimal&&options.opacity>0)line(g,14,1,layout.width-14,1,accent,2);
     auto number=[&](uint32_t field)->std::wstring{
         switch(field){
-        case fg::HudFps:return stats.live?value(stats.fps)+L" FPS":preview?L"144 FPS":L"— FPS";
+        case fg::HudFps: return (stats.live ? value(stats.fps) : preview ? L"144" : L"—")
+            + L" " + customLabel(0, L"FPS");
         case fg::HudAverage:return !stats.frames.empty()?value(stats.average)+L" FPS":preview?L"141 FPS":L"—";
         case fg::HudLow:return stats.frames.size()>=100?value(stats.low)+L" FPS":preview?L"120 FPS":L"—";
         case fg::HudTime:return stats.live?value(stats.ms,2)+L" ms":preview?L"6.94 ms":L"—";
@@ -238,19 +305,66 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
         default:if(field>=fg::HudGpu){int sensor=0;while(sensor<6&&field!=(fg::HudGpu<<sensor))++sensor;if(sensor<6){if(app.sensorValues[sensor]<0)return L"—";return value(app.sensorValues[sensor],sensor==4?1:0)+(sensor<2?L"%":sensor<4?L" °C":sensor==4?L" W":L" MHz");}}return L"FRAMORYX";
         }
     };
-    for(size_t n=0;n<layout.count;++n){const auto& cell=layout.cells[n];
-        if(cell.field==fg::HudGraph){
-            const float graphHeight=cell.height-10;
-            if(stats.frames.empty()&&preview){std::vector<PointF> path;path.reserve(110);for(int i=0;i<110;++i)path.emplace_back(cell.x+i*cell.width/109,cell.y+graphHeight-8-float(std::sin(i*.27)*3+(i%43==0?14:0)));Pen trace(accent,1.4f);g.DrawLines(&trace,path.data(),int(path.size()));}
-            else graph(g,RectF(cell.x,cell.y+4,cell.width,graphHeight),stats,true,accent);
+    for (size_t n = 0; n < layout.count; ++n) {
+        const auto& cell = layout.cells[n];
+        if (cell.field == fg::HudGraph) {
+            float graphTop = cell.y + 4;
+            float graphHeight = cell.height - 10;
+            if (!hudText.labels[4].empty()) {
+                drawText(customLabel(4, L""), RectF(cell.x, cell.y, cell.width, 14), 10, muted);
+                graphTop += 12;
+                graphHeight -= 12;
+            }
+            if (stats.frames.empty() && preview) {
+                std::vector<PointF> path;
+                path.reserve(110);
+                const float amplitude = std::min(1.f, graphHeight / 30.f);
+                for (int i = 0; i < 110; ++i) {
+                    const float offset = float(8 + std::sin(i * .27) * 3 + (i % 43 == 0 ? 14 : 0));
+                    path.emplace_back(cell.x + i * cell.width / 109,
+                                      graphTop + graphHeight - offset * amplitude);
+                }
+                Pen trace(accent, 1.4f);
+                g.DrawLines(&trace, path.data(), int(path.size()));
+            } else {
+                graph(g, RectF(cell.x, graphTop, cell.width, graphHeight), stats, true, accent);
+            }
             continue;
         }
-        if(cell.field==fg::HudFps){label(g,number(cell.field),cell.x,cell.y-3,cell.width,cell.height,compact?28:34,accent,true);continue;}
-        if(cell.field==fg::HudBrand){label(g,L"FRAMORYX",cell.x,cell.y,cell.width,18,compact?9:10,muted,true);continue;}
-        int index=0;while(index<16&&hudFields[index]!=cell.field)++index;
-        const auto title=index<16?hudTitles[index]:L"";
-        if(cell.column){label(g,title,cell.x,cell.y,cell.width-5,17,10,muted);label(g,number(cell.field),cell.x,cell.y+19,cell.width-5,25,cell.field==fg::HudApi?11:17,text,true);}
-        else {label(g,title,cell.x,cell.y,cell.width-110,20,compact?11:12,muted);SolidBrush brush(text);StringFormat format;format.SetAlignment(StringAlignmentFar);g.DrawString(number(cell.field).c_str(),-1,uiFont(cell.field==fg::HudApi?10:compact?12:13,true),RectF(cell.x+cell.width-105,cell.y,105,20),&format,&brush);}
+        if (cell.field == fg::HudFps) {
+            drawText(number(cell.field), RectF(cell.x, cell.y - 3, cell.width, cell.height),
+                     compact ? 28 : 34, accent, true);
+            continue;
+        }
+        if (cell.field == fg::HudBrand) {
+            drawText(customLabel(9, L"FRAMORYX"), RectF(cell.x, cell.y, cell.width, 18),
+                     compact ? 9 : 10, muted, true);
+            continue;
+        }
+        size_t index = 0;
+        while (index < std::size(hudFields) && hudFields[index] != cell.field) ++index;
+        if (index == std::size(hudFields)) continue;
+        const auto title = customLabel(index, hudTitles[index]);
+        Color valueColor = text;
+        bool temperatureTint = false;
+        if (options.temperatureColors && (cell.field == fg::HudGpuTemp || cell.field == fg::HudCpuTemp)) {
+            const auto temperature = app.sensorValues[cell.field == fg::HudGpuTemp ? 2 : 3];
+            if (const auto rgb = fg::hudTemperatureColor(temperature)) {
+                valueColor = Color(255, BYTE(rgb >> 16), BYTE(rgb >> 8), BYTE(rgb));
+                temperatureTint = true;
+            }
+        }
+        if (cell.column) {
+            drawText(title, RectF(cell.x, cell.y, cell.width - 5, 17), 10, muted);
+            drawText(number(cell.field), RectF(cell.x, cell.y + 19, cell.width - 5, 25),
+                     cell.field == fg::HudApi ? 11 : 17, valueColor, true, StringAlignmentNear,
+                     temperatureTint);
+        } else {
+            drawText(title, RectF(cell.x, cell.y, cell.width - 110, 20), compact ? 11 : 12, muted);
+            drawText(number(cell.field), RectF(cell.x + cell.width - 105, cell.y, 105, 20),
+                     cell.field == fg::HudApi ? 10 : compact ? 12 : 13, valueColor, true,
+                     StringAlignmentFar, temperatureTint);
+        }
     }
 }
 void paintStudio(Graphics& g) {

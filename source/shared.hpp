@@ -8,9 +8,11 @@
 #include "presentation.hpp"
 
 namespace fg {
-constexpr LONG ipcVersion = 8;
+constexpr LONG ipcVersion = 9;
 constexpr LONG ipcMagic = 0x46475032;
 constexpr size_t hookRingSize = 8192;
+constexpr size_t hudTextWordCount =
+    (16 * (hudLabelBytes + 1) + hudFontFamilyBytes + 1 + sizeof(LONG) - 1) / sizeof(LONG);
 struct alignas(8) HookFrame {
     volatile LONG64 sequence, qpc, interval;
 };
@@ -28,10 +30,11 @@ struct alignas(8) HookControl {
     volatile LONG hudFields, hudScale, hudOpacity, hudAccent, cpuHundredths, ramMiB, hudStyle;
     volatile LONG hudOrderLo, hudOrderHi, hudX, hudY, hudFontScale;
     volatile LONG sensors[6]; // hundredths; -1 is unavailable
+    volatile LONG hudTextGeneration, hudTextWords[hudTextWordCount];
 };
 static_assert(sizeof(HookFrame) == 24);
 static_assert(offsetof(HookControl, ring) == 80);
-static_assert(sizeof(HookControl) == 196760);
+static_assert(sizeof(HookControl) == 199600);
 inline std::wstring mappingName(DWORD pid) {
     return L"Local\\Framoryx.Control." + std::to_wstring(pid);
 }

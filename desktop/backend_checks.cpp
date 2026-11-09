@@ -83,13 +83,13 @@ class Checks : public QObject {
             await(state["live"].toBool()&&state["fps"].toDouble()>10&&!c->graph().isEmpty(),"Real presentation events reach the frontend",25000);break;
         case 2:
 #ifndef Q_OS_WIN
-            if(first){c->setOption("allow",QStringList{"FramoryxPresentScene"});c->selectGame("auto");}
+            if(first){c->setOption("allow",QStringList{});c->selectGame("auto");}
 #endif
             if(first){c->setOption("style",4);c->setOption("fields",65535);c->setOption("opacity",0);c->setOption("hudX",.85);c->setOption("hudY",.05);if(!state["overlay"].toBool())c->action("overlay");}
 #ifdef Q_OS_WIN
             await(state["overlay"].toBool()&&state["live"].toBool(),"Transparent customized external HUD remains live");
 #else
-            {bool exposed=false;for(auto window:QGuiApplication::allWindows())if(window->objectName()=="FramoryxExternalOverlay")exposed=window->isVisible()&&window->isExposed();await(exposed&&state["live"].toBool()&&c->options()["selectedGame"]=="auto","Auto selects an allowed foreground game from a fresh connection and displays its external HUD while controls are hidden");}
+            {bool exposed=false;for(auto window:QGuiApplication::allWindows())if(window->objectName()=="FramoryxExternalOverlay")exposed=window->isVisible()&&window->isExposed();await(exposed&&state["live"].toBool()&&c->options()["selectedGame"]=="auto"&&c->options()["allow"].toStringList().isEmpty(),"Auto displays an unlisted foreground game's external HUD after receiving X Present frames");}
 #endif
             break;
         case 3:
@@ -115,7 +115,15 @@ class Checks : public QObject {
             break;
 #ifdef Q_OS_WIN
         case 5:
-            if(first){c->setOption("cap",30);c->action("enableHook",{{"confirmed",true}});}
+            if(first){
+                const auto pid=state["profilePid"].toUInt();
+                const auto executable=state["profileExe"].toString();
+                c->setOption("cap",30);
+                c->action("enableHook",{{"confirmed",true},{"pid",pid+1},{"exe",executable}});
+                record("Hook confirmation for a different process is refused",
+                       !c->state()["hookActive"].toBool()&&c->state()["notice"].toString().startsWith("The game changed."));
+                c->action("enableHook",{{"confirmed",true},{"pid",pid},{"exe",executable}});
+            }
             await(state["hookActive"].toBool()&&state["fps"].toDouble()>26&&state["fps"].toDouble()<34,"Confirmed frontend limiter request produces 30 FPS",15000);break;
         case 6:
             if(first)c->action("disableHook");await(!state["hookActive"].toBool()&&phase.elapsed()>500,"Frontend hook disable completes");break;

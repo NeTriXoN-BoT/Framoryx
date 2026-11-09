@@ -1,6 +1,6 @@
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network Multimedia Widgets Concurrent)
 qt_standard_project_setup()
-qt_add_executable(FramoryxDesktop WIN32 main.cpp controller.cpp audio_monitor.cpp platform.cpp lifecycle.cpp process_catalog.cpp game_safety.cpp telemetry.cpp legacy_settings.cpp backend_checks.cpp)
+qt_add_executable(FramoryxDesktop WIN32 main.cpp controller.cpp audio_monitor.cpp platform.cpp lifecycle.cpp process_catalog.cpp game_safety.cpp telemetry.cpp legacy_settings.cpp backend_checks.cpp hud_styled_text.hpp)
 target_compile_features(FramoryxDesktop PRIVATE cxx_std_20)
 target_compile_definitions(FramoryxDesktop PRIVATE NOMINMAX)
 target_include_directories(FramoryxDesktop PRIVATE ../source)
@@ -11,7 +11,7 @@ qt_add_qml_module(FramoryxDesktop URI FramoryxUI VERSION 1.0
     RESOURCE_PREFIX / NO_RESOURCE_TARGET_PATH
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/FramoryxUI
     QML_FILES
-    qml/Main.qml qml/Theme.qml qml/FButton.qml qml/FCard.qml qml/FCombo.qml qml/FToggle.qml
+    qml/Main.qml qml/Theme.qml qml/FButton.qml qml/FCard.qml qml/FCombo.qml qml/FDialog.qml qml/FToggle.qml
     qml/FSlider.qml qml/Metric.qml qml/FrameGraph.qml qml/OverlayPreview.qml qml/Backdrop.qml
     qml/OverlayReadouts.qml qml/ExternalOverlay.qml
     qml/Overview.qml qml/OverlayStudio.qml qml/AudioPage.qml qml/GamesPage.qml qml/RulesPage.qml qml/SettingsPage.qml qml/ChangesPage.qml
@@ -60,7 +60,7 @@ add_test(NAME desktop-model COMMAND FramoryxDesktop --self-test --test-root ${CM
 set_tests_properties(desktop-model PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software" TIMEOUT 30)
 
 qt_add_resources(FramoryxDesktop framoryx_changes PREFIX /releases BASE ../docs/releases FILES
-    ../docs/releases/v0.3.0.md ../docs/releases/v0.2.3.md ../docs/releases/v0.2.2.md
+    ../docs/releases/v0.3.1.md ../docs/releases/v0.3.0.md ../docs/releases/v0.2.3.md ../docs/releases/v0.2.2.md
     ../docs/releases/v0.2.1.md ../docs/releases/v0.2.0.md)
 
 option(FRAMORYX_BUILD_DIAGNOSTICS "Build the isolated UI input driver" OFF)

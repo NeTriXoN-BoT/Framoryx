@@ -1,6 +1,6 @@
 # Framoryx on Linux
 
-Framoryx 0.3.0 provides a native Linux desktop with the same Qt interface, artwork, motion, scaling controls, profiles and release history as Windows. The latest release offers an AppImage and portable archive.
+Framoryx provides a native Linux desktop with the same Qt interface, artwork, motion, scaling controls, profiles and release history as Windows. The latest release offers an AppImage and portable archive.
 
 ## Implemented paths
 

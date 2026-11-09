@@ -59,9 +59,11 @@ void engineSelect(const nlohmann::json& request){
 void engineOptions(const nlohmann::json& request){
     const auto options=request.value("options",nlohmann::json::object());const auto key=request.value("key",std::string());
     const auto profileKey=fg::lower(options.value("profileExe",app.activeProfile));if(!profileKey.empty()&&!fg::validRule(profileKey))return;
-    const auto previousOptions=app.hudOptions;const int previousMode=app.hudMode,previousCorner=app.corner;
+    const auto previousOptions=app.hudOptions;const auto previousText=app.hudText;
+    const int previousMode=app.hudMode,previousCorner=app.corner;
     const auto stored=app.hudProfiles.find(profileKey);const auto targetProfile=profileKey.empty()||stored==app.hudProfiles.end()?app.hudBase:stored->second;
     app.hudOptions=targetProfile.options;app.hudMode=targetProfile.mode;app.corner=targetProfile.corner;
+    app.hudText = targetProfile.text;
     auto changed=[&](const std::string& name){if(key==name)return true;if(request.contains("keys")&&request["keys"].is_array())for(const auto& item:request["keys"])if(item.is_string()&&item.get<std::string>()==name)return true;return false;};
     const auto previousAllow=app.rules.allow,previousDeny=app.rules.deny;
     auto integer=[&](const char* name,int fallback,int low,int high){const auto value=options.find(name);if(value==options.end()||!value->is_number_integer())return fallback;const auto n=value->get<int64_t>();return int(std::clamp<int64_t>(n,low,high));};
@@ -71,12 +73,34 @@ void engineOptions(const nlohmann::json& request){
     if(profileKey==app.activeProfile){app.cap=nextCap;SetWindowTextW(app.controls[CapValue],std::to_wstring(app.cap).c_str());updateCap(false);}
     else if(!profileKey.empty()&&fg::lower(app.hook.name())==profileKey)app.hook.cap(nextCap);
     app.hudOptions.fields=uint32_t(integer("fields",int(app.hudOptions.fields),0,65535));
-    app.hudOptions.scale=integer("overlayScale",app.hudOptions.scale,0,300);app.hudOptions.opacity=integer("opacity",app.hudOptions.opacity,0,100);app.hudOptions.style=integer("style",app.hudOptions.style,0,4);app.hudOptions.accent=integer("accent",app.hudOptions.accent,0,9);app.hudMode=integer("mode",app.hudMode,0,2);
+    app.hudOptions.scale=integer("overlayScale",app.hudOptions.scale,0,300);app.hudOptions.opacity=integer("opacity",app.hudOptions.opacity,0,100);app.hudOptions.style=integer("style",app.hudOptions.style,0,4);app.hudOptions.accent=integer("accent",app.hudOptions.accent,0,fg::hudRainbowAccent);app.hudMode=integer("mode",app.hudMode,0,2);
     app.hudOptions.fontScale=integer("fontScale",app.hudOptions.fontScale,80,140);
+    auto readText = [](const nlohmann::json& item, std::string& target, size_t maxBytes) {
+        if (!item.is_string()) return;
+        const auto& caption = item.get_ref<const std::string&>();
+        if (caption.size() <= maxBytes && std::none_of(caption.begin(), caption.end(),
+                [](unsigned char ch) { return ch < 32 || ch == 127; })) {
+            target = caption;
+        }
+    };
+    if (const auto labels = options.find("hudLabels"); labels != options.end() && labels->is_array() &&
+        labels->size() == app.hudText.labels.size()) {
+        for (size_t index = 0; index < labels->size(); ++index)
+            readText((*labels)[index], app.hudText.labels[index], fg::hudLabelBytes);
+    }
+    if (const auto font = options.find("hudFontFamily"); font != options.end())
+        readText(*font, app.hudBase.text.fontFamily, fg::hudFontFamilyBytes);
+    app.hudBase.options.temperatureColors =
+        boolean("hudTemperatureColors", app.hudBase.options.temperatureColors);
+    app.hudBase.options.textGlow = boolean("hudTextGlow", app.hudBase.options.textGlow);
+    app.hudText.fontFamily = app.hudBase.text.fontFamily;
+    app.hudOptions.temperatureColors = app.hudBase.options.temperatureColors;
+    app.hudOptions.textGlow = app.hudBase.options.textGlow;
     if(options.contains("order")&&options["order"].is_array()&&options["order"].size()==16){uint64_t order=0;bool valid=true;for(int i=0;i<16;++i){if(!options["order"][i].is_number_integer()){valid=false;break;}const int n=options["order"][i].get<int>();if(n<0||n>15){valid=false;break;}order|=uint64_t(n)<<(i*4);}if(valid)app.hudOptions.order=order;}
     auto coordinate=[&](const char* name,int fallback){if(!options.contains(name)||!options[name].is_number())return fallback;const double n=options[name].get<double>();return std::isfinite(n)?int(std::clamp(n,0.,1.)*10000):fallback;};
     app.hudOptions.x=coordinate("hudX",app.hudOptions.x);app.hudOptions.y=coordinate("hudY",app.hudOptions.y);
     app.autoBorderless=boolean("autoBorderless",app.autoBorderless);app.autoNoiseUpdates=boolean("autoNoise",app.autoNoiseUpdates);
+    app.hudOnDesktop = boolean("hudOnDesktop", app.hudOnDesktop);
     if(options.contains("allow")&&options["allow"].is_array()){app.rules.allow.clear();for(const auto& value:options["allow"])if(value.is_string()&&fg::validRule(value.get<std::string>()))app.rules.allow.push_back(value.get<std::string>());}
     if(options.contains("deny")&&options["deny"].is_array()){app.rules.deny.clear();for(const auto& value:options["deny"])if(value.is_string()&&fg::validRule(value.get<std::string>()))app.rules.deny.push_back(value.get<std::string>());}
     if(previousAllow!=app.rules.allow||previousDeny!=app.rules.deny){app.capture.setRules(app.rules);refreshTargets();app.borderless.restoreAll();if(app.hook.active()&&!app.rules.hookAllowed(app.hook.name()))app.hook.disable();}
@@ -86,10 +110,25 @@ void engineOptions(const nlohmann::json& request){
     }
     app.microphoneOptions.noise=boolean("noise",app.microphoneOptions.noise);app.microphoneOptions.equalizer=boolean("eq",app.microphoneOptions.equalizer);
     app.microphoneOptions.preset=integer("noisePreset",app.microphoneOptions.preset,0,2);app.microphoneOptions.low=integer("low",app.microphoneOptions.low,-12,12);app.microphoneOptions.mid=integer("mid",app.microphoneOptions.mid,-12,12);app.microphoneOptions.high=integer("high",app.microphoneOptions.high,-12,12);
-    syncMicrophoneControls();selectComboValue(BassAmount,integer("bass",3,0,9));
+    syncMicrophoneControls();
     // The bass combo stores 0/3/6/9 by index rather than its descriptive caption.
     SendMessageW(app.controls[BassAmount],CB_SETCURSEL,integer("bass",3,0,9)/3,0);
-    app.hudOptions.validate();const fg::HudProfile profile{app.hudOptions,app.corner,app.hudMode};if(profileKey.empty())app.hudBase=profile;else app.hudProfiles[profileKey]=profile;if(profileKey!=app.activeProfile){app.hudOptions=previousOptions;app.hudMode=previousMode;app.corner=previousCorner;}pushHookPresentation();positionHud();app.engineDirty=true;
+    app.hudOptions.validate();
+    const fg::HudProfile profile{app.hudOptions, app.corner, app.hudMode, app.hudText};
+    if (profileKey.empty()) app.hudBase = profile;
+    else app.hudProfiles[profileKey] = profile;
+    if (profileKey != app.activeProfile) {
+        app.hudOptions = previousOptions;
+        app.hudText = previousText;
+        app.hudOptions.temperatureColors = app.hudBase.options.temperatureColors;
+        app.hudOptions.textGlow = app.hudBase.options.textGlow;
+        app.hudText.fontFamily = app.hudBase.text.fontFamily;
+        app.hudMode = previousMode;
+        app.corner = previousCorner;
+    }
+    pushHookPresentation();
+    positionHud();
+    app.engineDirty = true;
 }
 void engineCommands(){
     if(!app.engineMode)return;
@@ -102,9 +141,9 @@ void engineCommands(){
         else if(action=="refresh"){refreshTargets();refreshMicrophones();refreshAudioStatus();}
         else if(action=="captureStart"){if(!app.capture.running())SendMessageW(app.window,WM_COMMAND,Capture,0);}
         else if(action=="capture")SendMessageW(app.window,WM_COMMAND,Capture,0);
-        else if(action=="overlay")SendMessageW(app.window,WM_COMMAND,Overlay,0);
+        else if(action=="overlay")setOverlay(request.value("enabled",!app.overlay),request.value("automatic",false));
         else if(action=="disableHook")SendMessageW(app.window,WM_COMMAND,Disable,0);
-        else if(action=="enableHook"&&request.value("confirmed",false))attachHook(true);
+        else if(action=="enableHook"&&request.value("confirmed",false))attachHook(true,request.value("pid",DWORD(0)),request.value("exe",std::string()));
         else if(action=="volume"){
             const int value=std::clamp(request.value("value",100),0,200);SendMessageW(app.controls[Volume],TBM_SETPOS,TRUE,value);SendMessageW(app.window,WM_HSCROLL,TB_THUMBPOSITION,reinterpret_cast<LPARAM>(app.controls[Volume]));
         }
@@ -136,5 +175,24 @@ void enginePublish(){
     for(const auto& target:app.targets){if(windows.size()>=200)break;windows.push_back({{"id",std::to_string(target.pid)+":"+std::to_string(reinterpret_cast<uintptr_t>(target.hwnd))},{"name",fg::utf8(target.title)},{"exe",target.exe},{"pid",target.pid}});}
     for(const auto& mic:app.microphones)microphones.push_back({{"id",fg::utf8(mic.id)},{"name",fg::utf8(mic.name)},{"rate",mic.rate},{"channels",mic.channels}});
     const size_t first=app.stats.frames.size()>180?app.stats.frames.size()-180:0;for(size_t i=first;i<app.stats.frames.size();++i)graph.push_back(app.stats.frames[i].ms);
-    enginePipe.publish({{"borderlessActive",app.borderless.contains(selected()?selected()->hwnd:app.autoWindow)},{"profileExe",app.activeProfile},{"profilePid",app.selectedPid},{"protocol",3},{"connected",true},{"games",windows},{"microphones",microphones},{"capture",app.capture.running()},{"live",app.stats.live},{"overlay",app.overlay},{"fps",app.stats.fps},{"average",app.stats.average},{"low",app.stats.low},{"frameTime",app.stats.ms},{"graph",graph},{"cpu",app.cpu},{"ram",app.ramGB},{"totalRam",app.totalGB},{"game",app.stats.app},{"rendererHint",fg::utf8(app.compatibility.runtime)},{"compatibilityNote",fg::utf8(app.compatibility.note)},{"inGameSupported",!app.compatibility.inspected||app.compatibility.dxgi||(!app.compatibility.vulkan&&!app.compatibility.opengl&&!app.compatibility.dx9)},{"renderer",app.hook.active()?(app.hook.renderer()==12?"DX12 · in-game":"DX11 · in-game"):"PresentMon · desktop"},{"hookActive",app.hook.active()},{"notice",fg::utf8(app.notice)},{"audioStatus",fg::utf8(app.audioNotice)},{"noiseStatus",fg::utf8(app.noiseUpdateStatus)},{"noiseBusy",app.noiseUpdater.running()},{"pendingMic",!app.pendingMicrophoneApply.empty()},{"volume",app.outputPercent},{"outputName",fg::utf8(app.audio.device)},{"micConfigured",app.cachedNoise||app.cachedEqualizer},{"bassConfigured",app.cachedBass.has_value()},{"boostConfigured",app.cachedGain.value_or(0)>.001},{"apoAvailable",app.boost.available()}});
+    const auto hookStatus=app.hook.status();
+    const bool drawing=app.hook.active()&&app.hook.hudFresh()&&app.hook.pid()==app.selectedPid;
+    const char* hookDetail=hookStatus==0?"Starting the in-game hook…"
+        :hookStatus==-1?"The in-game hook could not initialize DXGI. Use the external overlay."
+        :hookStatus==-2?"The in-game module could not load. Use the external overlay."
+        :hookStatus==-3?"The in-game hook did not initialize in time. Use the external overlay."
+        :!app.hook.active()?""
+        :app.hook.pid()!=app.selectedPid?"The hook is attached to another game. Disable it before switching."
+        :!app.hook.frameCount()?"Hook attached. Waiting for Direct3D 11/12 presentation."
+        :drawing?"The in-game HUD is drawing."
+        :"The hook is receiving frames. The in-game HUD is not drawing.";
+    const auto observed = app.stats.live ? app.stats.runtime : fg::PresentRuntime::Unknown;
+    const bool legacy = observed == fg::PresentRuntime::D3D9;
+    const auto rendererHint = legacy ? std::string("Direct3D 9 presentation") : fg::utf8(app.compatibility.runtime);
+    const auto compatibilityNote = legacy
+        ? std::string("Direct3D 9 detected in the game's frames. Use the external overlay in windowed or borderless mode.")
+        : fg::utf8(app.compatibility.note);
+    const char* renderer=(drawing||app.hookSource)?(app.hook.renderer()==12?"DX12 · in-game":"DX11 · in-game"):
+        legacy?"Direct3D 9 · desktop":"PresentMon · desktop";
+    enginePipe.publish({{"borderlessActive",app.borderless.contains(selected()?selected()->hwnd:app.autoWindow)},{"profileExe",app.activeProfile},{"profilePid",app.selectedPid},{"autoHudEligible",automaticHudEligible(app.activeProfile)},{"protocol",3},{"connected",true},{"games",windows},{"microphones",microphones},{"capture",app.capture.running()},{"live",app.stats.live},{"overlay",app.overlay},{"fps",app.stats.fps},{"average",app.stats.average},{"low",app.stats.low},{"frameTime",app.stats.ms},{"graph",graph},{"cpu",app.cpu},{"ram",app.ramGB},{"totalRam",app.totalGB},{"game",app.stats.app},{"rendererHint",rendererHint},{"compatibilityNote",compatibilityNote},{"inGameSupported",app.compatibility.supportsHook(observed)},{"renderer",renderer},{"hookActive",app.hook.active()},{"hookStatus",hookDetail},{"notice",fg::utf8(app.notice)},{"audioStatus",fg::utf8(app.audioNotice)},{"noiseStatus",fg::utf8(app.noiseUpdateStatus)},{"noiseBusy",app.noiseUpdater.running()},{"pendingMic",!app.pendingMicrophoneApply.empty()},{"volume",app.outputPercent},{"outputName",fg::utf8(app.audio.device)},{"micConfigured",app.cachedNoise||app.cachedEqualizer},{"bassConfigured",app.cachedBass.has_value()},{"boostConfigured",app.cachedGain.value_or(0)>.001},{"apoAvailable",app.boost.available()}});
 }

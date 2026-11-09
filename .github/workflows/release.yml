@@ -5,7 +5,7 @@ on:
       tag:
         description: Release tag matching VERSION
         required: true
-        default: v0.3.0
+        default: v0.3.1
       desktop_run:
         description: Successful shared desktop workflow run for the current main commit
         required: true

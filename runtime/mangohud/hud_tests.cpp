@@ -11,5 +11,33 @@ int main(){
     if(framoryx_hud::metrics("14400|12000|20000|3200|8800|5000|7100|6500|12300|210000")||framoryx_hud::metrics("14400|12000|7212|3200|8800|5000|7100|25000|12300|210000"))return 4;
     if(!framoryx_hud::metrics("-1|-1|-1|-1|-1|-1|-1|-1|-1|-1")||framoryx_hud::state.values[7]!=-1)return 5;
     framoryx_hud::mutex.lock();const bool blocked=framoryx_hud::configure(good);framoryx_hud::mutex.unlock();if(blocked)return 6;
+    const auto labelPacket = [](std::string_view first) {
+        return "1|" + std::string(first) + std::string(15, '|');
+    };
+    const auto custom = labelPacket("wrA7PXw6"); // UTF-8 degree sign and control-channel delimiters.
+    if (!framoryx_hud::labels(custom) ||
+        std::string_view(framoryx_hud::state.labels[0].data()) != "\xc2\xb0;=|:") return 7;
+    if (framoryx_hud::labels(custom + "|") || framoryx_hud::labels("1|QQ") ||
+        framoryx_hud::labels(labelPacket("_w")) || framoryx_hud::labels(labelPacket("DQ")) ||
+        framoryx_hud::labels(labelPacket("QR")) ||
+        framoryx_hud::labels(labelPacket(std::string(215, 'Q'))) ||
+        std::string_view(framoryx_hud::state.labels[0].data()) != "\xc2\xb0;=|:") return 8;
+    if (!framoryx_hud::labels(labelPacket("")) || framoryx_hud::state.labels[0][0]) return 9;
+    if (framoryx_hud::state.options.temperatureColors || !framoryx_hud::temperatureColors("1") ||
+        !framoryx_hud::configure(good) || !framoryx_hud::state.options.temperatureColors ||
+        framoryx_hud::temperatureColors("2") || !framoryx_hud::state.options.temperatureColors ||
+        !framoryx_hud::temperatureColors("0") || framoryx_hud::state.options.temperatureColors) return 10;
+    std::string rainbow = good;
+    rainbow.replace(rainbow.find("|9|4|"), 5, "|10|4|");
+    if (!framoryx_hud::configure(rainbow) || framoryx_hud::state.options.accent != fg::hudRainbowAccent) return 11;
+    rainbow.replace(rainbow.find("|10|4|"), 6, "|11|4|");
+    if (framoryx_hud::configure(rainbow) || framoryx_hud::state.options.accent != fg::hudRainbowAccent) return 12;
+    if (framoryx_hud::state.options.textGlow || !framoryx_hud::textGlow("1") ||
+        !framoryx_hud::configure(good) || !framoryx_hud::state.options.textGlow ||
+        framoryx_hud::textGlow("2") || !framoryx_hud::state.options.textGlow ||
+        !framoryx_hud::textGlow("0") || framoryx_hud::state.options.textGlow) return 13;
+    if (!framoryx_hud::textGlow("1")) return 14;
+    framoryx_hud::hide();
+    if (framoryx_hud::state.options.textGlow) return 15;
     std::cout<<"PASS: HUD packet validation, all readouts, bounds, unavailable values and nonblocking updates\n";
 }

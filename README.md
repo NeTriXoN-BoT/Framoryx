@@ -58,9 +58,13 @@ Automatic DPI rendering and percentage controls keep the design aligned when max
 ## Get started
 
 1. Download the complete package. On Windows, extract the ZIP and open **Framoryx.exe**. On Linux, make the AppImage executable and open it, or extract the portable archive and run **AppRun**.
-2. Open your game, choose its running window or library entry, and select **Start capture**. On Windows, **Auto** follows the foreground game. On Linux, Auto follows allowed X11 games.
+2. Open your game and choose its running window or library entry. Capture starts automatically by default. **Auto** follows detected foreground games on Windows and supported X11 sessions.
 3. Select **Show overlay**. Open **Overlay Studio** to choose readouts, layout, size, colors and position.
 4. Use **Games & pacing** for supported frame limits, borderless play and explicit library launches. Starting capture does not launch a second copy of your game.
+
+On Windows, enable **Settings → Show overlay automatically** to start capture and arm the HUD the next time Framoryx opens. It appears when your selected game is in focus or when **Auto** detects a foreground game. Use **Process rules** to explicitly allow or block individual windows by executable name. **Auto · external first** in Overlay Studio provides desktop fallback, and in-game hooks require separate approval.
+
+**Show HUD on desktop** is off by default. Turn it on in Settings to show hardware readouts when the desktop is active on Windows or X11.
 
 **Interface size → Auto** adapts to your display, DPI and available work area. Manual percentages remain available. Maximizing preserves the layout; smaller windows scroll where needed. Ambient artwork, particles, the icon pulse and terminal cursor pause when the app is hidden, minimized or inactive.
 
@@ -73,7 +77,7 @@ Preferences, presets and captures stay local. Microphone recording is an opt-in 
 | Windows 10/11 x64 | PresentMon ETW for supported DXGI, D3D9, Vulkan and OpenGL presentations; external HUD | DX11/DX12 HUD and limiter, with x64 and x86 DX11 hooks |
 | Linux x86-64 | X Present capture and an external HUD on supported X11 windows | Bundled, explicitly enabled Vulkan/OpenGL layer with the same custom HUD and live limits |
 
-Windows Vulkan/OpenGL/DX9 use external monitoring; the Windows injected limiter supports DX11/DX12. Exclusive fullscreen can cover external overlays. The game's own borderless mode is a useful starting point.
+On Windows, the external HUD works over visible game windows across graphics APIs. Direct3D 9 presentation events can provide FPS, and older Direct3D or DirectDraw games can still show hardware readouts when frame events are unavailable. The injected HUD and limiter support Direct3D 11 and 12. Exclusive fullscreen can cover the external HUD, so use windowed or borderless mode for that path.
 
 Linux packages target **glibc 2.35 or newer**, compatible graphics drivers and a working desktop session. The native interface supports X11 and Wayland. Wayland uses the explicitly enabled Vulkan/OpenGL game layer for its in-game HUD; external positioning and passive capture are restricted. Gamescope is optional for launch sizing and pacing and is currently an alternative to the Framoryx game layer. The bundled layer supports 64-bit games; 32-bit and sandboxed runtimes have additional limits. See [Linux support](docs/LINUX.md).
 
@@ -99,7 +103,7 @@ cmake --build build/desktop --config Release --parallel 3
 ctest --test-dir build/desktop -C Release --output-on-failure
 ```
 
-The shared desktop requires Qt 6.8.3 and a C++20 compiler. Windows also uses the separately built monitoring engine; Linux packages include the pinned game runtime. See [building and testing](docs/BUILDING.md), [runtime sources and licenses](docs/RUNTIME-SOURCES.md) and [release notes](docs/releases/v0.3.0.md).
+The shared desktop requires Qt 6.8.3 and a C++20 compiler. Windows also uses the separately built monitoring engine. Linux packages include the pinned game runtime. See [building and testing](docs/BUILDING.md), [runtime sources and licenses](docs/RUNTIME-SOURCES.md) and [release notes](docs/releases/v0.3.1.md).
 
 Isolated runners exercise actual Windows DX11/DX12 scenes, Linux OpenGL/Vulkan scenes, capture, live limits, process blocks, reversible window changes, synthetic microphone processing, fast slider input, scaling and deployed packages. These checks do not certify every commercial game, GPU or physical microphone. [Feature coverage](docs/FEATURE-CHECKS.md), [validation](docs/VALIDATION.md) and the [audit record](docs/AUDIT.md) describe the scope.
 

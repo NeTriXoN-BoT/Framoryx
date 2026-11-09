@@ -19,10 +19,40 @@ ApplicationWindow {
     readonly property var titles: ["Every frame. Under control.","Make it unmistakably yours.","Sound that pulls you in.","Find your smooth.","Your games. Your rules.","Ready when you are.","The next frame starts here."]
     readonly property var subtitles: ["Measure performance. Shape your play.","Every readout. Every detail. Your choice.","Your audio. A little more presence.","Frame pacing, borderless play and your game library.","Clear preferences for the games you trust.","A comfortable fit, wherever you play.","Every release. Every improvement. All in one place."]
     readonly property var colors: ["#7df2c6","#59cfff","#c2a3ff","#f7be6f","#ff8baf","#63dfdf","#f4e478","#a3e56d","#ff9d72","#d5e4f5"]
-    Binding { target: Theme; property: "accent"; value: window.colors[app.options.accent||0] }
+    Binding { target: Theme; property: "accent"; value: window.colors[app.options.accent] || window.colors[0] }
     Binding { target: Theme; property: "scale"; value: app.options.uiScale>0?app.options.uiScale/100:Math.max(.6,Math.min(window.autoUiScale,window.width/1100,window.height/760)) }
     Binding { target: Theme; property: "motion"; value: app.options.motion&&(window.active||window.diagnosticAnimating)&&window.visibility!==Window.Minimized&&window.visible }
-    function requestHook(){if(app.state.inGameSupported===false){app.notify("This renderer uses the external overlay. Optional Windows in-game limiting supports DX11/DX12.");return}if(app.state.antiCheatStatus==="detected")app.notify("Known anti-cheat indicators are present. In-game hooks are blocked; use the external overlay.","warning");else hookDialog.open()}
+    function requestInGameMode() {
+        if (app.state.inGameSupported === false) {
+            app.notify("This rendering API uses the external overlay. In-game features support DX11 and DX12.", "warning")
+            return
+        }
+        if (app.options.hideHookWarning) {
+            app.setOption("mode", 2)
+            return
+        }
+        hookDialog.choosingMode = true
+        hookDialog.open()
+    }
+    function requestHook() {
+        if (!app.state.profilePid || !app.state.profileExe ||
+                (app.options.selectedGame === "auto" && app.state.autoHudEligible === false)) {
+            app.notify("Select a running game window before enabling the in-game hook.", "warning")
+            return
+        }
+        if (app.state.inGameSupported === false) {
+            app.notify("This renderer uses the external overlay. Optional Windows in-game limiting supports DX11/DX12.")
+            return
+        }
+        if (app.state.antiCheatStatus === "detected") {
+            app.notify("Known anti-cheat indicators are present. In-game hooks are blocked; use the external overlay.", "warning")
+            return
+        }
+        hookDialog.choosingMode = false
+        hookDialog.targetPid = app.state.profilePid
+        hookDialog.targetExe = app.state.profileExe
+        hookDialog.open()
+    }
     function chooseGame(){gameFile.open()}
     function chooseApo(){apoFile.open()}
     function exportCapture(){captureFile.open()}
@@ -80,7 +110,7 @@ ApplicationWindow {
                 }
                 Item { Layout.fillHeight: true }
                 FToggle { text: "Motion effects"; checked: app.options.motion; Layout.fillWidth: true; onToggled: app.setOption("motion",checked) }
-                Text { text: "FRAMORYX 0.3.0 · "+app.platformName.toUpperCase(); color: Theme.muted; font.pixelSize: Theme.font(8); Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.topMargin: Theme.px(12) }
+                Text { text: "FRAMORYX "+Qt.application.version+" · "+app.platformName.toUpperCase(); color: Theme.muted; font.pixelSize: Theme.font(8); Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.topMargin: Theme.px(12) }
                 Text { text: app.platformName==="Windows"?"UNSIGNED BUILD":"NATIVE LINUX"; color: app.platformName==="Windows"?Theme.amber:Theme.accent; font.pixelSize: Theme.font(8); font.letterSpacing: 1 }
                 }
             }
@@ -174,29 +204,75 @@ ApplicationWindow {
     FileDialog { id: captureFile; title: "Export rolling capture"; fileMode: FileDialog.SaveFile; defaultSuffix: "csv"; nameFilters: ["CSV capture (*.csv)"]; onAccepted: app.action("export",{url:String(selectedFile)}) }
     FileDialog { id: savePresetFile; title: "Export Framoryx presets"; fileMode: FileDialog.SaveFile; defaultSuffix: "json"; nameFilters: ["Framoryx presets (*.json)"]; onAccepted: app.exportProfiles(selectedFile) }
     FileDialog { id: loadPresetFile; title: "Import Framoryx presets"; nameFilters: ["Framoryx presets (*.json)"]; onAccepted: app.importProfiles(selectedFile) }
-    Dialog {
+    FDialog {
         id: addGameDialog
-        anchors.centerIn: parent
-        width: Math.min(window.width-50,Theme.px(540))
-        height: Math.min(window.height-60,Theme.px(295))
-        modal: true
+        objectName: "addGameDialog"
         title: "Add to your library"
-        standardButtons: Dialog.Save|Dialog.Cancel
-        background: Rectangle { color: Theme.surface; radius: Theme.px(15); border.color: Theme.border }
-        contentItem: ColumnLayout { spacing: Theme.px(14); TextField { id: gameName; Layout.fillWidth: true; placeholderText: "Game name (optional)"; color: Theme.text; selectByMouse: true } TextField { id: gameArgs; Layout.fillWidth: true; placeholderText: "Launch arguments (optional)"; color: Theme.text; selectByMouse: true } Text { text: "Launch arguments are passed directly to the game. Framoryx does not run them through a shell."; color: Theme.muted; font.pixelSize: Theme.font(12); wrapMode: Text.Wrap; Layout.fillWidth: true } }
-        onAccepted: {app.addGame(window.chosenGamePath,gameName.text,gameArgs.text);gameName.clear();gameArgs.clear()}
+        confirmText: "Add game"
+        message: "Launch arguments are passed directly to the game executable."
+        initialFocus: gameName
+        formContent: [
+            TextField {
+                id: gameName
+                Layout.fillWidth: true
+                placeholderText: "Game name (optional)"
+                color: Theme.text
+                placeholderTextColor: Theme.muted
+                selectByMouse: true
+                padding: Theme.px(12)
+                font.pixelSize: Theme.font(13)
+                background: Rectangle {
+                    color: Theme.raised
+                    radius: Theme.px(9)
+                    border.color: gameName.activeFocus ? Theme.accent : Theme.border
+                }
+            },
+            TextField {
+                id: gameArgs
+                Layout.fillWidth: true
+                placeholderText: "Launch arguments (optional)"
+                color: Theme.text
+                placeholderTextColor: Theme.muted
+                selectByMouse: true
+                padding: Theme.px(12)
+                font.pixelSize: Theme.font(13)
+                background: Rectangle {
+                    color: Theme.raised
+                    radius: Theme.px(9)
+                    border.color: gameArgs.activeFocus ? Theme.accent : Theme.border
+                }
+            }
+        ]
+        onAccepted: {
+            app.addGame(window.chosenGamePath, gameName.text, gameArgs.text)
+            gameName.clear()
+            gameArgs.clear()
+        }
     }
-    Dialog {
+    FDialog {
         id: hookDialog
-        anchors.centerIn: parent
-        width: Math.min(window.width-50,Theme.px(580))
-        height: Math.min(window.height-60,Theme.px(450))
-        modal: true
-        title: "Enable experimental in-game features?"
-        standardButtons: Dialog.Yes|Dialog.Cancel
-        background: Rectangle { color: Theme.surface; radius: Theme.px(15); border.color: Theme.border }
-        contentItem: ScrollView { clip: true; Text { width: parent.width; text: "This loads the Framoryx DX11/DX12 module into the selected game for an in-game overlay and frame limiting.\n\nGame hooks can cause crashes or anti-cheat bans. An allow list or clear scan does not establish game approval. Use only where permitted.\n\nKnown anti-cheat/system blocks remain enforced. Disable restores hook entry points; restart the game to remove the module fully.\n\nUse at your own risk. You are responsible for checking the game’s rules. Framoryx’s maintainers accept no responsibility for bans, suspensions or other consequences of its use.\n\nEnable for this selected game now?"; color: Theme.text; font.pixelSize: Theme.font(13); wrapMode: Text.Wrap } }
-        onAccepted: app.action("enableHook",{confirmed:true})
+        objectName: "hookWarningDialog"
+        property bool choosingMode: false
+        property double targetPid: 0
+        property string targetExe: ""
+        warning: !app.options.hideHookWarning
+        offerRemember: warning
+        title: choosingMode ? "Use the in-game overlay?" : "Enable experimental in-game features?"
+        confirmText: choosingMode ? "Use in-game mode" : "Enable hook"
+        message: (choosingMode
+                  ? "In-game mode uses a DX11/DX12 hook for the overlay and frame limiter. You’ll approve the hook for a specific game separately."
+                  : "This loads the Framoryx DX11/DX12 module into " + targetExe + " (PID " + targetPid + ") for an in-game overlay and frame limiting.")
+                 + (warning ? "\n\nGame hooks can cause crashes or anti-cheat bans. An allow-list entry or clear scan does not establish approval. Use hooks only where the game permits them."
+                   + "\n\nKnown anti-cheat and system blocks stay enforced. Disabling the hook restores its entry points. Restart the game to remove the module fully."
+                   + "\n\nYou are responsible for checking the game’s rules. Framoryx’s maintainers accept no responsibility for bans, suspensions or other consequences of using the hook." : "")
+        onAccepted: {
+            if (offerRemember && rememberWarning)
+                app.setOption("hideHookWarning", true)
+            if (choosingMode)
+                app.setOption("mode", 2)
+            else
+                app.action("enableHook", {confirmed: true, pid: targetPid, exe: targetExe})
+        }
     }
     Popup {
         id: toast
@@ -205,9 +281,14 @@ ApplicationWindow {
         x: window.width-width-Theme.px(24); y: window.height-height-Theme.px(24)
         width: Math.min(window.width-Theme.px(50),Theme.px(510))
         padding: Theme.px(18)
-        background: Rectangle { color: "#20333e"; radius: Theme.px(12); border.color: toast.severity==="error"?Theme.red:toast.severity==="warning"?Theme.amber:Theme.accent }
-        contentItem: Text { textFormat: Text.PlainText; text: toast.message; color: Theme.text; font.pixelSize: Theme.font(13); wrapMode: Text.Wrap }
+        readonly property color tone: severity === "error" ? Theme.red : severity === "warning" ? Theme.amber : Theme.accent
+        background: Rectangle { color: Theme.surface; radius: Theme.px(12); border.color: toast.tone }
+        contentItem: RowLayout {
+            spacing: Theme.px(10)
+            Rectangle { Layout.alignment: Qt.AlignTop; Layout.topMargin: Theme.px(5); implicitWidth: Theme.px(8); implicitHeight: implicitWidth; radius: width / 2; color: toast.tone }
+            Text { Layout.fillWidth: true; textFormat: Text.PlainText; text: toast.message; color: Theme.text; font.pixelSize: Theme.font(13); wrapMode: Text.Wrap }
+        }
         Timer { id: toastTimer; interval: 5500; onTriggered: toast.close() }
     }
-    Connections { target: app; function onToast(text,severity){toast.message=text;toast.severity=severity;toast.open();toastTimer.restart()} function onShowRequested(){window.show();window.raise();window.requestActivate()} }
+    Connections { target: app; function onToast(text,severity){toast.message=text;toast.severity=severity;toast.open();toastTimer.restart()} }
 }

@@ -41,6 +41,11 @@ int main() {
         check(parser.parse("real.exe,8,0x12,DXGI,1.0,16.67").has_value(),
               "actual PresentMon 2.6 v1 header capitalization");
         fg::Store store;
+        const auto legacy = parser.parse("legacy.exe,9,0x10,D3D9,1.0,16.67");
+        check(legacy && legacy->runtime == fg::PresentRuntime::D3D9, "recognize Direct3D 9 presents");
+        store.add(*legacy, 1.0);
+        check(store.snapshot(9, 1.0).runtime == fg::PresentRuntime::D3D9,
+              "legacy runtime stays attached to its own frame stream");
         for (int i = 0; i < 1800; ++i)
             store.add({"game.exe", "primary", 42, i / 60.0, 1000.0 / 60.0}, i / 60.0);
         for (int i = 0; i < 30; ++i)
@@ -49,6 +54,9 @@ int main() {
         check(s.live && std::abs(s.fps - 60) < 0.001 && std::abs(s.low - 60) < 0.001,
               "FPS and low calculation");
         check(s.chain == "primary", "swapchains never mixed");
+        check(store.hasLiveFrames(42, 31.999) && !store.hasLiveFrames(42, 32.0) &&
+                  !store.hasLiveFrames(43, 30.0),
+              "liveness query uses the same two-second window and target PID");
         check(!store.snapshot(42, 33.0).live && store.snapshot(42, 33.0).fps == 0,
               "stale data is not live");
         store.add({"game.exe", "primary", 42, 31.0, 100}, 31.0);
@@ -83,8 +91,15 @@ int main() {
         fg::HudOptions invalid{0xffffffffu, 900, -10, 20};
         invalid.validate();
         check(invalid.fields == fg::HudAll && invalid.scale == 300 && invalid.opacity == 0 &&
-                  invalid.accent == 9,
+                  invalid.accent == fg::hudRainbowAccent,
               "invalid saved overlay styles are constrained before crossing IPC");
+        check(fg::hudRainbowPhase(6000) == 0.f &&
+                  fg::hudRainbowColor(0.25f) == fg::hudRainbowColor(1.25f) &&
+                  fg::hudRainbowColor(fg::hudRainbowPhase(1500)) != fg::hudRainbowColor(0.f),
+              "rainbow animation changes hue and wraps continuously");
+        check(fg::hudTemperatureColor(-1) == 0 && fg::hudTemperatureColor(64.9) == 0x7df2c6 &&
+                  fg::hudTemperatureColor(65) == 0xf7be6f && fg::hudTemperatureColor(80) == 0xff8b96,
+              "temperature bands leave missing readings neutral");
         fg::HudOptions custom;custom.order=0;custom.x=20000;custom.y=-8;custom.fontScale=500;custom.validate();
         check(custom.order==fg::HudOptions::defaultOrder&&custom.x==10000&&custom.y==-1&&custom.fontScale==140,"repair malformed order, coordinates and text size");
         custom.order=0xfedcba9876543210ull;custom.opacity=0;custom.validate();

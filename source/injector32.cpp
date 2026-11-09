@@ -41,9 +41,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     fg::Handle owner(OpenProcess(SYNCHRONIZE, FALSE, ipc->ownerPid));
     if (!owner || WaitForSingleObject(owner.h, 0) != WAIT_TIMEOUT)
         return fail(5);
-    auto processes = fg::processes();
-    if (!processes.count(pid) || fg::Rules{}.blocked(processes[pid]) ||
-        !fg::antiCheatRunning().empty())
+    if (!fg::antiCheatRunning().empty())
         return fail(6);
     fg::Handle target(OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION |
                                       PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ |
@@ -54,6 +52,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         !IsWow64Process2(target.h, &machine, &native) || machine != IMAGE_FILE_MACHINE_I386 ||
         native != IMAGE_FILE_MACHINE_AMD64)
         return fail(7);
+    const auto executable = fg::processImageBasename(target.h);
+    if (executable.empty() || fg::Rules{}.blocked(executable))
+        return fail(6);
     auto tools = fg::executableDir();
     auto root = tools.substr(0, tools.find_last_of(L"\\/"));
     auto dll = root + L"\\FramoryxHook32.dll";

@@ -103,10 +103,12 @@ inline std::optional<double> number(const std::string& s) {
         return {};
     return v;
 }
+enum class PresentRuntime { Unknown, D3D9, DXGI };
 struct Frame {
     std::string app, chain;
     uint32_t pid = 0;
     double time = 0, ms = 0;
+    PresentRuntime runtime = PresentRuntime::Unknown;
 };
 class Parser {
     std::map<std::string, size_t> header;
@@ -136,7 +138,10 @@ class Parser {
         if (!pid || !time || !ms || *pid < 1 || *pid > UINT32_MAX || std::floor(*pid) != *pid ||
             *time < 0 || *ms <= 0 || *ms > 60000 || cell("Application").empty())
             return {};
-        return Frame{cell("Application"), cell("SwapChainAddress"), uint32_t(*pid), *time, *ms};
+        const auto runtime = lower(cell("Runtime"));
+        const auto api = runtime == "d3d9" ? PresentRuntime::D3D9
+            : runtime == "dxgi" ? PresentRuntime::DXGI : PresentRuntime::Unknown;
+        return Frame{cell("Application"), cell("SwapChainAddress"), uint32_t(*pid), *time, *ms, api};
     }
 };
 struct Stream {
@@ -147,6 +152,7 @@ struct Stream {
     uint32_t pid = 0;
     double arrival = 0;
     std::deque<Sample> frames;
+    PresentRuntime runtime = PresentRuntime::Unknown;
 };
 struct Stats {
     double fps = 0, average = 0, low = 0, ms = 0;
@@ -154,10 +160,12 @@ struct Stats {
     std::string app, chain;
     uint32_t pid = 0;
     std::vector<Stream::Sample> frames;
+    PresentRuntime runtime = PresentRuntime::Unknown;
 };
 class Store {
     std::map<std::pair<uint32_t, std::string>, Stream> streams;
     size_t frameCount = 0;
+    static constexpr double liveSeconds = 2.0;
 
   public:
     static constexpr size_t frameBudget = 262144;
@@ -186,6 +194,7 @@ class Store {
         s.app = f.app;
         s.pid = f.pid;
         s.chain = f.chain;
+        s.runtime = f.runtime;
         s.arrival = now;
         s.frames.push_back({f.time, f.ms});
         ++frameCount;
@@ -206,6 +215,12 @@ class Store {
             streams.erase(oldest);
         }
     }
+    bool hasLiveFrames(uint32_t pid, double now) const {
+        return std::any_of(streams.begin(), streams.end(), [pid, now](const auto& item) {
+            const auto& stream = item.second;
+            return stream.pid == pid && !stream.frames.empty() && now - stream.arrival < liveSeconds;
+        });
+    }
     Stats snapshot(uint32_t pid, double now) const {
         const Stream* best = nullptr;
         size_t largest = 0;
@@ -218,8 +233,8 @@ class Store {
                  it != s.frames.rend() && s.frames.back().time - it->time <= 2.0; ++it)
                 ++count;
             // Prefer live streams over a formerly faster, stale menu swapchain.
-            bool live = now - s.arrival < 2.0;
-            bool bestLive = best && now - best->arrival < 2.0;
+            bool live = now - s.arrival < liveSeconds;
+            bool bestLive = best && now - best->arrival < liveSeconds;
             if (!best || (live && !bestLive) || (live == bestLive && count > largest)) {
                 best = &s;
                 largest = count;
@@ -231,7 +246,8 @@ class Store {
         out.app = best->app;
         out.pid = pid;
         out.chain = best->chain;
-        out.live = now - best->arrival < 2.0;
+        out.runtime = best->runtime;
+        out.live = now - best->arrival < liveSeconds;
         out.frames.reserve(best->frames.size());
         for (auto& sample : best->frames)
             out.frames.push_back(sample);

@@ -30,7 +30,9 @@ class Controller : public QObject {
     Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantList capabilities READ capabilities NOTIFY capabilitiesChanged)
     Q_PROPERTY(QVariantList readouts READ readouts NOTIFY readoutsChanged)
+    Q_PROPERTY(QStringList hudFontFamilies READ hudFontFamilies CONSTANT)
     Q_PROPERTY(QVariantMap overlayLayout READ overlayLayout NOTIFY overlayGeometryChanged)
+    Q_PROPERTY(QVariantMap desktopOverlayLayout READ desktopOverlayLayout NOTIFY overlayGeometryChanged)
     Q_PROPERTY(QVariantList graph READ graph NOTIFY stateChanged)
     Q_PROPERTY(QString platformName READ platformName CONSTANT)
     Q_PROPERTY(bool testMode READ testMode CONSTANT)
@@ -49,13 +51,16 @@ public:
     QVariantList devices() const {return m_devices;}
     QVariantList capabilities() const {return m_capabilities;}
     QVariantList readouts() const;
+    QStringList hudFontFamilies() const {return m_hudFontFamilies;}
     QVariantMap overlayLayout() const;
+    QVariantMap desktopOverlayLayout() const;
     QVariantList graph() const {return m_graph;}
     QString platformName() const;
     bool testMode() const {return m_test;}
     QString root() const {return m_root;}
     Q_INVOKABLE void setOption(const QString& key, const QVariant& value);
     Q_INVOKABLE void setReadout(int index, bool visible);
+    Q_INVOKABLE void setHudLabel(int index, const QString& label);
     Q_INVOKABLE void moveReadout(int index, int direction);
     Q_INVOKABLE void selectGame(const QString& id);
     Q_INVOKABLE void addGame(const QUrl& executable, const QString& name, const QString& arguments);
@@ -103,7 +108,9 @@ private:
     QString m_activeGameKey;
     void activateGameProfile(const QString& executable);
     void rememberOverlay();
+    QVariantMap layoutForFields(quint32 fields) const;
     QVariantList m_processes, m_games, m_profiles, m_devices, m_capabilities, m_graph;
+    QStringList m_hudFontFamilies;
     QMediaDevices m_media;
     QTimer m_poll, m_saveTimer, m_safetyTimer;
     QString m_safetyKey, m_manualRiskKey;

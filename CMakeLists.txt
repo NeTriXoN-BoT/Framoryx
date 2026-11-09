@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Framoryx VERSION 0.3.0 LANGUAGES C CXX)
+project(Framoryx VERSION 0.3.1 LANGUAGES C CXX)
 option(FRAMORYX_BUILD_DESKTOP "Build the shared Windows/Linux Qt desktop application" OFF)
 enable_testing()
 add_executable(FramoryxCoreTests source/tests.cpp)

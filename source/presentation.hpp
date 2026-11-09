@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <array>
+#include <string>
 
 namespace fg {
 enum HudField : uint32_t {
@@ -19,26 +20,72 @@ enum HudField : uint32_t {
     HudGpu = 1024, HudVram = 2048, HudGpuTemp = 4096, HudCpuTemp = 8192, HudPower = 16384, HudClock = 32768,
     HudAll = 65535
 };
+inline constexpr uint32_t hudTemperatureColorsFlag = 1u << 16;
+inline constexpr uint32_t hudTextGlowFlag = 1u << 17;
+inline constexpr int hudRainbowAccent = 10;
+inline constexpr std::array<uint32_t, 6> hudRainbowStops{
+    0xff94ae, 0xffca83, 0x9af2b4, 0x80defb, 0xc7a5ff, 0xff94ae
+};
+inline constexpr float hudRainbowPhase(uint64_t milliseconds) {
+    return float(milliseconds % 6000) / 6000.f;
+}
+inline uint32_t hudRainbowColor(float phase) {
+    const float position = (phase >= 0.f && phase < 2.f ? (phase >= 1.f ? phase - 1.f : phase) : 0.f) *
+                           (hudRainbowStops.size() - 1);
+    const size_t index = std::min(size_t(position), hudRainbowStops.size() - 2);
+    const float fraction = position - index;
+    const auto from = hudRainbowStops[index], to = hudRainbowStops[index + 1];
+    uint32_t result = 0;
+    for (const int shift : {16, 8, 0}) {
+        const int a = (from >> shift) & 255, b = (to >> shift) & 255;
+        result |= uint32_t(std::lround(a + (b - a) * fraction)) << shift;
+    }
+    return result;
+}
+inline uint32_t hudTemperatureColor(double celsius) {
+    if (!std::isfinite(celsius) || celsius < 0) return 0;
+    if (celsius >= 80) return 0xff8b96;
+    if (celsius >= 65) return 0xf7be6f;
+    return 0x7df2c6;
+}
+inline constexpr uint32_t desktopHudFields(uint32_t fields) {
+    constexpr uint32_t hardware = HudCpu | HudRam | HudGpu | HudVram | HudGpuTemp |
+                                  HudCpuTemp | HudPower | HudClock;
+    const auto selected = fields & hardware;
+    return (fields & HudBrand) | (selected ? selected : HudCpu | HudRam);
+}
 struct HudOptions {
     static constexpr uint64_t defaultOrder = 0xfedcba4876532109ull;
     uint32_t fields = HudFps | HudLow | HudTime | HudGraph | HudBrand;
     int scale = 0, opacity = 90, accent = 0, style = 0;
     uint64_t order = defaultOrder;
     int x = -1, y = -1, fontScale = 100;
+    bool temperatureColors = false;
+    bool textGlow = false;
     void validate() {
         fields &= HudAll;
         scale = scale == 0 ? 0 : std::clamp(scale, 50, 300);
         opacity = std::clamp(opacity, 0, 100);
-        accent = std::clamp(accent, 0, 9);
+        accent = std::clamp(accent, 0, hudRainbowAccent);
         style = std::clamp(style, 0, 4);
         x = std::clamp(x,-1,10000);y = std::clamp(y,-1,10000);fontScale = std::clamp(fontScale,80,140);
         uint32_t seen=0;for(int i=0;i<16;++i){const auto item=uint32_t((order>>(4*i))&15);if(item>15||(seen&(1u<<item))){order=defaultOrder;break;}seen|=1u<<item;}
     }
 };
 inline std::array<uint32_t,16> orderedFields(const HudOptions& options){auto copy=options;copy.validate();std::array<uint32_t,16> fields{};for(int i=0;i<16;++i)fields[i]=1u<<((copy.order>>(4*i))&15);return fields;}
+inline constexpr size_t hudLabelBytes = 160;
+inline constexpr size_t hudFontFamilyBytes = 256;
+struct HudText {
+    std::array<std::string,16> labels;
+    std::string fontFamily;
+    bool operator==(const HudText& other) const {
+        return fontFamily == other.fontFamily && labels == other.labels;
+    }
+};
 struct HudProfile {
     HudOptions options;
     int corner = 0, mode = 0;
+    HudText text;
 }; // auto, desktop, attached in-game
 inline float overlayScale(int percent, int renderHeight) {
     return percent ? std::clamp(percent / 100.f, .5f, 3.f)
@@ -76,8 +123,8 @@ inline float hudHeight(uint32_t fields) {
         height += 47;
     return height;
 }
-inline constexpr std::array<uint32_t,16> accentColors{
-    0x7df2c6,0x59cfff,0xc2a3ff,0xf7be6f,0xff8baf,0x63dfdf,0xf4e478,0xa3e56d,0xff9d72,0xd5e4f5};
+inline constexpr std::array<uint32_t,hudRainbowAccent + 1> accentColors{
+    0x7df2c6,0x59cfff,0xc2a3ff,0xf7be6f,0xff8baf,0x63dfdf,0xf4e478,0xa3e56d,0xff9d72,0xd5e4f5,0x7df2c6};
 inline float hudWidth(const HudOptions& options) {
     if(options.style==1||options.style==3)return 230;
     if(options.style==4)return 390;

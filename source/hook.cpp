@@ -4,6 +4,8 @@
 #include <atomic>
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <limits>
 #include <vector>
 #include "MinHook.h"
 #include "imgui.h"
@@ -54,17 +56,84 @@ float fontScale = 0;
 int fontStyle = -1;
 float requestedFontScale=0;ULONGLONG requestedFontAt=0;
 ImFont* largeFont = nullptr;
+fg::HudText hudText, fontText;
+LONG hudTextGeneration = 0;
+ImVector<ImWchar> hudGlyphRanges;
 double rollingAverage = 0, rollingLow = 0;
 std::vector<double> rollingIntervals;
+
+void updateHudText() {
+    const LONG generation = fg::read32(&control->hudTextGeneration);
+    if (generation == hudTextGeneration || (generation & 1))
+        return;
+    std::array<LONG, fg::hudTextWordCount> words{};
+    for (size_t i = 0; i < words.size(); ++i)
+        words[i] = fg::read32(&control->hudTextWords[i]);
+    if (fg::read32(&control->hudTextGeneration) != generation)
+        return;
+    const auto* bytes = reinterpret_cast<const char*>(words.data());
+    for (size_t i = 0; i < hudText.labels.size(); ++i) {
+        const auto* label = bytes + i * (fg::hudLabelBytes + 1);
+        hudText.labels[i].assign(label, std::find(label, label + fg::hudLabelBytes, '\0'));
+    }
+    const auto* font = bytes + hudText.labels.size() * (fg::hudLabelBytes + 1);
+    hudText.fontFamily.assign(font, std::find(font, font + fg::hudFontFamilyBytes, '\0'));
+    hudTextGeneration = generation;
+}
+
+ImFont* loadInstalledFont(const std::string& family, int weight, float size,
+                         const ImFontConfig& config) {
+    wchar_t face[LF_FACESIZE]{};
+    if (family.empty() || !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, family.c_str(),
+                                              -1, face, LF_FACESIZE))
+        return nullptr;
+    const HDC dc = CreateCompatibleDC(nullptr);
+    if (!dc)
+        return nullptr;
+    const HFONT font = CreateFontW(-16, 0, 0, 0, weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                  OUT_TT_ONLY_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+                                  DEFAULT_PITCH, face);
+    void* data = nullptr;
+    DWORD length = 0;
+    if (font) {
+        const auto previous = SelectObject(dc, font);
+        wchar_t selected[LF_FACESIZE]{};
+        constexpr DWORD collectionTable = 0x66637474; // ttcf
+        // A collection face can reference tables outside the selected-face data returned by GDI.
+        if (previous && GetTextFaceW(dc, LF_FACESIZE, selected) && _wcsicmp(face, selected) == 0 &&
+            GetFontData(dc, collectionTable, 0, nullptr, 0) == GDI_ERROR) {
+            length = GetFontData(dc, 0, 0, nullptr, 0);
+            if (length >= 12 && length <= 32 * 1024 * 1024) {
+                data = IM_ALLOC(length);
+                if (data && GetFontData(dc, 0, 0, data, length) != length) {
+                    IM_FREE(data);
+                    data = nullptr;
+                }
+            }
+        }
+        if (previous)
+            SelectObject(dc, previous);
+        DeleteObject(font);
+    }
+    DeleteDC(dc);
+    if (!data)
+        return nullptr;
+    return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(data, int(length), size, &config,
+                                                     hudGlyphRanges.Data);
+}
+
 bool prepareHudFonts(float scale, int style) {
     auto& io = ImGui::GetIO();
-    if (std::abs(fontScale - scale) < .015f && fontStyle == style){io.FontGlobalScale=scale/fontScale;return true;}
-    if(fontScale>0&&fontStyle==style){
+    const bool sameText = hudText == fontText;
+    if (fontScale > 0 && std::abs(fontScale - scale) < .015f && fontStyle == style && sameText) {
+        io.FontGlobalScale = scale / fontScale;
+        return true;
+    }
+    if(fontScale>0&&fontStyle==style&&sameText){
         if(std::abs(requestedFontScale-scale)>.015f){requestedFontScale=scale;requestedFontAt=GetTickCount64();}
         if(GetTickCount64()-requestedFontAt<180){io.FontGlobalScale=scale/fontScale;return true;}
     }
     ImGui_ImplDX11_InvalidateDeviceObjects();
-    io.Fonts->Clear();
     wchar_t windows[32768]{};
     GetWindowsDirectoryW(windows, 32768);
     std::wstring folder = std::wstring(windows) + L"\\Fonts\\";
@@ -79,15 +148,36 @@ bool prepareHudFonts(float scale, int style) {
     ImFontConfig config;
     config.OversampleH = 2;
     config.OversampleV = 2;
-    io.FontDefault =
-        io.Fonts->AddFontFromFileTTF(regular.c_str(), ((style == 1||style==3) ? 12 : 14) * scale, &config);
-    if (!io.FontDefault) {
-        config.SizePixels = ((style == 1||style==3) ? 12 : 14) * scale;
-        io.FontDefault = io.Fonts->AddFontDefault(&config);
+    auto build = [&](bool custom) {
+        io.Fonts->Clear();
+        ImFontGlyphRangesBuilder glyphs;
+        glyphs.AddRanges(io.Fonts->GetGlyphRangesDefault());
+        for (const auto& label : hudText.labels)
+            glyphs.AddText(label.c_str());
+        hudGlyphRanges.clear();
+        glyphs.BuildRanges(&hudGlyphRanges);
+        const float regularSize = ((style == 1 || style == 3) ? 12 : 14) * scale;
+        const float largeSize = (style == 0 ? 34 : 28) * scale;
+        io.FontDefault = custom ? loadInstalledFont(hudText.fontFamily, FW_NORMAL, regularSize, config)
+            : io.Fonts->AddFontFromFileTTF(regular.c_str(), regularSize, &config, hudGlyphRanges.Data);
+        if (!io.FontDefault && custom)
+            return false;
+        if (!io.FontDefault) {
+            config.SizePixels = regularSize;
+            io.FontDefault = io.Fonts->AddFontDefault(&config);
+        }
+        largeFont = custom ? loadInstalledFont(hudText.fontFamily, FW_BOLD, largeSize, config)
+            : io.Fonts->AddFontFromFileTTF(bold.c_str(), largeSize, &config, hudGlyphRanges.Data);
+        if (!largeFont)
+            largeFont = io.FontDefault;
+        return io.Fonts->Build();
+    };
+    if ((!hudText.fontFamily.empty() && build(true)) || build(false))
+        fontText = hudText;
+    else {
+        fontScale = 0;
+        return false;
     }
-    largeFont = io.Fonts->AddFontFromFileTTF(bold.c_str(), (style == 0 ? 34 : 28) * scale, &config);
-    if (!largeFont)
-        largeFont = io.FontDefault;
     io.FontGlobalScale = 1;
     bool ok = ImGui_ImplDX11_CreateDeviceObjects();
     fontScale = ok ? scale : 0;
@@ -130,7 +220,10 @@ struct PreserveExtraShaderStages {
 
 bool drawHud(IDXGISwapChain* chain, UINT flags) {
     if (!enabled || !control || !fg::read32(&control->overlay) || primary.load() != chain ||
-        (flags & DXGI_PRESENT_TEST) || !fg::read32(&control->hudFields))
+        (flags & DXGI_PRESENT_TEST))
+        return false;
+    const auto fields = uint32_t(fg::read32(&control->hudFields));
+    if (!(fields & fg::HudAll))
         return false;
     AcquireSRWLockExclusive(&renderLock);
     bool drawn = false;
@@ -207,15 +300,18 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
             D3D11_TEXTURE2D_DESC desc{};
             buffer->GetDesc(&desc);
             fg::HudOptions presentation{
-                uint32_t(fg::read32(&control->hudFields)), int(fg::read32(&control->hudScale)),
+                fields & fg::HudAll, int(fg::read32(&control->hudScale)),
                 int(fg::read32(&control->hudOpacity)), int(fg::read32(&control->hudAccent)),
                 int(fg::read32(&control->hudStyle))};
+            presentation.temperatureColors = (fields & fg::hudTemperatureColorsFlag) != 0;
+            presentation.textGlow = (fields & fg::hudTextGlowFlag) != 0;
             presentation.order=uint64_t(uint32_t(fg::read32(&control->hudOrderLo)))|(uint64_t(uint32_t(fg::read32(&control->hudOrderHi)))<<32);
             presentation.x=fg::read32(&control->hudX);presentation.y=fg::read32(&control->hudY);presentation.fontScale=fg::read32(&control->hudFontScale);
             presentation.validate();
             float scale = fg::overlayScale(presentation.scale, int(desc.Height))*presentation.fontScale/100.f;
             scale = std::min(scale, std::min((desc.Width - 32.f) / fg::hudWidth(presentation),
                                              (desc.Height - 32.f) / fg::hudHeight(presentation)));
+            updateHudText();
             if (desc.Width >= 160 && desc.Height >= 120 &&
                 prepareHudFonts(scale, presentation.style) &&
                 SUCCEEDED(guiDevice->CreateRenderTargetView(buffer, nullptr, &view))) {
@@ -224,14 +320,14 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                 double dt = previousDraw ? double(now.QuadPart - previousDraw) / frequency.QuadPart
                                          : 1.0 / 60;
                 previousDraw = now.QuadPart;
-                auto successfulFrames = fg::read64(&control->frames);
+                const auto successfulFrames = std::max<LONGLONG>(0, fg::read64(&control->frames));
                 if (!hudSampleQpc) {
                     hudSampleQpc = now.QuadPart;
                     hudSampleFrames = successfulFrames;
                 }
                 if (now.QuadPart - hudSampleQpc >= frequency.QuadPart / 4) {
-                    smoothedFps = double(successfulFrames - hudSampleFrames) * frequency.QuadPart /
-                                  (now.QuadPart - hudSampleQpc);
+                    const auto newFrames = std::max<LONGLONG>(0, successfulFrames - hudSampleFrames);
+                    smoothedFps = double(newFrames) * frequency.QuadPart / (now.QuadPart - hudSampleQpc);
                     hudSampleQpc = now.QuadPart;
                     hudSampleFrames = successfulFrames;
                     rollingIntervals.clear();
@@ -242,9 +338,12 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                         if (fg::read64(&sample.sequence) != n)
                             continue;
                         auto at = fg::read64(&sample.qpc), ticks = fg::read64(&sample.interval);
+                        if (at <= 0 || at > now.QuadPart)
+                            continue;
                         if (now.QuadPart - at > frequency.QuadPart * 30)
                             break;
-                        if (ticks > 0 && fg::read64(&sample.sequence) == n) {
+                        if (ticks > 0 && ticks <= frequency.QuadPart * 60 &&
+                            fg::read64(&sample.sequence) == n) {
                             double ms = 1000. * ticks / frequency.QuadPart;
                             rollingIntervals.push_back(ms);
                             sum += ms;
@@ -266,7 +365,8 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                 if (successfulFrames > hudLastGraphFrame) {
                     auto& last = control->ring[successfulFrames % fg::hookRingSize];
                     auto interval = fg::read64(&last.interval);
-                    if (fg::read64(&last.sequence) == successfulFrames && interval > 0) {
+                    if (fg::read64(&last.sequence) == successfulFrames && interval > 0 &&
+                        interval <= frequency.QuadPart * 60) {
                         hudTimes[hudHead] = float(1000.0 * interval / frequency.QuadPart);
                         hudHead = (hudHead + 1) % hudTimes.size();
                         hudCount = std::min(hudTimes.size(), hudCount + 1);
@@ -280,8 +380,13 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                 ImGui::NewFrame();
                 const auto layout=fg::hudLayout(presentation);
                 const bool compact=presentation.style==1||presentation.style==3,minimal=presentation.style==3;
-                const auto rgb=fg::accentColors[presentation.accent];
-                const ImVec4 accent(float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255,1);
+                const auto textColor = [](uint32_t rgb) {
+                    return ImVec4(float((rgb >> 16) & 255) / 255, float((rgb >> 8) & 255) / 255,
+                                  float(rgb & 255) / 255, 1);
+                };
+                const bool rainbow = presentation.accent == fg::hudRainbowAccent;
+                const float rainbowPhase = rainbow ? fg::hudRainbowPhase(GetTickCount64()) : 0.f;
+                const auto accent = textColor(fg::accentColors[presentation.accent]);
                 auto& style=ImGui::GetStyle();style.WindowPadding=ImVec2(0,0);style.WindowRounding=(compact?8:14)*scale;
                 style.Colors[ImGuiCol_PlotLines]=accent;style.Colors[ImGuiCol_FrameBg]=ImVec4(0,0,0,0);
                 const int corner=fg::read32(&control->corner);const float margin=22*scale;
@@ -295,7 +400,52 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                 ImGui::Begin("Framoryx HUD",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoInputs|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoFocusOnAppearing);
                 const auto pos=ImGui::GetWindowPos();
                 if(!minimal&&presentation.opacity>0)ImGui::GetWindowDrawList()->AddLine(ImVec2(pos.x+14*scale,pos.y+1),ImVec2(pos.x+width-14*scale,pos.y+1),ImGui::ColorConvertFloat4ToU32(accent),2*scale);
-                auto reading=[&](uint32_t field,char* output,size_t length){
+                const auto drawText = [&](const char* text, const ImVec4& baseColor, bool useRainbow = true) {
+                    const bool gradient = rainbow && useRainbow;
+                    const auto drawMainText = [&] {
+                        ImGui::PushStyleColor(ImGuiCol_Text, baseColor);
+                        ImGui::TextUnformatted(text);
+                        ImGui::PopStyleColor();
+                    };
+                    if (!gradient && !presentation.textGlow) {
+                        drawMainText();
+                        return;
+                    }
+                    auto* draw = ImGui::GetWindowDrawList();
+                    auto& vertices = draw->VtxBuffer;
+                    const ImVec2 origin = ImGui::GetCursorScreenPos();
+                    const float textWidth = gradient ? ImGui::CalcTextSize(text).x : 0.f;
+                    const auto shade = [&](int first, float start) {
+                        if (!std::isfinite(textWidth) || textWidth <= 0.f)
+                            return;
+                        for (int index = first; index < vertices.Size; ++index) {
+                            auto& vertex = vertices[index];
+                            const float progress = (vertex.pos.x - start) / textWidth;
+                            if (!std::isfinite(progress))
+                                continue;
+                            const auto rgb = fg::hudRainbowColor(rainbowPhase + progress);
+                            vertex.col = (vertex.col & IM_COL32_A_MASK) |
+                                IM_COL32((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 0);
+                        }
+                    };
+                    if (presentation.textGlow) {
+                        const float radius = scale < 1.6f ? 1.f : 2.f;
+                        ImVec4 halo = useRainbow ? accent : baseColor;
+                        halo.w = baseColor.w * .15f;
+                        const auto color = ImGui::GetColorU32(halo);
+                        for (const ImVec2 offset : {ImVec2(-radius, 0), ImVec2(radius, 0),
+                                                   ImVec2(0, -radius), ImVec2(0, radius)}) {
+                            const int first = vertices.Size;
+                            const ImVec2 at(origin.x + offset.x, origin.y + offset.y);
+                            draw->AddText(at, color, text);
+                            shade(first, at.x);
+                        }
+                    }
+                    const int first = vertices.Size;
+                    drawMainText();
+                    shade(first, origin.x);
+                };
+                auto reading=[&](uint32_t field,char* output,size_t length,uint32_t& temperatureColor){
                     const char* title="";double number=0;
                     switch(field){
                     case fg::HudFps:number=smoothedFps;break;
@@ -307,8 +457,31 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                     case fg::HudCap:title="Limit target";number=fg::read32(&control->cap);break;
                     case fg::HudApi:snprintf(output,length,"%s",guiIs12?"DX12":"DX11");return "Renderer";
                     default:
-                        if(field>=fg::HudGpu){int sensor=0;while(sensor<6&&field!=(fg::HudGpu<<sensor))++sensor;static const char* titles[]{"GPU usage","VRAM usage","GPU temp","CPU temp","GPU power","GPU clock"};
-                            if(sensor<6){const auto value=fg::read32(&control->sensors[sensor]);if(value<0)snprintf(output,length,"--");else if(sensor<2)snprintf(output,length,"%.0f%%",value/100.);else if(sensor<4)snprintf(output,length,"%.0f C",value/100.);else if(sensor==4)snprintf(output,length,"%.1f W",value/100.);else snprintf(output,length,"%.0f MHz",value/100.);return titles[sensor];}}
+                        if (field >= fg::HudGpu) {
+                            int sensor = 0;
+                            while (sensor < 6 && field != (fg::HudGpu << sensor))
+                                ++sensor;
+                            static constexpr const char* titles[]{
+                                "GPU usage", "VRAM usage", "GPU temp", "CPU temp", "GPU power", "GPU clock"
+                            };
+                            if (sensor < 6) {
+                                const auto value = fg::read32(&control->sensors[sensor]);
+                                if (value < 0)
+                                    snprintf(output, length, "--");
+                                else if (sensor < 2)
+                                    snprintf(output, length, "%.0f%%", value / 100.);
+                                else if (sensor < 4) {
+                                    const double celsius = value / 100.;
+                                    snprintf(output, length, "%.0f C", celsius);
+                                    if (presentation.temperatureColors)
+                                        temperatureColor = fg::hudTemperatureColor(celsius);
+                                } else if (sensor == 4)
+                                    snprintf(output, length, "%.1f W", value / 100.);
+                                else
+                                    snprintf(output, length, "%.0f MHz", value / 100.);
+                                return titles[sensor];
+                            }
+                        }
                         snprintf(output,length,"FRAMORYX");return "";
                     }
                     if(field==fg::HudCap&&!number)snprintf(output,length,"Uncapped");
@@ -322,16 +495,42 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                     else snprintf(output,length,"--");return title;
                 };
                 for(size_t n=0;n<layout.count;++n){const auto& cell=layout.cells[n];
+                    const auto& custom = hudText.labels[std::countr_zero(cell.field)];
                     ImGui::SetCursorPos(ImVec2(cell.x*scale,cell.y*scale));
+                    const auto clip = [&](float width) {
+                        ImGui::PushClipRect(ImVec2(pos.x + cell.x * scale, pos.y + cell.y * scale),
+                            ImVec2(pos.x + (cell.x + width) * scale, pos.y + (cell.y + cell.height) * scale), true);
+                    };
                     if(cell.field==fg::HudGraph){
-                        if(hudCount){float maximum=33.4f;for(size_t i=0;i<hudCount;++i)maximum=std::max(maximum,std::min(100.f,hudTimes[i]));ImGui::PlotLines("##FrameTime",hudTimes.data(),int(hudCount),hudCount==hudTimes.size()?int(hudHead):0,nullptr,0,maximum,ImVec2(cell.width*scale,(cell.height-10)*scale));}continue;
+                        const float heading = custom.empty() ? 0.f : 12.f;
+                        if (heading) {
+                            clip(cell.width);
+                            drawText(custom.c_str(), style.Colors[ImGuiCol_TextDisabled]);
+                            ImGui::PopClipRect();
+                            ImGui::SetCursorPos(ImVec2(cell.x * scale, (cell.y + heading) * scale));
+                        }
+                        if(hudCount){float maximum=33.4f;for(size_t i=0;i<hudCount;++i)maximum=std::max(maximum,std::min(100.f,hudTimes[i]));ImGui::PlotLines("##FrameTime",hudTimes.data(),int(hudCount),hudCount==hudTimes.size()?int(hudHead):0,nullptr,0,maximum,ImVec2(cell.width*scale,(cell.height-10-heading)*scale));}continue;
                     }
-                    char number[80]{};const char* title=reading(cell.field,number,sizeof(number));
-                    if(cell.field==fg::HudFps){ImGui::PushFont(largeFont);ImGui::TextColored(accent,"%s FPS",number);ImGui::PopFont();continue;}
-                    if(cell.field==fg::HudBrand){ImGui::TextDisabled("FRAMORYX");continue;}
-                    ImGui::TextDisabled("%s",title);
+                    uint32_t temperatureColor = 0;
+                    char number[80]{};
+                    const char* title = reading(cell.field, number, sizeof(number), temperatureColor);
+                    clip(cell.column||cell.field==fg::HudFps||cell.field==fg::HudBrand?cell.width:cell.width-110);
+                    if(cell.field==fg::HudFps){
+                        char fps[sizeof(number) + fg::hudLabelBytes + 2]{};
+                        snprintf(fps, sizeof(fps), "%s %s", number, custom.empty() ? "FPS" : custom.c_str());
+                        ImGui::PushFont(largeFont);
+                        drawText(fps, accent);
+                        ImGui::PopFont();
+                    } else {
+                        if(cell.field==fg::HudBrand)title="FRAMORYX";
+                        drawText(custom.empty() ? title : custom.c_str(), style.Colors[ImGuiCol_TextDisabled]);
+                    }
+                    ImGui::PopClipRect();
+                    if(cell.field==fg::HudFps||cell.field==fg::HudBrand)continue;
                     const float numberX=cell.column?cell.x:cell.x+cell.width-105;
-                    ImGui::SetCursorPos(ImVec2(numberX*scale,(cell.y+(cell.column?19:0))*scale));ImGui::TextUnformatted(number);
+                    ImGui::SetCursorPos(ImVec2(numberX * scale, (cell.y + (cell.column ? 19 : 0)) * scale));
+                    drawText(number, temperatureColor ? textColor(temperatureColor) :
+                                                       style.Colors[ImGuiCol_Text], !temperatureColor);
                 }
                 ImGui::End();
                 ImGui::PopStyleColor();
@@ -467,7 +666,10 @@ void publishFrame(IDXGISwapChain* chain, LONGLONG at) {
         return;
     LONGLONG interval = lastSuccessful ? at - lastSuccessful : 0;
     lastSuccessful = at;
-    auto sequence = fg::read64(&control->frames) + 1;
+    const auto previous = fg::read64(&control->frames);
+    if (previous < 0 || previous == std::numeric_limits<LONGLONG>::max())
+        return;
+    const auto sequence = previous + 1;
     auto& entry = control->ring[sequence % fg::hookRingSize];
     InterlockedExchange64(&entry.sequence, 0);
     InterlockedExchange64(&entry.qpc, at);
