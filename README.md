@@ -1,9 +1,9 @@
 <div align="center">
   <img src="docs/images/hero.png" alt="Framoryx — Every frame. Under control." width="100%">
   <p>A native Windows and Linux toolkit for performance overlays, frame pacing, borderless play and audio control.</p>
-  <a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest/download/Framoryx-Windows-x64.zip"><img src="docs/badges/download-windows.svg" alt="Download Framoryx for Windows x64" height="94"></a>
+  <a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest/download/Framoryx-Windows-x64.zip"><img src="docs/badges/download-windows.svg" alt="Download Framoryx for Windows x64, unsigned portable ZIP" height="94"></a>
   &nbsp;
-  <a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest/download/Framoryx-Linux-x86_64.AppImage"><img src="docs/badges/linux.svg" alt="Download Framoryx for Linux x86-64" height="94"></a>
+  <a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest/download/Framoryx-Linux-x86_64.AppImage"><img src="docs/badges/linux.svg" alt="Download Framoryx AppImage for Linux x86-64" height="94"></a>
   <p><a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest">Release notes &amp; checksums</a> · <a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest/download/Framoryx-Linux-x86_64.tar.gz">Portable Linux archive</a> · <a href="https://github.com/NeTriXoN-BoT/framoryx/releases/latest/download/Framoryx-Source.zip">Source</a></p>
   <p><sub><strong>UNSIGNED WINDOWS BUILD</strong> · No Authenticode publisher certificate.<br>Windows may display an unknown-publisher or SmartScreen warning. Verify the release SHA-256 before use.</sub></p>
 </div>

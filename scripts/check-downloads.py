@@ -81,6 +81,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", default="NeTriXoN-BoT/Framoryx")
     parser.add_argument("--all-assets", action="store_true", help="Require and verify both desktop platforms and clean source.")
+    parser.add_argument("--expected-latest", help="Require the published event's tag to be latest.")
+    parser.add_argument("--expected-latest-id", type=int, help="Require the published event's release ID to be latest.")
     args = parser.parse_args()
     owner, name = args.repository.split("/")
     if any(not part or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for c in part) for part in (owner, name)):
@@ -90,9 +92,17 @@ def main():
     repository = json.loads(download(api, 2_000_000))
     if repository["private"]:
         raise RuntimeError("Downloads require a public repository")
-    release = json.loads(download(api + "/releases/latest", 2_000_000))
-    if release["draft"] or release["prerelease"]:
-        raise RuntimeError("Latest must be a published stable release")
+    def latest_release():
+        release = json.loads(download(api + "/releases/latest", 2_000_000))
+        if release["draft"] or release["prerelease"]:
+            raise RuntimeError("Latest must be a published stable release")
+        if args.expected_latest is not None and release["tag_name"] != args.expected_latest:
+            raise RuntimeError("Latest release tag differs from the published event")
+        if args.expected_latest_id is not None and release["id"] != args.expected_latest_id:
+            raise RuntimeError("Latest release ID differs from the published event")
+        return release
+
+    release = latest_release()
     assets = {item["name"]: item for item in release["assets"]}
     expected_assets = ALL_ASSETS if args.all_assets else (ASSET,)
     for required in [name + suffix for name in expected_assets for suffix in ("", ".sha256")]:
@@ -118,6 +128,8 @@ def main():
         if advertised and advertised != "sha256:" + digest:
             raise RuntimeError("Public asset differs from GitHub's asset digest: " + name)
         verified.append({"asset": name, "status": "HTTP 200", "bytes": size, "sha256": digest, "checksum": "matched"})
+    if args.expected_latest is not None or args.expected_latest_id is not None:
+        latest_release()
     print(json.dumps({"anonymous": True, "release": release["tag_name"], "latestPage": "HTTP 200", "assets": verified}, indent=2))
 
 

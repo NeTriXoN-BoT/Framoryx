@@ -62,4 +62,4 @@ Shared desktop tests exercise cached page navigation, rapid slider gestures, Aut
 
 Packaging excludes preferences, captures, local logs, toolchains and development caches. Each download receives a SHA-256 file; clean source archives come from Git. See [runtime sources and licenses](RUNTIME-SOURCES.md).
 
-The draft-release workflow requires successful desktop, core, secret and security checks for the exact source commit and no open CodeQL alerts. Published download checks use anonymous `releases/latest` routes and compare public asset bytes with their checksums. Old releases and tags are pruned only after the new published downloads have been verified.
+The draft-release workflow requires successful desktop, core, secret and security checks for the exact source commit and no open CodeQL alerts. Publishing a stable release starts a check of the anonymous `releases/latest` download routes and SHA-256 checksums. After that release passes, the workflow removes older stable releases and their Git tags.

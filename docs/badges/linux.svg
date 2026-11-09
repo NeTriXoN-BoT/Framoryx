@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="310" height="94" viewBox="0 0 310 94" role="img" aria-label="Download Framoryx for Linux x86-64">
+<svg xmlns="http://www.w3.org/2000/svg" width="310" height="94" viewBox="0 0 310 94" role="img" aria-label="Download Framoryx AppImage for Linux x86-64">
 <defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#16343f"/><stop offset="1" stop-color="#101b25"/></linearGradient></defs>
 <path d="M1 1H285L309 25V93H1Z" fill="url(#g)" stroke="#3d687c"/>
 <path d="M1 1H80M1 1V35M285 1V25H309" fill="none" stroke="#79d8ef"/>
-<path d="M248 41l8 7-8 7m14 0h11M242 71h42m-13-10v-8" fill="none" stroke="#79d8ef" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M267 38v21m-7-7 7 7 7-7M249 64v7h36v-7" fill="none" stroke="#79d8ef" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 <text x="20" y="23" font-family="Segoe UI,Arial,sans-serif" font-size="9" letter-spacing="2" fill="#79d8ef">FRAMORYX / LINUX</text>
-<text x="19" y="50" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="650" fill="#edf6f6">Play your way</text>
-<text x="20" y="73" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#a2babf">Download x86-64 · AppImage</text>
+<text x="20" y="50" font-family="Segoe UI,Arial,sans-serif" font-size="19" font-weight="650" fill="#edf6f6">Download for Linux</text>
+<text x="20" y="73" font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#a2babf">x86-64 · AppImage</text>
 </svg>

@@ -7,13 +7,50 @@ permissions:
   contents: read
 jobs:
   anonymous-download:
-    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    if: github.event_name == 'workflow_dispatch' || (!github.event.release.draft && !github.event.release.prerelease)
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      source-sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
       - name: Verify latest download without authentication
-        run: python3 scripts/check-downloads.py --repository "$GITHUB_REPOSITORY" --all-assets
+        env:
+          PUBLISHED_TAG: ${{ github.event.release.tag_name }}
+          PUBLISHED_ID: ${{ github.event.release.id }}
+        run: |
+          args=(--repository "$GITHUB_REPOSITORY" --all-assets)
+          if [[ "$GITHUB_EVENT_NAME" == release ]]; then
+            args+=(--expected-latest "$PUBLISHED_TAG" --expected-latest-id "$PUBLISHED_ID")
+          fi
+          python3 scripts/check-downloads.py "${args[@]}"
+      - name: Record verified source revision
+        id: source
+        run: printf 'sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  prune-previous-releases:
+    needs: anonymous-download
+    if: github.event_name == 'release' && github.event.action == 'published' && !github.event.release.draft && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    concurrency:
+      group: framoryx-stable-release-retention
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.anonymous-download.outputs.source-sha }}
+          persist-credentials: false
+      - name: Remove older stable releases and their tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISHED_TAG: ${{ github.event.release.tag_name }}
+          PUBLISHED_ID: ${{ github.event.release.id }}
+        run: |
+          python3 scripts/prune-releases.py --repo "$GITHUB_REPOSITORY" \
+            --expected-latest "$PUBLISHED_TAG" --expected-latest-id "$PUBLISHED_ID" \
+            --apply --delete-tags
