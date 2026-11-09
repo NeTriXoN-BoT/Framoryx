@@ -19,8 +19,12 @@ def version(tag):
     return tuple(map(int, match.groups())) if match else None
 
 
+def previously_published_stable(release):
+    return bool(release.get("published_at")) and not release["prerelease"]
+
+
 def published_stable(release):
-    return bool(release.get("published_at")) and not release["draft"] and not release["prerelease"]
+    return previously_published_stable(release) and not release["draft"]
 
 
 def identity(release):
@@ -31,13 +35,15 @@ def candidates(releases, latest):
     newest = version(latest["tag_name"])
     older = []
     for release in releases:
-        if not published_stable(release) or release["id"] == latest["id"]:
+        if not previously_published_stable(release) or release["id"] == latest["id"]:
             continue
         tag = release["tag_name"]
         number = version(tag)
         if number is None:
             continue
         if number >= newest or release["published_at"] >= latest["published_at"]:
+            if release["draft"]:
+                continue
             raise RuntimeError(f"Stable release {tag} is not older than verified latest; refusing cleanup")
         older.append(release)
     return older
@@ -66,10 +72,12 @@ def main():
         if not published_stable(current) or identity(current) != identity(latest):
             raise RuntimeError("Latest release changed; refusing cleanup")
 
-    def check_release(release):
+    def check_release(release, allow_draft_transition=False):
         check_latest()
         current = api(base + "/releases/" + str(release["id"]))
-        if not published_stable(current) or identity(current) != identity(release):
+        draft_changed = current["draft"] != release["draft"]
+        if (not previously_published_stable(current) or identity(current) != identity(release)
+                or (draft_changed and not (allow_draft_transition and current["draft"]))):
             raise RuntimeError(f"Release {release['tag_name']} changed during cleanup")
         return current
 
@@ -97,6 +105,9 @@ def main():
         tag = release["tag_name"]
         clean_tag = args.delete_tags and not shared_tag(release, releases)
         target = tag_target(tag) if clean_tag else None
+        # GitHub converts a published release to a draft when its tag is deleted.
+        if release["draft"] and (not clean_tag or target is not None):
+            continue
         if target and release.get("immutable"):
             raise RuntimeError(f"Immutable release {tag} locks its tag; refusing tag-first cleanup")
         plan.append((release, clean_tag, target))
@@ -112,6 +123,8 @@ def main():
             if args.apply:
                 current = check_release(release)
                 if shared_tag(release, current_releases):
+                    if release["draft"]:
+                        continue
                     clean_tag = False
                 elif tag_target(tag) != target or (target and current.get("immutable")):
                     raise RuntimeError(f"Tag {tag} changed or was locked during cleanup")
@@ -121,7 +134,7 @@ def main():
                     api(base + "/git/refs/tags/" + tag, "DELETE")
         print(f"{action} old release: {tag}")
         if args.apply:
-            check_release(release)
+            check_release(release, allow_draft_transition=clean_tag)
             # Keep the release record if its tag reappears so cleanup can be retried.
             if clean_tag and tag_target(tag) is not None:
                 raise RuntimeError(f"Tag {tag} reappeared during cleanup")
