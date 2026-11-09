@@ -85,14 +85,14 @@ index 1bb509d..8981a79 100644
 +// Framoryx supplies launch parameters and typed live controls, not arbitrary files.
 +void parseConfigFile(overlay_params&) {}
 diff --git a/src/control.cpp b/src/control.cpp
-index 9d99708..81e7115 100644
+index 9d99708..5533e17 100644
 --- a/src/control.cpp
 +++ b/src/control.cpp
 @@ -9,0 +10,3 @@
 +#include "framoryx_stream.hpp"
 +#include "framoryx_hud.hpp"
 +#include <unistd.h>
-@@ -18 +21,32 @@ static void parse_command(overlay_params &params,
+@@ -18 +21,34 @@ static void parse_command(overlay_params &params,
 -   if (!strncmp(cmd, "hud", cmdlen)) {
 +   if (!strcmp(cmd, "framoryx_hud")) {
 +      framoryx_hud::configure(std::string_view(param, paramlen ? paramlen - 1 : 0));
@@ -102,6 +102,8 @@ index 9d99708..81e7115 100644
 +      framoryx_hud::temperatureColors(std::string_view(param, paramlen ? paramlen - 1 : 0));
 +   } else if (!strcmp(cmd, "framoryx_text_glow")) {
 +      framoryx_hud::textGlow(std::string_view(param, paramlen ? paramlen - 1 : 0));
++   } else if (!strcmp(cmd, "framoryx_value_colors")) {
++      framoryx_hud::valueColors(std::string_view(param, paramlen ? paramlen - 1 : 0));
 +   } else if (!strcmp(cmd, "framoryx_metrics")) {
 +      framoryx_hud::metrics(std::string_view(param, paramlen ? paramlen - 1 : 0));
 +   } else if (!strcmp(cmd, "framoryx_frames")) {
@@ -126,7 +128,7 @@ index 9d99708..81e7115 100644
 +            shutdown(global_control_client, SHUT_RDWR);
 +      }
 +   } else if (!strncmp(cmd, "hud", cmdlen)) {
-@@ -168,0 +203,7 @@ void control_client_check(int control, int& control_client, const std::string& d
+@@ -168,0 +205,7 @@ void control_client_check(int control, int& control_client, const std::string& d
 +      // The application control channel is restricted to this user's session.
 +      struct ucred peer = {};
 +      socklen_t peer_size = sizeof(peer);
@@ -134,21 +136,21 @@ index 9d99708..81e7115 100644
 +         os_socket_close(socket);
 +         return;
 +      }
-@@ -175 +216 @@ void control_client_check(int control, int& control_client, const std::string& d
+@@ -175 +218 @@ void control_client_check(int control, int& control_client, const std::string& d
 -static void control_client_disconnected(int& control_client)
 +static void control_client_disconnected(int& control_client, overlay_params& params)
-@@ -176,0 +218,5 @@ static void control_client_disconnected(int& control_client)
+@@ -176,0 +220,5 @@ static void control_client_disconnected(int& control_client)
 +   framoryx_stream::reset(false);
 +   if (framoryx_hud::requested()) {
 +      framoryx_hud::hide();
 +      framoryx_update_limit(params, 0, std::clamp(int(get_params()->font_size),12,200));
 +   }
-@@ -183,0 +230 @@ void process_control_socket(int& control_client, overlay_params &params)
+@@ -183,0 +232 @@ void process_control_socket(int& control_client, overlay_params &params)
 +      global_control_client = control_client;
-@@ -198 +245 @@ void process_control_socket(int& control_client, overlay_params &params)
+@@ -198 +247 @@ void process_control_socket(int& control_client, overlay_params &params)
 -            control_client_disconnected(control_client);
 +            control_client_disconnected(control_client, params);
-@@ -201 +248 @@ void process_control_socket(int& control_client, overlay_params &params)
+@@ -201 +250 @@ void process_control_socket(int& control_client, overlay_params &params)
 -            control_client_disconnected(control_client);
 +            control_client_disconnected(control_client, params);
 diff --git a/src/cpu.cpp b/src/cpu.cpp

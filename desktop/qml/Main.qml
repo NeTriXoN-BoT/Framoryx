@@ -22,16 +22,16 @@ ApplicationWindow {
     Binding { target: Theme; property: "accent"; value: window.colors[app.options.accent] || window.colors[0] }
     Binding { target: Theme; property: "scale"; value: app.options.uiScale>0?app.options.uiScale/100:Math.max(.6,Math.min(window.autoUiScale,window.width/1100,window.height/760)) }
     Binding { target: Theme; property: "motion"; value: app.options.motion&&(window.active||window.diagnosticAnimating)&&window.visibility!==Window.Minimized&&window.visible }
-    function requestInGameMode() {
-        if (app.state.inGameSupported === false) {
+    function requestHookDisplayMode(mode) {
+        if (mode === 2 && app.state.inGameSupported === false) {
             app.notify("This rendering API uses the external overlay. In-game features support DX11 and DX12.", "warning")
             return
         }
         if (app.options.hideHookWarning) {
-            app.setOption("mode", 2)
+            app.setOption("mode", mode)
             return
         }
-        hookDialog.choosingMode = true
+        hookDialog.requestedMode = mode
         hookDialog.open()
     }
     function requestHook() {
@@ -48,7 +48,7 @@ ApplicationWindow {
             app.notify("Known anti-cheat indicators are present. In-game hooks are blocked; use the external overlay.", "warning")
             return
         }
-        hookDialog.choosingMode = false
+        hookDialog.requestedMode = -1
         hookDialog.targetPid = app.state.profilePid
         hookDialog.targetExe = app.state.profileExe
         hookDialog.open()
@@ -252,24 +252,27 @@ ApplicationWindow {
     FDialog {
         id: hookDialog
         objectName: "hookWarningDialog"
-        property bool choosingMode: false
+        property int requestedMode: -1
         property double targetPid: 0
         property string targetExe: ""
         warning: !app.options.hideHookWarning
         offerRemember: warning
-        title: choosingMode ? "Use the in-game overlay?" : "Enable experimental in-game features?"
-        confirmText: choosingMode ? "Use in-game mode" : "Enable hook"
-        message: (choosingMode
-                  ? "In-game mode uses a DX11/DX12 hook for the overlay and frame limiter. You’ll approve the hook for a specific game separately."
-                  : "This loads the Framoryx DX11/DX12 module into " + targetExe + " (PID " + targetPid + ") for an in-game overlay and frame limiting.")
+        title: requestedMode === 0 ? "Use automatic overlay mode?" :
+               requestedMode === 2 ? "Use the in-game overlay?" : "Enable experimental in-game features?"
+        confirmText: requestedMode === 0 ? "Use Auto" : requestedMode === 2 ? "Use in-game mode" : "Enable hook"
+        message: (requestedMode === 0
+                  ? "Auto starts with the external overlay. It can switch to the DX11/DX12 in-game overlay after a hook you explicitly approve for a game starts drawing."
+                  : requestedMode === 2
+                    ? "In-game mode uses a DX11/DX12 hook for the overlay and frame limiter. You’ll approve the hook for a specific game separately."
+                    : "This loads the Framoryx DX11/DX12 module into " + targetExe + " (PID " + targetPid + ") for an in-game overlay and frame limiting.")
                  + (warning ? "\n\nGame hooks can cause crashes or anti-cheat bans. An allow-list entry or clear scan does not establish approval. Use hooks only where the game permits them."
                    + "\n\nKnown anti-cheat and system blocks stay enforced. Disabling the hook restores its entry points. Restart the game to remove the module fully."
                    + "\n\nYou are responsible for checking the game’s rules. Framoryx’s maintainers accept no responsibility for bans, suspensions or other consequences of using the hook." : "")
         onAccepted: {
             if (offerRemember && rememberWarning)
                 app.setOption("hideHookWarning", true)
-            if (choosingMode)
-                app.setOption("mode", 2)
+            if (requestedMode >= 0)
+                app.setOption("mode", requestedMode)
             else
                 app.action("enableHook", {confirmed: true, pid: targetPid, exe: targetExe})
         }

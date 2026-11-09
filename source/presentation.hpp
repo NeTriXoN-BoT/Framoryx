@@ -22,12 +22,14 @@ enum HudField : uint32_t {
 };
 inline constexpr uint32_t hudTemperatureColorsFlag = 1u << 16;
 inline constexpr uint32_t hudTextGlowFlag = 1u << 17;
+inline constexpr uint32_t hudValueColorsFlag = 1u << 18;
 inline constexpr int hudRainbowAccent = 10;
+inline constexpr uint64_t hudRainbowCycleMs = 3200;
 inline constexpr std::array<uint32_t, 6> hudRainbowStops{
     0xff94ae, 0xffca83, 0x9af2b4, 0x80defb, 0xc7a5ff, 0xff94ae
 };
 inline constexpr float hudRainbowPhase(uint64_t milliseconds) {
-    return float(milliseconds % 6000) / 6000.f;
+    return float(milliseconds % hudRainbowCycleMs) / float(hudRainbowCycleMs);
 }
 inline uint32_t hudRainbowColor(float phase) {
     const float position = (phase >= 0.f && phase < 2.f ? (phase >= 1.f ? phase - 1.f : phase) : 0.f) *
@@ -48,6 +50,28 @@ inline uint32_t hudTemperatureColor(double celsius) {
     if (celsius >= 65) return 0xf7be6f;
     return 0x7df2c6;
 }
+inline uint32_t hudValueColor(uint32_t field, double value, bool valueColors,
+                              bool temperatureColors, double totalRam = 0) {
+    if (!std::isfinite(value) || value < 0)
+        return 0;
+    if (field == HudGpuTemp || field == HudCpuTemp)
+        return valueColors || temperatureColors ? hudTemperatureColor(value) : 0;
+    if (!valueColors)
+        return 0;
+    constexpr uint32_t mint = 0x7df2c6, amber = 0xf7be6f, coral = 0xff8b96;
+    if (field == HudFps || field == HudAverage || field == HudLow || field == HudCap)
+        return field == HudCap && value == 0 ? 0 : value >= 60 ? mint : value >= 30 ? amber : coral;
+    if (field == HudTime)
+        return value == 0 ? 0 : value <= 1000. / 60 ? mint : value <= 1000. / 30 ? amber : coral;
+    if (field == HudRam) {
+        if (!std::isfinite(totalRam) || totalRam <= 0)
+            return 0;
+        value = 100 * (value / totalRam);
+    } else if (field != HudCpu && field != HudGpu && field != HudVram) {
+        return 0;
+    }
+    return value >= 90 ? coral : value >= 65 ? amber : mint;
+}
 inline constexpr uint32_t desktopHudFields(uint32_t fields) {
     constexpr uint32_t hardware = HudCpu | HudRam | HudGpu | HudVram | HudGpuTemp |
                                   HudCpuTemp | HudPower | HudClock;
@@ -62,6 +86,7 @@ struct HudOptions {
     int x = -1, y = -1, fontScale = 100;
     bool temperatureColors = false;
     bool textGlow = false;
+    bool valueColors = false;
     void validate() {
         fields &= HudAll;
         scale = scale == 0 ? 0 : std::clamp(scale, 50, 300);

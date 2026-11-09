@@ -43,7 +43,7 @@ const QVariantList defaultHudLabels(16, QVariant(QString{}));
 constexpr int hudPositionVersion = 2;
 constexpr int hudPreferencesVersion = 1;
 const QStringList gameVisualKeys{"fields","order","style","opacity","overlayScale","fontScale","hudX","hudY","accent","hudLabels"};
-const QStringList globalHudKeys{"hudFontFamily","hudTemperatureColors","hudTextGlow"};
+const QStringList globalHudKeys{"hudFontFamily","hudTemperatureColors","hudValueColors","hudTextGlow"};
 const QStringList visualKeys=gameVisualKeys+globalHudKeys;
 const QStringList gameKeys=gameVisualKeys+QStringList{"cap","mode","linuxOverlayMode"};
 QVariantMap pick(const QVariantMap& source,const QStringList& keys){QVariantMap result;for(const auto& key:keys)if(source.contains(key))result[key]=source[key];return result;}
@@ -76,7 +76,7 @@ QString gameKey(QString name){name=name.replace('\\','/');name=QFileInfo(name).f
 #endif
     return name;
 }
-QVariantMap defaults(){return {{"motion",true},{"startWithSystem",false},{"startHidden",false},{"minimizeToTray",false},{"closeToTray",false},{"autoCapture",true},{"autoOverlay",false},{"hudOnDesktop",false},{"uiScale",0},{"overlayScale",0},{"opacity",90},{"style",0},{"accent",0},{"fields",1023},{"order",defaultOrder},{"hudX",0.},{"hudY",0.},{"fontScale",100},{"hudLabels",defaultHudLabels},{"hudFontFamily",QString{}},{"hudTemperatureColors",false},{"hudTextGlow",false},{"hideHookWarning",false},{"cap",60},{"mode",0},{"volume",100},{"bass",3},{"noise",false},{"eq",false},{"low",6},{"mid",-3},{"high",0},{"voicePreset",4},{"noisePreset",1},{"autoNoise",true},{"micId",""},{"selectedGame","auto"},{"autoBorderless",false},{"gamescope",false},{"linuxOverlayMode",0},{"allow",QStringList{"FramoryxTest.exe","FramoryxScene","FramoryxPresentScene"}},{"deny",QStringList{"RiotClientServices.exe"}}};}
+QVariantMap defaults(){return {{"motion",true},{"startWithSystem",false},{"startHidden",false},{"minimizeToTray",false},{"closeToTray",false},{"autoCapture",true},{"autoOverlay",false},{"hudOnDesktop",false},{"uiScale",0},{"overlayScale",0},{"opacity",90},{"style",0},{"accent",0},{"fields",1023},{"order",defaultOrder},{"hudX",0.},{"hudY",0.},{"fontScale",100},{"hudLabels",defaultHudLabels},{"hudFontFamily",QString{}},{"hudTemperatureColors",false},{"hudValueColors",false},{"hudTextGlow",false},{"hideHookWarning",false},{"cap",60},{"mode",0},{"volume",100},{"bass",3},{"noise",false},{"eq",false},{"low",6},{"mid",-3},{"high",0},{"voicePreset",4},{"noisePreset",1},{"autoNoise",true},{"micId",""},{"selectedGame","auto"},{"autoBorderless",false},{"gamescope",false},{"linuxOverlayMode",0},{"allow",QStringList{"FramoryxTest.exe","FramoryxScene","FramoryxPresentScene"}},{"deny",QStringList{"RiotClientServices.exe"}}};}
 QString cleanHudLabel(const QVariant& value) {
     if (value.typeId() != QMetaType::QString)
         return {};
@@ -120,7 +120,7 @@ QStringList cleanRules(const QVariant& value){
 Controller::Controller(QString root,bool testing,QObject* parent):QObject(parent),m_root(std::move(root)),m_test(testing){
     m_hudFontFamilies = QFontDatabase::families();
     QDir().mkpath(m_root);m_options=defaults();m_baseOverlay=pick(m_options,gameKeys);
-    m_state={{"connected",false},{"capture",false},{"live",false},{"overlay",false},{"fps",0.},{"average",0.},{"low",0.},{"frameTime",0.},{"cpu",0.},{"ram",0.},{"totalRam",0.},{"renderer","Waiting for frames"},{"game","Choose a game"},{"notice","Ready when you are."},{"audioStatus","Choose effects, then Apply."},{"noiseStatus","Automatic updates are ready."},{"noiseBusy",false},{"inputLevel",0.},{"outputLevel",0.},{"recording",false},{"playing",false},{"sampleReady",false},{"volume",100},{"micConfigured",false},{"bassConfigured",false},{"boostConfigured",false},{"hookActive",false},{"pending",false},{"session",qEnvironmentVariable("XDG_SESSION_TYPE","unknown")}};
+    m_state={{"connected",false},{"capture",false},{"live",false},{"overlay",false},{"fps",0.},{"average",0.},{"low",0.},{"frameTime",0.},{"cpu",QVariant{}},{"ram",0.},{"totalRam",0.},{"renderer","Waiting for frames"},{"game","Choose a game"},{"notice","Ready when you are."},{"audioStatus","Choose effects, then Apply."},{"noiseStatus","Automatic updates are ready."},{"noiseBusy",false},{"inputLevel",0.},{"outputLevel",0.},{"recording",false},{"playing",false},{"sampleReady",false},{"volume",100},{"micConfigured",false},{"bassConfigured",false},{"boostConfigured",false},{"hookActive",false},{"pending",false},{"session",qEnvironmentVariable("XDG_SESSION_TYPE","unknown")}};
     load();if(!m_test)m_options["startWithSystem"]=lifecycle::startupEnabled();m_clock.start();
     m_audio=std::make_unique<AudioMonitor>(this);
     m_platform=std::make_unique<Platform>(this);
@@ -324,6 +324,16 @@ void Controller::setHudLabel(int index,const QString& label){
     if(index<0||index>=overrides.size())return;
     overrides[index]=label;
     setOption("hudLabels",overrides);
+}
+QColor Controller::hudReadoutColor(int index, double value, bool valueColors,
+                                  bool temperatureColors, double totalRam) const {
+    if (index < 0 || index >= labels.size())
+        return Qt::transparent;
+    const auto rgb = fg::hudValueColor(1u << index, value, valueColors, temperatureColors, totalRam);
+    return rgb ? QColor::fromRgb(rgb) : QColor(Qt::transparent);
+}
+int Controller::hudRainbowCycleMs() const {
+    return int(fg::hudRainbowCycleMs);
 }
 void Controller::moveReadout(int index,int direction){auto order=m_options["order"].toList();const int at=order.indexOf(index),to=at+(direction<0?-1:1);if(at<0||to<0||to>=order.size())return;order.swapItemsAt(at,to);setOption("order",order);}
 void Controller::rememberOverlay(){
@@ -608,14 +618,30 @@ bool Controller::selfTest(QString* error){
     const auto installedFont=m_hudFontFamilies.value(0);
     setOption("hudFontFamily",installedFont);
     setOption("hudTemperatureColors",true);
+    if(!check(!m_options["hudValueColors"].toBool()&&
+              hudReadoutColor(12,75,false,true,0).alpha()==255&&
+              hudReadoutColor(0,60,false,true,0).alpha()==0,
+              "Value colors default off and preserve temperature-only behavior"))return false;
+    setOption("hudValueColors",true);
+    if(!check(hudReadoutColor(0,60,true,false,0).alpha()==255&&
+              hudReadoutColor(6,12,true,false,16).alpha()==255&&
+              hudReadoutColor(12,75,true,false,0).alpha()==255&&
+              hudReadoutColor(5,-1,true,false,0).alpha()==0&&
+              hudReadoutColor(6,12,true,false,0).alpha()==0&&
+              hudReadoutColor(7,0,true,false,0).alpha()==0&&
+              hudReadoutColor(14,150,true,false,0).alpha()==0&&
+              hudReadoutColor(-1,60,true,false,0).alpha()==0,
+              "Value tint covers meaningful readings and uses transparent fallback otherwise"))return false;
     setOption("hudX",.03);
     setOption("hudY",.03);
     saveProfile("Studio");if(!check(m_profiles.size()==1,"Save named preset"))return false;
     setOption("opacity",40);setHudLabel(0,QString{});setOption("hudFontFamily",QStringLiteral("Unavailable font family"));setOption("hudTemperatureColors",false);
+    setOption("hudValueColors",false);
     if(!check(m_options["hudFontFamily"].toString().isEmpty(),"Unknown font families use the default"))return false;
     applyProfile(0);if(!check(m_options["opacity"]==100&&m_options["hudLabels"]==customLabels&&
-                              m_options["hudFontFamily"]==installedFont&&m_options["hudTemperatureColors"].toBool(),
-                              "Restore preset text and temperature colors"))return false;
+                              m_options["hudFontFamily"]==installedFont&&m_options["hudTemperatureColors"].toBool()&&
+                              m_options["hudValueColors"].toBool(),
+                              "Restore preset text and readout color choices"))return false;
     setOption("startHidden",true);
     setOption("hudOnDesktop",true);
     setOption("hideHookWarning",true);
@@ -625,12 +651,13 @@ bool Controller::selfTest(QString* error){
     if(!check(importProfiles(exported),"Import bounded preset file"))return false;
     action("resetOverlay");
     if(!check(m_options["hudLabels"]==defaultHudLabels&&m_options["hudFontFamily"].toString().isEmpty()&&
-              !m_options["hudTemperatureColors"].toBool()&&m_options["hideHookWarning"].toBool(),
+              !m_options["hudTemperatureColors"].toBool()&&!m_options["hudValueColors"].toBool()&&
+              m_options["hideHookWarning"].toBool(),
               "Reset clears HUD appearance without changing warning preferences"))return false;
     applyProfile(m_profiles.size()-1);
     if(!check(m_options["hudLabels"]==customLabels&&m_options["hudFontFamily"]==installedFont&&m_options["hudTemperatureColors"].toBool()&&
-              m_options["hudX"]==.03&&m_options["hudY"]==.03,
-              "Exported preset preserves custom text, font, and coordinates"))return false;
+              m_options["hudValueColors"].toBool()&&m_options["hudX"]==.03&&m_options["hudY"]==.03,
+              "Exported preset preserves custom text, font, color choices and coordinates"))return false;
     QTemporaryDir oldPositions(m_root+"/old-hud-position-XXXXXX");
     if(!check(oldPositions.isValid(),"Create old HUD position fixtures"))return false;
     const auto writeFixture=[](const QString& path,const QByteArray& bytes){
@@ -653,7 +680,8 @@ bool Controller::selfTest(QString* error){
              importProfiles(QUrl::fromLocalFile(oldPreset)),"Import an old position preset"))return false;
     applyProfile(m_profiles.size()-1);
     if(!check(m_options["hudX"]==.5&&m_options["hudY"]==0.&&
-              m_options["hudFontFamily"]==installedFont&&m_options["hudTemperatureColors"].toBool(),
+              m_options["hudFontFamily"]==installedFont&&m_options["hudTemperatureColors"].toBool()&&
+              m_options["hudValueColors"].toBool(),
               "Old imported preset aligns to the edge without replacing global choices it omits"))return false;
     if(!installedFont.isEmpty()){
         const auto path=oldPositions.path()+"/settings.json";

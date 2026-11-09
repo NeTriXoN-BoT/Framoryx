@@ -2,6 +2,7 @@
 #include "core.hpp"
 #include "shared.hpp"
 #include <tlhelp32.h>
+#include <limits>
 #include <map>
 #include <utility>
 
@@ -132,7 +133,8 @@ class HookClient {
     static LONG hudFieldBits(const HudOptions& options) {
         return LONG(options.fields |
             (options.temperatureColors ? hudTemperatureColorsFlag : 0u) |
-            (options.textGlow ? hudTextGlowFlag : 0u));
+            (options.textGlow ? hudTextGlowFlag : 0u) |
+            (options.valueColors ? hudValueColorsFlag : 0u));
     }
 
     void releaseExitedTarget() {
@@ -196,8 +198,11 @@ class HookClient {
     void sensors(const std::array<double,6>& values){if(ipc)for(size_t i=0;i<values.size();++i)InterlockedExchange(&ipc->sensors[i],std::isfinite(values[i])&&values[i]>=0?LONG(std::min(values[i],10000.)*100):-1);}
     void systemMetrics(double cpu, double ramGB) {
         if (ipc) {
-            InterlockedExchange(&ipc->cpuHundredths, LONG(cpu * 100));
-            InterlockedExchange(&ipc->ramMiB, LONG(ramGB * 1024));
+            const auto cpuHundredths = std::isfinite(cpu) && cpu >= 0 ? LONG(std::min(cpu, 100.) * 100) : -1;
+            const auto ramMiB = std::isfinite(ramGB) && ramGB >= 0
+                ? LONG(std::min(ramGB * 1024, double(std::numeric_limits<LONG>::max()))) : -1;
+            InterlockedExchange(&ipc->cpuHundredths, cpuHundredths);
+            InterlockedExchange(&ipc->ramMiB, ramMiB);
         }
     }
     int status() const {
@@ -345,6 +350,8 @@ class HookClient {
         view->creationTime = birth;
         view->cap = fps;
         view->overlay = 1;
+        view->cpuHundredths = -1;
+        view->ramMiB = -1;
         view->hudFields = hudFieldBits(HudOptions{});
         view->hudOpacity = 90;
         view->hudOrderLo=LONG(HudOptions::defaultOrder&0xffffffffu);view->hudOrderHi=LONG(HudOptions::defaultOrder>>32);

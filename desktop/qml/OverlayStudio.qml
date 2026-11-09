@@ -30,19 +30,23 @@ ColumnLayout {
                 model: app.platformName==="Windows"?["Auto · external first","External desktop overlay","In-game · manual hook"]:["Auto · external first","External · X Present","MangoHud game layer · opt-in"]
                 currentIndex: app.platformName==="Windows"?app.options.mode:app.options.linuxOverlayMode
                 onActivated: function(index) {
-                    const key = app.platformName === "Windows" ? "mode" : "linuxOverlayMode"
-                    if (index !== 2) {
+                    const windows = app.platformName === "Windows"
+                    const key = windows ? "mode" : "linuxOverlayMode"
+                    const warn = windows ? index === 0 || index === 2 : index === 2
+                    if (!warn) {
                         app.setOption(key, index)
                         return
                     }
                     method.currentIndex = Qt.binding(function() { return app.options[key] })
-                    if (app.platformName === "Windows")
-                        studio.shell.requestInGameMode()
-                    else
+                    if (windows) {
+                        if (index !== app.options[key])
+                            studio.shell.requestHookDisplayMode(index)
+                    } else {
                         layerDialog.open()
+                    }
                 }
             }
-            Text { text: app.platformName==="Windows"?"External monitoring does not load code into your game. In-game mode requires a separate, explicit hook approval.":app.state.session==="Wayland"?"Wayland: select a library game, explicitly enable its Vulkan/OpenGL layer where permitted, then launch. External capture and desktop HUD positioning are unavailable.":"External capture uses X11 presentation events. Some renderers may not expose them; Framoryx explains when frames are unavailable."; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Text { text: app.platformName==="Windows"?"Auto starts with external monitoring. Attaching a hook requires separate approval for the selected game.":app.state.session==="Wayland"?"Wayland: select a library game, explicitly enable its Vulkan/OpenGL layer where permitted, then launch. External capture and desktop HUD positioning are unavailable.":"External capture uses X11 presentation events. Some renderers may not expose them; Framoryx explains when frames are unavailable."; color: Theme.muted; font.pixelSize: Theme.font(11); Layout.fillWidth: true; wrapMode: Text.Wrap }
             FDialog {
                 id: layerDialog
                 objectName: "layerWarningDialog"
@@ -74,15 +78,36 @@ ColumnLayout {
             FSlider { Layout.fillWidth: true; from: 80; to: 140; stepSize: 5; value: app.options.fontScale; Accessible.name: "Overlay text size"; onMoved: app.setOption("fontScale",Math.round(value)) }
             FToggle {
                 Layout.fillWidth: true
+                text: "Color readouts by value"
+                checked: !!app.options.hudValueColors
+                onToggled: app.setOption("hudValueColors", checked)
+            }
+            FToggle {
+                Layout.fillWidth: true
                 text: "Color temperatures by range"
+                enabled: !app.options.hudValueColors
                 checked: !!app.options.hudTemperatureColors
                 onToggled: app.setOption("hudTemperatureColors", checked)
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Value colors cover FPS, frame time, the FPS limit target, CPU/GPU use, RAM/VRAM use and temperatures. Turn value colors off to use temperature-only colors."
+                color: Theme.muted
+                font.pixelSize: Theme.font(11)
+                wrapMode: Text.Wrap
             }
             FToggle {
                 Layout.fillWidth: true
                 text: "Neon text glow"
                 checked: !!app.options.hudTextGlow
                 onToggled: app.setOption("hudTextGlow", checked)
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Rainbow animates across HUD text. Value-colored readings keep their range color. Glow follows the text color. Games can save their own accent."
+                color: Theme.muted
+                font.pixelSize: Theme.font(11)
+                wrapMode: Text.Wrap
             }
             Text { text: "HUD FONT"; color: Theme.muted; font.pixelSize: Theme.font(10) }
             FCombo {

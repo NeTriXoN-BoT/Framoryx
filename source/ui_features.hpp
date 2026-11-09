@@ -163,6 +163,7 @@ void applyProfile(const std::string& exe) {
     app.hudOptions = profile.options;
     app.hudText = profile.text;
     app.hudOptions.temperatureColors = app.hudBase.options.temperatureColors;
+    app.hudOptions.valueColors = app.hudBase.options.valueColors;
     app.hudOptions.textGlow = app.hudBase.options.textGlow;
     app.hudText.fontFamily = app.hudBase.text.fontFamily;
     app.corner = profile.corner;
@@ -176,6 +177,7 @@ void pushHookPresentation() {
     auto found = app.hudProfiles.find(fg::lower(app.hook.name()));
     auto profile = found == app.hudProfiles.end() ? app.hudBase : found->second;
     profile.options.temperatureColors = app.hudBase.options.temperatureColors;
+    profile.options.valueColors = app.hudBase.options.valueColors;
     profile.options.textGlow = app.hudBase.options.textGlow;
     profile.text.fontFamily = app.hudBase.text.fontFamily;
     app.hook.hudOptions(profile.options);
@@ -231,7 +233,7 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
         ? fg::hudRainbowPhase(GetTickCount64()) : 0.f;
     auto drawText = [&](const std::wstring& caption, const RectF& bounds, float size, Color color,
                         bool bold = false, StringAlignment align = StringAlignmentNear,
-                        bool temperatureTint = false) {
+                        bool valueTint = false) {
         StringFormat format;
         format.SetAlignment(align);
         format.SetFormatFlags(StringFormatFlagsNoWrap);
@@ -240,14 +242,15 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
         const auto paint = [&](Brush& brush) {
             g.DrawString(caption.c_str(), int(caption.size()), font, bounds, &format, &brush);
         };
-        const auto halo = [&](Brush& brush) {
-            for (const float offset : {-1.f, 1.f}) {
+        const auto halo = [&](Brush& brush, float distance) {
+            for (const auto& offset : {PointF(-distance, 0), PointF(distance, 0),
+                                      PointF(0, -distance), PointF(0, distance)}) {
                 auto shifted = bounds;
-                shifted.Offset(offset, 0.f);
+                shifted.Offset(offset.X, offset.Y);
                 g.DrawString(caption.c_str(), int(caption.size()), font, shifted, &format, &brush);
             }
         };
-        if (options.accent == fg::hudRainbowAccent && !temperatureTint && !caption.empty()) {
+        if (options.accent == fg::hudRainbowAccent && !valueTint && !caption.empty()) {
             RectF measured;
             g.MeasureString(caption.c_str(), int(caption.size()), font, bounds, &format, &measured);
             if (measured.Width > 0) {
@@ -261,11 +264,11 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
                     PointF(measured.GetRight(), 0), colors.front(), colors.back());
                 if (spectrum.SetInterpolationColors(colors.data(), positions.data(), int(colors.size())) == Ok) {
                     if (options.textGlow) {
-                        for (auto& stop : colors) stop = Color(0x40000000u | (stop.GetValue() & 0xffffffu));
+                        for (auto& stop : colors) stop = Color(0x68000000u | (stop.GetValue() & 0xffffffu));
                         LinearGradientBrush glow(PointF(measured.X, 0), PointF(measured.GetRight(), 0),
                                                  colors.front(), colors.back());
                         if (glow.SetInterpolationColors(colors.data(), positions.data(), int(colors.size())) == Ok)
-                            halo(glow);
+                            halo(glow, 1.5f);
                     }
                     paint(spectrum);
                     return;
@@ -274,7 +277,7 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
         }
         if (options.textGlow) {
             SolidBrush glow(Color(0x40000000u | (color.GetValue() & 0xffffffu)));
-            halo(glow);
+            halo(glow, 1.f);
         }
         SolidBrush brush(color);
         paint(brush);
@@ -291,19 +294,41 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
     const bool compact=options.style==1||options.style==3,minimal=options.style==3;
     if(options.opacity>0)rounded(g,RectF(0,0,layout.width,layout.height),Color(BYTE(255*options.opacity/100),12,19,26),compact?8:14);
     if(!minimal&&options.opacity>0)line(g,14,1,layout.width-14,1,accent,2);
-    auto number=[&](uint32_t field)->std::wstring{
-        switch(field){
-        case fg::HudFps: return (stats.live ? value(stats.fps) : preview ? L"144" : L"—")
-            + L" " + customLabel(0, L"FPS");
-        case fg::HudAverage:return !stats.frames.empty()?value(stats.average)+L" FPS":preview?L"141 FPS":L"—";
-        case fg::HudLow:return stats.frames.size()>=100?value(stats.low)+L" FPS":preview?L"120 FPS":L"—";
-        case fg::HudTime:return stats.live?value(stats.ms,2)+L" ms":preview?L"6.94 ms":L"—";
-        case fg::HudCpu:return app.cpuReady?value(app.cpu)+L"%":L"—";
-        case fg::HudRam:return app.memoryReady?value(app.ramGB,1)+L" GB":L"—";
-        case fg::HudCap:return preview?L"144":app.hook.active()&&app.hook.pid()==app.selectedPid?(app.cap?value(app.cap):L"Uncapped"):L"Off";
-        case fg::HudApi:return L"Desktop / ETW";
-        default:if(field>=fg::HudGpu){int sensor=0;while(sensor<6&&field!=(fg::HudGpu<<sensor))++sensor;if(sensor<6){if(app.sensorValues[sensor]<0)return L"—";return value(app.sensorValues[sensor],sensor==4?1:0)+(sensor<2?L"%":sensor<4?L" °C":sensor==4?L" W":L" MHz");}}return L"FRAMORYX";
+    struct Reading {
+        double value;
+        std::wstring caption;
+    };
+    const auto reading = [&](uint32_t field) -> Reading {
+        const auto format = [](double number, const wchar_t* unit = L"", int decimals = 0) -> Reading {
+            return {number, std::isfinite(number) && number >= 0
+                ? value(number, decimals) + unit : L"—"};
+        };
+        switch (field) {
+        case fg::HudFps: {
+            auto fps = format(stats.live ? stats.fps : preview ? 144 : -1);
+            fps.caption += L" " + customLabel(0, L"FPS");
+            return fps;
         }
+        case fg::HudAverage: return format(!stats.frames.empty() ? stats.average : preview ? 141 : -1, L" FPS");
+        case fg::HudLow: return format(stats.frames.size() >= 100 ? stats.low : preview ? 120 : -1, L" FPS");
+        case fg::HudTime: return format(stats.live ? stats.ms : preview ? 6.94 : -1, L" ms", 2);
+        case fg::HudCpu: return format(app.cpuReady ? app.cpu : -1, L"%");
+        case fg::HudRam: return format(app.memoryReady ? app.ramGB : -1, L" GB", 1);
+        case fg::HudCap:
+            if (preview) return format(144);
+            if (!app.hook.active() || app.hook.pid() != app.selectedPid) return {-1, L"Off"};
+            return app.cap ? format(app.cap) : Reading{0, L"Uncapped"};
+        case fg::HudApi: return {-1, L"Desktop / ETW"};
+        default:
+            constexpr std::array units{L"%", L"%", L" °C", L" °C", L" W", L" MHz"};
+            for (size_t index = 0; index < units.size(); ++index)
+                if (field == (fg::HudGpu << index))
+                    return format(app.sensorValues[index], units[index], index == 4 ? 1 : 0);
+            return {-1, L"—"};
+        }
+    };
+    const auto readingTint = [&](uint32_t field, double number) {
+        return fg::hudValueColor(field, number, options.valueColors, options.temperatureColors, app.totalGB);
     };
     for (size_t n = 0; n < layout.count; ++n) {
         const auto& cell = layout.cells[n];
@@ -332,8 +357,11 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
             continue;
         }
         if (cell.field == fg::HudFps) {
-            drawText(number(cell.field), RectF(cell.x, cell.y - 3, cell.width, cell.height),
-                     compact ? 28 : 34, accent, true);
+            const auto fps = reading(cell.field);
+            const auto tint = readingTint(cell.field, fps.value);
+            drawText(fps.caption, RectF(cell.x, cell.y - 3, cell.width, cell.height),
+                     compact ? 28 : 34, tint ? Color(0xff000000u | tint) : accent,
+                     true, StringAlignmentNear, tint != 0);
             continue;
         }
         if (cell.field == fg::HudBrand) {
@@ -345,25 +373,19 @@ void paintHudContent(Graphics& g, const fg::HudOptions& options, const fg::Stats
         while (index < std::size(hudFields) && hudFields[index] != cell.field) ++index;
         if (index == std::size(hudFields)) continue;
         const auto title = customLabel(index, hudTitles[index]);
-        Color valueColor = text;
-        bool temperatureTint = false;
-        if (options.temperatureColors && (cell.field == fg::HudGpuTemp || cell.field == fg::HudCpuTemp)) {
-            const auto temperature = app.sensorValues[cell.field == fg::HudGpuTemp ? 2 : 3];
-            if (const auto rgb = fg::hudTemperatureColor(temperature)) {
-                valueColor = Color(255, BYTE(rgb >> 16), BYTE(rgb >> 8), BYTE(rgb));
-                temperatureTint = true;
-            }
-        }
+        const auto metric = reading(cell.field);
+        const auto tint = readingTint(cell.field, metric.value);
+        const auto valueColor = tint ? Color(0xff000000u | tint) : text;
         if (cell.column) {
             drawText(title, RectF(cell.x, cell.y, cell.width - 5, 17), 10, muted);
-            drawText(number(cell.field), RectF(cell.x, cell.y + 19, cell.width - 5, 25),
+            drawText(metric.caption, RectF(cell.x, cell.y + 19, cell.width - 5, 25),
                      cell.field == fg::HudApi ? 11 : 17, valueColor, true, StringAlignmentNear,
-                     temperatureTint);
+                     tint != 0);
         } else {
             drawText(title, RectF(cell.x, cell.y, cell.width - 110, 20), compact ? 11 : 12, muted);
-            drawText(number(cell.field), RectF(cell.x + cell.width - 105, cell.y, 105, 20),
+            drawText(metric.caption, RectF(cell.x + cell.width - 105, cell.y, 105, 20),
                      cell.field == fg::HudApi ? 10 : compact ? 12 : 13, valueColor, true,
-                     StringAlignmentFar, temperatureTint);
+                     StringAlignmentFar, tint != 0);
         }
     }
 }

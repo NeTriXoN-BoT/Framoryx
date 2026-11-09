@@ -18,7 +18,7 @@ using Label = std::array<char, fg::hudLabelBytes + 1>;
 struct State {
     fg::HudOptions options;
     std::array<Label, 16> labels{};
-    int cap=60;
+    int cap=60,ramCapacity=0;
     bool ready=false,visible=false;
     int surfaceWidth=0,surfaceHeight=0;
     std::array<int,10> values{{-1,-1,-1,-1,-1,-1,-1,-1,-1,-1}};
@@ -29,7 +29,7 @@ struct State {
 inline State state;
 inline std::atomic<uint64_t> drawnFrames{0};
 inline std::mutex mutex;
-inline void hide(){std::lock_guard<std::mutex> lock(mutex);state.visible=false;state.labels={};state.options.temperatureColors=false;state.options.textGlow=false;}
+inline void hide(){std::lock_guard<std::mutex> lock(mutex);state.visible=false;state.labels={};state.options.temperatureColors=false;state.options.valueColors=false;state.options.textGlow=false;state.ramCapacity=0;}
 inline std::array<int,2> surface(){std::unique_lock<std::mutex> lock(mutex,std::try_to_lock);return lock.owns_lock()?std::array<int,2>{state.surfaceWidth,state.surfaceHeight}:std::array<int,2>{};}
 inline bool requested(){static const bool value=[] {const auto text=std::getenv("FRAMORYX_HUD");return text&&std::strcmp(text,"1")==0;}();return value;}
 template<size_t N> bool numbers(std::string_view text,std::array<int,N>& output){
@@ -40,13 +40,22 @@ inline bool configure(std::string_view text){
     std::array<int,27> value{};if(!numbers(text,value)||value[0]!=1||value[1]<0||value[1]>65535||value[2]<0||value[2]>300||value[3]<0||value[3]>100||value[4]<0||value[4]>fg::hudRainbowAccent||value[5]<0||value[5]>4||value[6]<80||value[6]>140||value[7]<0||value[7]>10000||value[8]<0||value[8]>10000||value[9]<0||value[9]>1000||value[10]<0||value[10]>1)return false;
     fg::HudOptions options;options.fields=uint32_t(value[1]);options.scale=value[2];options.opacity=value[3];options.accent=value[4];options.style=value[5];options.fontScale=value[6];options.x=value[7];options.y=value[8];options.order=0;
     uint32_t seen=0;for(size_t i=11;i<value.size();++i){if(value[i]<0||value[i]>15||(seen&(1u<<value[i])))return false;seen|=1u<<value[i];options.order|=uint64_t(value[i])<<(4*(i-11));}options.validate();
-    std::unique_lock<std::mutex> lock(mutex,std::try_to_lock);if(!lock.owns_lock())return false;options.temperatureColors=state.options.temperatureColors;options.textGlow=state.options.textGlow;state.options=options;state.cap=value[9];state.visible=value[10]!=0;state.ready=true;return true;
+    std::unique_lock<std::mutex> lock(mutex,std::try_to_lock);if(!lock.owns_lock())return false;options.temperatureColors=state.options.temperatureColors;options.valueColors=state.options.valueColors;options.textGlow=state.options.textGlow;state.options=options;state.cap=value[9];state.visible=value[10]!=0;state.ready=true;return true;
 }
 inline bool temperatureColors(std::string_view value) {
     if (value != "0" && value != "1") return false;
     std::unique_lock<std::mutex> lock(mutex, std::try_to_lock);
     if (!lock.owns_lock()) return false;
     state.options.temperatureColors = value == "1";
+    return true;
+}
+inline bool valueColors(std::string_view text) {
+    std::array<int, 2> values{};
+    if (!numbers(text, values) || values[0] < 0 || values[0] > 1 || values[1] < 0 || values[1] > 100000000) return false;
+    std::unique_lock<std::mutex> lock(mutex, std::try_to_lock);
+    if (!lock.owns_lock()) return false;
+    state.options.valueColors = values[0] != 0;
+    state.ramCapacity = values[1];
     return true;
 }
 inline bool textGlow(std::string_view value) {
@@ -162,10 +171,14 @@ inline void draw(float fps,float milliseconds,bool vulkan){
         const ImVec2 position(std::round(origin.x + x * scale), std::round(origin.y + y * scale));
         const bool useGradient = rainbow && !keepColor;
         if (glowOffset > 0.f) {
-            const int first = list->VtxBuffer.Size;
-            const ImU32 glow = (color & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 64);
-            list->AddText(font, size * scale, ImVec2(position.x + glowOffset, position.y + glowOffset), glow, value);
-            if (useGradient) gradient(first);
+            const ImU32 glow = (color & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, rainbow ? 104 : 64);
+            const auto addGlow = [&](float offset) {
+                const int first = list->VtxBuffer.Size;
+                list->AddText(font, size * scale, ImVec2(position.x + offset, position.y + offset), glow, value);
+                if (useGradient) gradient(first);
+            };
+            if (rainbow) addGlow(-glowOffset);
+            addGlow(glowOffset);
         }
         const int first = list->VtxBuffer.Size;
         list->AddText(font, size * scale, position, color, value);
@@ -192,13 +205,13 @@ inline void draw(float fps,float milliseconds,bool vulkan){
         }
         char value[fg::hudLabelBytes + 48];std::strcpy(value,"--");double number=-1;
         switch(index){
-        case 0:if(std::isfinite(fps)&&fps>0)std::snprintf(value,sizeof(value),"%.0f %s",double(fps),*custom?custom:"FPS");break;
+        case 0:if(std::isfinite(fps)&&fps>0){number=fps;std::snprintf(value,sizeof(value),"%.0f %s",number,*custom?custom:"FPS");}break;
         case 1:number=metric(0);if(number>=0)std::snprintf(value,sizeof(value),"%.0f FPS",number);break;
         case 2:number=metric(1);if(number>=0)std::snprintf(value,sizeof(value),"%.0f FPS",number);break;
-        case 3:if(std::isfinite(milliseconds)&&milliseconds>0)std::snprintf(value,sizeof(value),"%.2f ms",double(milliseconds));break;
+        case 3:if(std::isfinite(milliseconds)&&milliseconds>0){number=milliseconds;std::snprintf(value,sizeof(value),"%.2f ms",number);}break;
         case 5:number=metric(2);if(number>=0)std::snprintf(value,sizeof(value),"%.0f%%",number);break;
         case 6:number=metric(3);if(number>=0)std::snprintf(value,sizeof(value),"%.1f GB",number);break;
-        case 7:if(snapshot.cap)std::snprintf(value,sizeof(value),"%d",snapshot.cap);else std::strcpy(value,"Uncapped");break;
+        case 7:if(snapshot.cap){number=snapshot.cap;std::snprintf(value,sizeof(value),"%d",snapshot.cap);}else std::strcpy(value,"Uncapped");break;
         case 8:std::strcpy(value,vulkan?"Vulkan":"OpenGL");break;
         case 10:number=metric(4);if(number>=0)std::snprintf(value,sizeof(value),"%.0f%%",number);break;
         case 11:number=metric(5);if(number>=0)std::snprintf(value,sizeof(value),"%.0f%%",number);break;
@@ -208,7 +221,9 @@ inline void draw(float fps,float milliseconds,bool vulkan){
         case 15:number=metric(9);if(number>=0)std::snprintf(value,sizeof(value),"%.0f MHz",number);break;
         }
         clipCell(cell, cell.x + cell.width);
-        if(index==0)label(cell.x,cell.y,compact?28:34,accent,value);
+        const auto tint = fg::hudValueColor(cell.field, number, options.valueColors, options.temperatureColors, snapshot.ramCapacity / 100.);
+        const ImU32 valueColor = tint ? IM_COL32((tint >> 16) & 255, (tint >> 8) & 255, tint & 255, 255) : index == 0 ? accent : textColor;
+        if(index==0)label(cell.x,cell.y,compact?28:34,valueColor,value,tint != 0);
         else {
             const float size = cell.column ? 17 : compact ? 12 : 13;
             const float valueWidth = font->CalcTextSizeA(size * scale, 100000, 0, value).x / scale;
@@ -218,9 +233,7 @@ inline void draw(float fps,float milliseconds,bool vulkan){
                 label(cell.x, cell.y, cell.column ? 10 : compact ? 11 : 12, muted, *custom ? custom : labels[index]);
                 list->PopClipRect();
             }
-            const auto temperature = options.temperatureColors && (index == 12 || index == 13) ? fg::hudTemperatureColor(number) : 0;
-            const ImU32 valueColor = temperature ? IM_COL32((temperature >> 16) & 255, (temperature >> 8) & 255, temperature & 255, 255) : textColor;
-            label(cell.column ? cell.x : cell.x + cell.width - valueWidth, cell.y + (cell.column ? 19 : 0), size, valueColor, value, temperature != 0);
+            label(cell.column ? cell.x : cell.x + cell.width - valueWidth, cell.y + (cell.column ? 19 : 0), size, valueColor, value, tint != 0);
         }
         list->PopClipRect();
     }

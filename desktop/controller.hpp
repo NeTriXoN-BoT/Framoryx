@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QUrl>
 #include <QAudioDevice>
+#include <QColor>
 #include <QMediaDevices>
 #include <QNetworkAccessManager>
 #include <memory>
@@ -31,6 +32,7 @@ class Controller : public QObject {
     Q_PROPERTY(QVariantList capabilities READ capabilities NOTIFY capabilitiesChanged)
     Q_PROPERTY(QVariantList readouts READ readouts NOTIFY readoutsChanged)
     Q_PROPERTY(QStringList hudFontFamilies READ hudFontFamilies CONSTANT)
+    Q_PROPERTY(int hudRainbowCycleMs READ hudRainbowCycleMs CONSTANT)
     Q_PROPERTY(QVariantMap overlayLayout READ overlayLayout NOTIFY overlayGeometryChanged)
     Q_PROPERTY(QVariantMap desktopOverlayLayout READ desktopOverlayLayout NOTIFY overlayGeometryChanged)
     Q_PROPERTY(QVariantList graph READ graph NOTIFY stateChanged)
@@ -52,6 +54,7 @@ public:
     QVariantList capabilities() const {return m_capabilities;}
     QVariantList readouts() const;
     QStringList hudFontFamilies() const {return m_hudFontFamilies;}
+    int hudRainbowCycleMs() const;
     QVariantMap overlayLayout() const;
     QVariantMap desktopOverlayLayout() const;
     QVariantList graph() const {return m_graph;}
@@ -61,6 +64,8 @@ public:
     Q_INVOKABLE void setOption(const QString& key, const QVariant& value);
     Q_INVOKABLE void setReadout(int index, bool visible);
     Q_INVOKABLE void setHudLabel(int index, const QString& label);
+    Q_INVOKABLE QColor hudReadoutColor(int index, double value, bool valueColors,
+                                       bool temperatureColors, double totalRam) const;
     Q_INVOKABLE void moveReadout(int index, int direction);
     Q_INVOKABLE void selectGame(const QString& id);
     Q_INVOKABLE void addGame(const QUrl& executable, const QString& name, const QString& arguments);

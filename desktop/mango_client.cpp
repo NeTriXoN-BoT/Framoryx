@@ -56,6 +56,11 @@ void MangoClient::configure(const QVariantMap& options,bool visible){
             if (connected()) m_socket.write(temperaturePacket);
         }
     }
+    const bool valueColors = options.value("hudValueColors").toBool();
+    if (valueColors != m_valueColors) {
+        m_valueColors = valueColors;
+        updateValueColors();
+    }
     const bool textGlow = options.value("hudTextGlow").toBool();
     if (textGlow || !m_glowPacket.isEmpty()) {
         const QByteArray glowPacket = textGlow ? ":framoryx_text_glow=1;" : ":framoryx_text_glow=0;";
@@ -65,12 +70,24 @@ void MangoClient::configure(const QVariantMap& options,bool visible){
         }
     }
 }
+void MangoClient::updateValueColors() {
+    m_valuePacket = QByteArray(":framoryx_value_colors=") + (m_valueColors ? '1' : '0') +
+                    '|' + QByteArray::number(m_ramCapacity) + ';';
+    if (connected()) m_socket.write(m_valuePacket);
+}
 void MangoClient::sendHudSettings() {
-    for (const auto* packet : {&m_hudPacket, &m_labelPacket, &m_temperaturePacket, &m_glowPacket}) {
+    for (const auto* packet : {&m_hudPacket, &m_labelPacket, &m_temperaturePacket, &m_valuePacket, &m_glowPacket}) {
         if (!packet->isEmpty()) m_socket.write(*packet);
     }
 }
 void MangoClient::metrics(const QVariantMap& state){
+    const auto capacity = state.value("totalRam").toDouble();
+    const int ramCapacity = std::isfinite(capacity) && capacity > 0 && capacity <= 1000000
+        ? qRound(capacity * 100) : 0;
+    if (ramCapacity != m_ramCapacity) {
+        m_ramCapacity = ramCapacity;
+        if (m_valueColors) updateValueColors();
+    }
     QByteArray body;
     for(const auto& key:QStringList{"average","low","cpu","ram","gpu","vramPercent","gpuTemp","cpuTemp","gpuPower","gpuClock"}){
         bool ok=false;const double number=state[key].toDouble(&ok);const bool staleFrame=(key=="average"||key=="low")&&!state["live"].toBool();const int value=!staleFrame&&ok&&!state[key].isNull()&&std::isfinite(number)&&number>=0&&number<=1000000?qRound(number*100):-1;

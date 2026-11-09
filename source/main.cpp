@@ -177,6 +177,8 @@ struct HudPaintState {
     int width = 0, height = 0, opacity = 0, style = 0, accent = 0;
     float scale = 0;
     bool temperatureColors = false;
+    bool valueColors = false;
+    double ramCapacity = 0;
     bool textGlow = false;
     uint64_t rainbowTick = 0;
     std::array<double, 16> values{};
@@ -1531,7 +1533,7 @@ const fg::HudText& visibleHudText() {
     return app.showingDesktopHud ? app.hudBase.text : app.hudText;
 }
 constexpr UINT_PTR hudRainbowTimer = 1;
-constexpr UINT hudRainbowInterval = 50;
+constexpr UINT hudRainbowInterval = 40;
 void animateHudRainbow(bool enabled) {
     if (enabled == app.hudRainbowAnimating)
         return;
@@ -1555,6 +1557,8 @@ HudPaintState hudPaintState() {
     state.accent = options.accent;
     state.scale = app.hudRenderScale;
     state.temperatureColors = options.temperatureColors;
+    state.valueColors = options.valueColors;
+    state.ramCapacity = options.valueColors && (options.fields & fg::HudRam) ? app.totalGB : 0;
     state.textGlow = options.textGlow;
     if (options.accent == fg::hudRainbowAccent)
         state.rainbowTick = GetTickCount64() / hudRainbowInterval;
@@ -2155,7 +2159,7 @@ void update() {
         }
     }
     pushHookPresentation();
-    app.hook.systemMetrics(app.cpu, app.ramGB);
+    app.hook.systemMetrics(app.cpuReady ? app.cpu : -1, app.memoryReady ? app.ramGB : -1);
         app.hook.sensors(app.sensorValues);
     app.hook.tick();
     updateAnimationState();

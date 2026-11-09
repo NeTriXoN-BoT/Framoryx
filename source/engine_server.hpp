@@ -92,9 +92,11 @@ void engineOptions(const nlohmann::json& request){
         readText(*font, app.hudBase.text.fontFamily, fg::hudFontFamilyBytes);
     app.hudBase.options.temperatureColors =
         boolean("hudTemperatureColors", app.hudBase.options.temperatureColors);
+    app.hudBase.options.valueColors = boolean("hudValueColors", app.hudBase.options.valueColors);
     app.hudBase.options.textGlow = boolean("hudTextGlow", app.hudBase.options.textGlow);
     app.hudText.fontFamily = app.hudBase.text.fontFamily;
     app.hudOptions.temperatureColors = app.hudBase.options.temperatureColors;
+    app.hudOptions.valueColors = app.hudBase.options.valueColors;
     app.hudOptions.textGlow = app.hudBase.options.textGlow;
     if(options.contains("order")&&options["order"].is_array()&&options["order"].size()==16){uint64_t order=0;bool valid=true;for(int i=0;i<16;++i){if(!options["order"][i].is_number_integer()){valid=false;break;}const int n=options["order"][i].get<int>();if(n<0||n>15){valid=false;break;}order|=uint64_t(n)<<(i*4);}if(valid)app.hudOptions.order=order;}
     auto coordinate=[&](const char* name,int fallback){if(!options.contains(name)||!options[name].is_number())return fallback;const double n=options[name].get<double>();return std::isfinite(n)?int(std::clamp(n,0.,1.)*10000):fallback;};
@@ -121,6 +123,7 @@ void engineOptions(const nlohmann::json& request){
         app.hudOptions = previousOptions;
         app.hudText = previousText;
         app.hudOptions.temperatureColors = app.hudBase.options.temperatureColors;
+        app.hudOptions.valueColors = app.hudBase.options.valueColors;
         app.hudOptions.textGlow = app.hudBase.options.textGlow;
         app.hudText.fontFamily = app.hudBase.text.fontFamily;
         app.hudMode = previousMode;
@@ -194,5 +197,5 @@ void enginePublish(){
         : fg::utf8(app.compatibility.note);
     const char* renderer=(drawing||app.hookSource)?(app.hook.renderer()==12?"DX12 · in-game":"DX11 · in-game"):
         legacy?"Direct3D 9 · desktop":"PresentMon · desktop";
-    enginePipe.publish({{"borderlessActive",app.borderless.contains(selected()?selected()->hwnd:app.autoWindow)},{"profileExe",app.activeProfile},{"profilePid",app.selectedPid},{"autoHudEligible",automaticHudEligible(app.activeProfile)},{"protocol",3},{"connected",true},{"games",windows},{"microphones",microphones},{"capture",app.capture.running()},{"live",app.stats.live},{"overlay",app.overlay},{"fps",app.stats.fps},{"average",app.stats.average},{"low",app.stats.low},{"frameTime",app.stats.ms},{"graph",graph},{"cpu",app.cpu},{"ram",app.ramGB},{"totalRam",app.totalGB},{"game",app.stats.app},{"rendererHint",rendererHint},{"compatibilityNote",compatibilityNote},{"inGameSupported",app.compatibility.supportsHook(observed)},{"renderer",renderer},{"hookActive",app.hook.active()},{"hookStatus",hookDetail},{"notice",fg::utf8(app.notice)},{"audioStatus",fg::utf8(app.audioNotice)},{"noiseStatus",fg::utf8(app.noiseUpdateStatus)},{"noiseBusy",app.noiseUpdater.running()},{"pendingMic",!app.pendingMicrophoneApply.empty()},{"volume",app.outputPercent},{"outputName",fg::utf8(app.audio.device)},{"micConfigured",app.cachedNoise||app.cachedEqualizer},{"bassConfigured",app.cachedBass.has_value()},{"boostConfigured",app.cachedGain.value_or(0)>.001},{"apoAvailable",app.boost.available()}});
+    enginePipe.publish({{"borderlessActive",app.borderless.contains(selected()?selected()->hwnd:app.autoWindow)},{"profileExe",app.activeProfile},{"profilePid",app.selectedPid},{"autoHudEligible",automaticHudEligible(app.activeProfile)},{"protocol",3},{"connected",true},{"games",windows},{"microphones",microphones},{"capture",app.capture.running()},{"live",app.stats.live},{"overlay",app.overlay},{"fps",app.stats.fps},{"average",app.stats.average},{"low",app.stats.low},{"frameTime",app.stats.ms},{"graph",graph},{"cpu",app.cpuReady?Json(app.cpu):Json(nullptr)},{"ram",app.ramGB},{"totalRam",app.totalGB},{"game",app.stats.app},{"rendererHint",rendererHint},{"compatibilityNote",compatibilityNote},{"inGameSupported",app.compatibility.supportsHook(observed)},{"renderer",renderer},{"hookActive",app.hook.active()},{"hookStatus",hookDetail},{"notice",fg::utf8(app.notice)},{"audioStatus",fg::utf8(app.audioNotice)},{"noiseStatus",fg::utf8(app.noiseUpdateStatus)},{"noiseBusy",app.noiseUpdater.running()},{"pendingMic",!app.pendingMicrophoneApply.empty()},{"volume",app.outputPercent},{"outputName",fg::utf8(app.audio.device)},{"micConfigured",app.cachedNoise||app.cachedEqualizer},{"bassConfigured",app.cachedBass.has_value()},{"boostConfigured",app.cachedGain.value_or(0)>.001},{"apoAvailable",app.boost.available()}});
 }

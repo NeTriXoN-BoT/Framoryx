@@ -39,5 +39,16 @@ int main(){
     if (!framoryx_hud::textGlow("1")) return 14;
     framoryx_hud::hide();
     if (framoryx_hud::state.options.textGlow) return 15;
+    if (framoryx_hud::state.options.valueColors || !framoryx_hud::valueColors("1|3200") ||
+        !framoryx_hud::configure(good) || !framoryx_hud::state.options.valueColors ||
+        framoryx_hud::state.ramCapacity != 3200 ||
+        framoryx_hud::valueColors("2|3200") || framoryx_hud::valueColors("1|-1") ||
+        framoryx_hud::valueColors("1|100000001") || framoryx_hud::valueColors("1|0|1") ||
+        framoryx_hud::state.ramCapacity != 3200 || !framoryx_hud::state.options.valueColors ||
+        framoryx_hud::state.options.temperatureColors) return 16;
+    if (!framoryx_hud::valueColors("0|0") || framoryx_hud::state.options.valueColors ||
+        !framoryx_hud::valueColors("1|3200")) return 17;
+    framoryx_hud::hide();
+    if (framoryx_hud::state.options.valueColors || framoryx_hud::state.ramCapacity != 0) return 18;
     std::cout<<"PASS: HUD packet validation, all readouts, bounds, unavailable values and nonblocking updates\n";
 }

@@ -15,7 +15,7 @@ Measure real frame data, choose the information that matters, and make the HUD f
 | Measure | Make it yours | Take control |
 | --- | --- | --- |
 | Live FPS, average FPS, 1% lows, frame times and a rolling graph | Five HUD layouts and sixteen independent readouts | Optional frame limiting and reversible borderless play |
-| CPU, GPU, RAM and VRAM usage, with available temperatures, clocks and power | Ten accents, transparent backgrounds, font sizing and draggable positioning | Searchable process rules, per-game settings and a game library |
+| CPU, GPU, RAM and VRAM usage, with available temperatures, clocks and power | Eleven accents including animated Rainbow, optional value colors and glow, custom fonts and draggable positioning | Searchable process rules, per-game settings and a game library |
 | Local capture history and CSV export | Automatic display/DPI sizing and percentage overrides for app and HUD | Output up to 200%, compensated bass, microphone EQ and verified RNNoise |
 | Missing hardware readings stay unavailable | Named presets, ordering and preset import/export | Tray access, sign-in launch, quiet startup and optional auto capture |
 

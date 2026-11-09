@@ -54,9 +54,11 @@ public:
         painter->setRenderHint(QPainter::TextAntialiasing);
         painter->setPen(QPen(brush, 1));
         if (m_glow) {
-            painter->setOpacity(.25);
-            line.draw(painter, QPointF(left - 1, 0));
-            line.draw(painter, QPointF(left + 1, 0));
+            painter->setOpacity(.42);
+            line.draw(painter, QPointF(left - 2, 0));
+            line.draw(painter, QPointF(left + 2, 0));
+            line.draw(painter, QPointF(left, -2));
+            line.draw(painter, QPointF(left, 2));
             painter->setOpacity(1);
         }
         line.draw(painter, QPointF(left, 0));

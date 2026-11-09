@@ -305,6 +305,7 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                 int(fg::read32(&control->hudStyle))};
             presentation.temperatureColors = (fields & fg::hudTemperatureColorsFlag) != 0;
             presentation.textGlow = (fields & fg::hudTextGlowFlag) != 0;
+            presentation.valueColors = (fields & fg::hudValueColorsFlag) != 0;
             presentation.order=uint64_t(uint32_t(fg::read32(&control->hudOrderLo)))|(uint64_t(uint32_t(fg::read32(&control->hudOrderHi)))<<32);
             presentation.x=fg::read32(&control->hudX);presentation.y=fg::read32(&control->hudY);presentation.fontScale=fg::read32(&control->hudFontScale);
             presentation.validate();
@@ -429,9 +430,9 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                         }
                     };
                     if (presentation.textGlow) {
-                        const float radius = scale < 1.6f ? 1.f : 2.f;
+                        const float radius = (scale < 1.6f ? 1.f : 2.f) + (gradient ? 1.f : 0.f);
                         ImVec4 halo = useRainbow ? accent : baseColor;
-                        halo.w = baseColor.w * .15f;
+                        halo.w = baseColor.w * (gradient ? .24f : .15f);
                         const auto color = ImGui::GetColorU32(halo);
                         for (const ImVec2 offset : {ImVec2(-radius, 0), ImVec2(radius, 0),
                                                    ImVec2(0, -radius), ImVec2(0, radius)}) {
@@ -445,7 +446,7 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                     drawMainText();
                     shade(first, origin.x);
                 };
-                auto reading=[&](uint32_t field,char* output,size_t length,uint32_t& temperatureColor){
+                auto reading=[&](uint32_t field,char* output,size_t length,uint32_t& valueColor){
                     const char* title="";double number=0;
                     switch(field){
                     case fg::HudFps:number=smoothedFps;break;
@@ -465,27 +466,37 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                                 "GPU usage", "VRAM usage", "GPU temp", "CPU temp", "GPU power", "GPU clock"
                             };
                             if (sensor < 6) {
-                                const auto value = fg::read32(&control->sensors[sensor]);
+                                const double value = fg::read32(&control->sensors[sensor]) / 100.;
                                 if (value < 0)
                                     snprintf(output, length, "--");
                                 else if (sensor < 2)
-                                    snprintf(output, length, "%.0f%%", value / 100.);
-                                else if (sensor < 4) {
-                                    const double celsius = value / 100.;
-                                    snprintf(output, length, "%.0f C", celsius);
-                                    if (presentation.temperatureColors)
-                                        temperatureColor = fg::hudTemperatureColor(celsius);
-                                } else if (sensor == 4)
-                                    snprintf(output, length, "%.1f W", value / 100.);
+                                    snprintf(output, length, "%.0f%%", value);
+                                else if (sensor < 4)
+                                    snprintf(output, length, "%.0f C", value);
+                                else if (sensor == 4)
+                                    snprintf(output, length, "%.1f W", value);
                                 else
-                                    snprintf(output, length, "%.0f MHz", value / 100.);
+                                    snprintf(output, length, "%.0f MHz", value);
+                                valueColor = fg::hudValueColor(field, value, presentation.valueColors,
+                                                               presentation.temperatureColors);
                                 return titles[sensor];
                             }
                         }
                         snprintf(output,length,"FRAMORYX");return "";
                     }
                     if(field==fg::HudCap&&!number)snprintf(output,length,"Uncapped");
-                    else if(number>0||field==fg::HudCpu||field==fg::HudRam){
+                    else if (number > 0 || (number == 0 && (field == fg::HudCpu || field == fg::HudRam))) {
+                        double totalRam = 0;
+                        if (field == fg::HudRam && presentation.valueColors) {
+                            static const double physicalGiB = [] {
+                                MEMORYSTATUSEX memory{};
+                                memory.dwLength = sizeof(memory);
+                                return GlobalMemoryStatusEx(&memory) ? memory.ullTotalPhys / 1073741824. : 0.;
+                            }();
+                            totalRam = physicalGiB;
+                        }
+                        valueColor = fg::hudValueColor(field, number, presentation.valueColors,
+                                                       presentation.temperatureColors, totalRam);
                         if(field==fg::HudTime)snprintf(output,length,"%.2f ms",number);
                         else if(field==fg::HudCpu)snprintf(output,length,"%.0f%%",number);
                         else if(field==fg::HudRam)snprintf(output,length,"%.1f GB",number);
@@ -511,15 +522,15 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                         }
                         if(hudCount){float maximum=33.4f;for(size_t i=0;i<hudCount;++i)maximum=std::max(maximum,std::min(100.f,hudTimes[i]));ImGui::PlotLines("##FrameTime",hudTimes.data(),int(hudCount),hudCount==hudTimes.size()?int(hudHead):0,nullptr,0,maximum,ImVec2(cell.width*scale,(cell.height-10-heading)*scale));}continue;
                     }
-                    uint32_t temperatureColor = 0;
+                    uint32_t valueColor = 0;
                     char number[80]{};
-                    const char* title = reading(cell.field, number, sizeof(number), temperatureColor);
+                    const char* title = reading(cell.field, number, sizeof(number), valueColor);
                     clip(cell.column||cell.field==fg::HudFps||cell.field==fg::HudBrand?cell.width:cell.width-110);
                     if(cell.field==fg::HudFps){
                         char fps[sizeof(number) + fg::hudLabelBytes + 2]{};
                         snprintf(fps, sizeof(fps), "%s %s", number, custom.empty() ? "FPS" : custom.c_str());
                         ImGui::PushFont(largeFont);
-                        drawText(fps, accent);
+                        drawText(fps, valueColor ? textColor(valueColor) : accent, !valueColor);
                         ImGui::PopFont();
                     } else {
                         if(cell.field==fg::HudBrand)title="FRAMORYX";
@@ -529,8 +540,8 @@ bool drawHud(IDXGISwapChain* chain, UINT flags) {
                     if(cell.field==fg::HudFps||cell.field==fg::HudBrand)continue;
                     const float numberX=cell.column?cell.x:cell.x+cell.width-105;
                     ImGui::SetCursorPos(ImVec2(numberX * scale, (cell.y + (cell.column ? 19 : 0)) * scale));
-                    drawText(number, temperatureColor ? textColor(temperatureColor) :
-                                                       style.Colors[ImGuiCol_Text], !temperatureColor);
+                    drawText(number, valueColor ? textColor(valueColor) :
+                                                  style.Colors[ImGuiCol_Text], !valueColor);
                 }
                 ImGui::End();
                 ImGui::PopStyleColor();

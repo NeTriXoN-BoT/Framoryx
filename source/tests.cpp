@@ -93,13 +93,31 @@ int main() {
         check(invalid.fields == fg::HudAll && invalid.scale == 300 && invalid.opacity == 0 &&
                   invalid.accent == fg::hudRainbowAccent,
               "invalid saved overlay styles are constrained before crossing IPC");
-        check(fg::hudRainbowPhase(6000) == 0.f &&
+        check(fg::hudRainbowPhase(fg::hudRainbowCycleMs) == 0.f &&
                   fg::hudRainbowColor(0.25f) == fg::hudRainbowColor(1.25f) &&
-                  fg::hudRainbowColor(fg::hudRainbowPhase(1500)) != fg::hudRainbowColor(0.f),
+                  fg::hudRainbowColor(fg::hudRainbowPhase(fg::hudRainbowCycleMs / 4)) != fg::hudRainbowColor(0.f),
               "rainbow animation changes hue and wraps continuously");
         check(fg::hudTemperatureColor(-1) == 0 && fg::hudTemperatureColor(64.9) == 0x7df2c6 &&
                   fg::hudTemperatureColor(65) == 0xf7be6f && fg::hudTemperatureColor(80) == 0xff8b96,
               "temperature bands leave missing readings neutral");
+        const auto tint = [](uint32_t field, double number, double capacity = 0) {
+            return fg::hudValueColor(field, number, true, false, capacity);
+        };
+        check(tint(fg::HudFps, 60) == 0x7df2c6 && tint(fg::HudAverage, 30) == 0xf7be6f &&
+                  tint(fg::HudLow, 29) == 0xff8b96 && tint(fg::HudCap, 0) == 0,
+              "frame rates and numeric caps use frame rate bands");
+        check(tint(fg::HudTime, 1000. / 60) == 0x7df2c6 && tint(fg::HudTime, 1000. / 30) == 0xf7be6f &&
+                  tint(fg::HudTime, 34) == 0xff8b96 && tint(fg::HudTime, 0) == 0,
+              "higher frame time moves toward the warmer bands");
+        check(tint(fg::HudCpu, 64.9) == 0x7df2c6 && tint(fg::HudGpu, 65) == 0xf7be6f &&
+                  tint(fg::HudVram, 90) == 0xff8b96 && tint(fg::HudRam, 29, 32) == 0xff8b96 &&
+                  tint(fg::HudRam, 29) == 0,
+              "usage colors use percentage, including RAM when capacity is known");
+        check(tint(fg::HudGpuTemp, 80) == 0xff8b96 && tint(fg::HudCpuTemp, -1) == 0 &&
+                  tint(fg::HudPower, 200) == 0 && tint(fg::HudClock, 2500) == 0 &&
+                  fg::hudValueColor(fg::HudCpuTemp, 75, false, true) == 0xf7be6f &&
+                  fg::hudValueColor(fg::HudCpu, 75, false, true) == 0,
+              "temperature-only preference and unscaled metrics keep their original behavior");
         fg::HudOptions custom;custom.order=0;custom.x=20000;custom.y=-8;custom.fontScale=500;custom.validate();
         check(custom.order==fg::HudOptions::defaultOrder&&custom.x==10000&&custom.y==-1&&custom.fontScale==140,"repair malformed order, coordinates and text size");
         custom.order=0xfedcba9876543210ull;custom.opacity=0;custom.validate();
