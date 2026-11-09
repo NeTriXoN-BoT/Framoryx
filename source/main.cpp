@@ -1721,10 +1721,36 @@ void setOverlay(bool enabled, bool automatic = false) {
                                 L"use Borderless play or opt into the DX11/DX12 HUD."
                               : L"Overlay hidden.");
 }
+void paintLayeredHud(HWND window) {
+    if (!app.overlay || !IsWindowVisible(window))
+        return;
+    const auto paintState = hudPaintState();
+    const auto& textStyle = visibleHudText();
+    if (hudPaintMatches(paintState, textStyle))
+        return;
+    auto& surface = app.hudSurface;
+    if (!surface.ensure(app.hudWidth, app.hudHeight))
+        return;
+    auto& g = *surface.graphics;
+    g.ResetTransform();
+    g.Clear(Color(0, 0, 0, 0));
+    g.ScaleTransform(app.hudRenderScale, app.hudRenderScale);
+    paintHudContent(g, app.hudDisplayOptions, app.stats, false, textStyle);
+    g.Flush(FlushIntentionSync);
+    POINT source{};
+    SIZE size{app.hudWidth, app.hudHeight};
+    BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+    if (UpdateLayeredWindow(window, nullptr, nullptr, &size, surface.dc, &source, 0, &blend, ULW_ALPHA)) {
+        app.hudLastPaint = paintState;
+        app.hudLastPaintText = textStyle;
+        if (paintState.graphCount) app.hudLastGraphChain = app.stats.chain;
+        else app.hudLastGraphChain.clear();
+    }
+}
 LRESULT CALLBACK hudProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_TIMER && wp == hudRainbowTimer) {
-        if (app.hudRainbowAnimating && IsWindowVisible(window))
-            InvalidateRect(window, nullptr, FALSE);
+        if (app.hudRainbowAnimating)
+            paintLayeredHud(window);
         return 0;
     }
     if (msg == WM_NCHITTEST)
@@ -1737,30 +1763,7 @@ LRESULT CALLBACK hudProc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
         PAINTSTRUCT ps{};
         BeginPaint(window, &ps);
         EndPaint(window, &ps);
-        if (!app.overlay || !IsWindowVisible(window))
-            return 0;
-        const auto paintState = hudPaintState();
-        const auto& textStyle = visibleHudText();
-        if (hudPaintMatches(paintState, textStyle))
-            return 0;
-        auto& surface = app.hudSurface;
-        if (!surface.ensure(app.hudWidth, app.hudHeight))
-            return 0;
-        auto& g = *surface.graphics;
-        g.ResetTransform();
-        g.Clear(Color(0, 0, 0, 0));
-        g.ScaleTransform(app.hudRenderScale, app.hudRenderScale);
-        paintHudContent(g, app.hudDisplayOptions, app.stats, false, textStyle);
-        g.Flush(FlushIntentionSync);
-        POINT source{};
-        SIZE size{app.hudWidth, app.hudHeight};
-        BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
-        if (UpdateLayeredWindow(window, nullptr, nullptr, &size, surface.dc, &source, 0, &blend, ULW_ALPHA)) {
-            app.hudLastPaint = paintState;
-            app.hudLastPaintText = textStyle;
-            if (paintState.graphCount) app.hudLastGraphChain = app.stats.chain;
-            else app.hudLastGraphChain.clear();
-        }
+        paintLayeredHud(window);
         return 0;
     }
     return DefWindowProcW(window, msg, wp, lp);

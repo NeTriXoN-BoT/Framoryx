@@ -33,6 +33,8 @@
 #include <QSet>
 #include <QDateTime>
 #include <QTemporaryDir>
+#include <QVersionNumber>
+#include <algorithm>
 #include <fstream>
 #include <cmath>
 
@@ -365,12 +367,29 @@ void Controller::addGame(const QUrl& url,const QString& label,const QString& arg
     m_games<<QVariantMap{{"id",id},{"name",name},{"executable",path},{"arguments",arguments}};
     emit gamesChanged();selectGame(id);scheduleSave();notify("Game added. Launch it from your library when ready.");
 }
-QVariantList Controller::changelog()const{
+QVariantList Controller::changelog() const {
+    const QDir directory(":/releases");
+    QList<QVersionNumber> versions;
+    for (const auto& name : directory.entryList({"v*.md"}, QDir::Files, QDir::NoSort)) {
+        const auto version = name.mid(1, name.size() - 4);
+        const auto parsed = QVersionNumber::fromString(version);
+        if (parsed.segmentCount() == 3 && parsed.toString() == version)
+            versions.append(parsed);
+    }
+    std::sort(versions.begin(), versions.end(), [](const auto& first, const auto& second) {
+        return first > second;
+    });
     QVariantList result;
-    for(const auto& version:QStringList{"0.3.1","0.3.0","0.2.3","0.2.2","0.2.1","0.2.0"}){
-        QFile file(":/releases/v"+version+".md");if(!file.open(QIODevice::ReadOnly))continue;
-        const QString text=QString::fromUtf8(file.readAll());const auto newline=text.indexOf('\n');const QString title=text.left(newline).remove(0,2);
-        result<<QVariantMap{{"version",version},{"title",title},{"body",text.mid(newline+1).trimmed()}};
+    for (const auto& parsed : versions) {
+        const auto version = parsed.toString();
+        QFile file(directory.filePath("v" + version + ".md"));
+        if (!file.open(QIODevice::ReadOnly))
+            continue;
+        const auto text = QString::fromUtf8(file.readAll());
+        const auto newline = text.indexOf('\n');
+        const auto title = text.left(newline).mid(2).trimmed();
+        const auto body = newline >= 0 ? text.mid(newline + 1).trimmed() : QString{};
+        result << QVariantMap{{"version",version},{"title",title},{"body",body}};
     }
     return result;
 }
@@ -726,7 +745,16 @@ bool Controller::selfTest(QString* error){
     if(!check(installNoiseArchive(m_root+"/invalid-plugin",malformed,digest,"v1.10").isEmpty()&&verifiedNoiseCache(m_root+"/invalid-plugin").isEmpty(),"Reject malformed plugin archives without installing code"))return false;
 #endif
     if(!check(Telemetry::selfTest(m_root,error),"Read sensor units and reject unavailable or invalid values"))return false;
-    if(!check(changelog().size()==6,"Include the full offline release history"))return false;
+    const auto history = changelog();
+    const auto currentRelease = history.value(0).toMap();
+    if(!check(currentRelease.value("version").toString()==QCoreApplication::applicationVersion()&&
+              !currentRelease.value("body").toString().isEmpty(),
+              "Include notes for the running version first"))return false;
+    if(!check(std::any_of(history.cbegin(),history.cend(),[](const auto& entry){
+                  const auto release=entry.toMap();
+                  return release.value("version").toString()=="0.2.0"&&
+                         !release.value("body").toString().isEmpty();
+              }),"Keep the oldest release in the offline history"))return false;
     sampleFrames(QList<double>(120,16.666666),"Fixture",42);if(!check(m_state["fps"].toDouble()>50&&!m_graph.isEmpty(),"Compute real portable frame statistics"))return false;
     receive({{"profileExe","ordinary.exe"},{"autoHudEligible",false}});
     if(!check(m_activeGameKey.isEmpty(),"Ordinary desktop apps keep the default HUD profile"))return false;

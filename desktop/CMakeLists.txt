@@ -59,9 +59,10 @@ endif()
 add_test(NAME desktop-model COMMAND FramoryxDesktop --self-test --test-root ${CMAKE_CURRENT_BINARY_DIR}/model-test)
 set_tests_properties(desktop-model PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software" TIMEOUT 30)
 
-qt_add_resources(FramoryxDesktop framoryx_changes PREFIX /releases BASE ../docs/releases FILES
-    ../docs/releases/v0.3.1.md ../docs/releases/v0.3.0.md ../docs/releases/v0.2.3.md ../docs/releases/v0.2.2.md
-    ../docs/releases/v0.2.1.md ../docs/releases/v0.2.0.md)
+set(framoryx_release_notes_dir "${CMAKE_CURRENT_SOURCE_DIR}/../docs/releases")
+file(GLOB framoryx_release_notes CONFIGURE_DEPENDS "${framoryx_release_notes_dir}/v*.md")
+qt_add_resources(FramoryxDesktop framoryx_changes PREFIX /releases
+    BASE "${framoryx_release_notes_dir}" FILES ${framoryx_release_notes})
 
 option(FRAMORYX_BUILD_DIAGNOSTICS "Build the isolated UI input driver" OFF)
 if(FRAMORYX_BUILD_DIAGNOSTICS)
